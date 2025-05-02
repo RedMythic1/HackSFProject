@@ -19,8 +19,10 @@ Here is how to integrate it into your workflow(s)
 
 What we need inputted:
 User Technical experience (1-10)
-What user does: 2 sentences
+What user does(work, school, etc): 2 sentences
+What user wants to get into
 What Os does user have
+User OS specifics, like version
 What are some of user's interests
 Current workflow user has/looking to get into.
 
@@ -37,3 +39,4 @@ Example workflow improvement.
 etc.
 Then send and email to the user (1 per day.)
 
+Work on backend first, using hard coded prompts, then use basic flask website to take user inputs and accounts. Run on vercel.
