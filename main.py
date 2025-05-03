@@ -1,20 +1,17 @@
-import requests
+import asyncio, json, re, requests, urllib.parse
 from time import sleep
-import re
 from duckduckgo_search import DDGS
 from bs4 import BeautifulSoup
 from openai import OpenAI
-import json
-import asyncio
 from playwright.async_api import async_playwright
 from pdfminer.high_level import extract_text
 from transformers import pipeline
 from io import BytesIO
-import urllib.parse
 
 # API Configuration
 client = OpenAI(api_key='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')
 
+# Initialize the summarization model
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
 # Constants
@@ -78,6 +75,10 @@ def article_grabber():
     return articles
 
 async def scrape_cleaned_text(url, min_words_div=5):
+    """
+    Scrape and clean text from a given URL.
+    Extracts meaningful text and handles embedded PDFs.
+    """
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
@@ -90,17 +91,20 @@ async def scrape_cleaned_text(url, min_words_div=5):
 
     soup = BeautifulSoup(content, 'html.parser')
 
+    # Remove scripts and styles
     for tag in soup(['script', 'style']):
         tag.decompose()
 
     body = soup.body
     text_chunks = []
     if body:
+        # Collect text from relevant tags
         for tag in body.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
             text = tag.get_text(separator=' ', strip=True)
             if text:
                 text_chunks.append(text)
 
+        # Collect <div> text only if it's meaningful (min word count)
         for div in body.find_all('div'):
             if div.find(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
                 continue
@@ -110,7 +114,7 @@ async def scrape_cleaned_text(url, min_words_div=5):
 
     html_text = "\n\n".join(text_chunks).strip()
 
-    # PDF content (iframe/embed/object)
+    # Look for embedded PDFs and extract text
     pdf_urls = set()
     if body:
         for tag in body.find_all(['iframe', 'embed', 'object']):
@@ -156,7 +160,7 @@ def preprocess(articles):
             paragraphs = toptext.find_all('p')
             link_text = "\n".join([p.get_text(strip=True) for p in paragraphs])
         
-        # Get the subject line
+        # Get the subject line using OpenAI API
         subject_response = client.responses.create(
             model="gpt-4.1-nano",
             input=f"Analyze this title and passage, and tell me what the subject is. Example: Altair at 50: Remembering the first Personal Computer -> Altair, First Personal computer. Perform this on {title} and this passage: {link_text}. DO NOT OUTPUT ANYTHING ELSE. NO THANK YOUs or confirmations. I just need the Subject line. Do not say anything else. ONLY GIVE 1 SUBJECT, Summarize. Return in the form: [subject_line]"
@@ -203,6 +207,7 @@ def research(article_data):
     subject_line = article_data['subject']
     question_research_data = {}
 
+    # Generate research questions using OpenAI API
     r_questions = client.responses.create(
         model="gpt-4.1-nano",
         input=f"I do not know what {subject_line} is. I wish to learn about it. Please give me ten search query prompts that someone decently technically savvy would search for deep and meaningful research. Answer this question to the fullest of your extent. answer in the form [insert question here]~[insert question here]~[insert question here]~[insert question here] etc. etc. Only return the questions, and nothing else."
@@ -211,6 +216,7 @@ def research(article_data):
     questions_list = [q.strip() for q in r_questions.output_text.split('~') if q.strip()]
 
     async def process_question(question):
+        """Process each question to find links and summarize content"""
         summarized_results = []
         with DDGS() as ddgs:
             links = [r['href'] for r in ddgs.text(question, max_results=3)]
@@ -237,10 +243,26 @@ def research(article_data):
         return question, summarized_results
 
     async def process_all():
+        """Process all questions concurrently"""
         tasks = [process_question(q) for q in questions_list]
         return dict(await asyncio.gather(*tasks))
 
     return asyncio.run(process_all())
+
+def format_article(research_results):
+    """Format the summarized results into a structured article."""
+    article = []
+    article.append("# Research Article\n")
+    article.append("## Summary of Research Questions and Findings\n\n")
+
+    for question, results in research_results.items():
+        article.append(f"### Question: {question}\n")
+        for result in results:
+            article.append(f"- **Source**: [{result['url']}]({result['url']})\n")
+            article.append(f"  - **Summary**: {result['summary']}\n")
+        article.append("\n")
+
+    return "\n".join(article)
 
 # ===== SCRIPT EXECUTION =====
 
@@ -248,4 +270,14 @@ def research(article_data):
 user_settings = input('What are your interests? (please enter 4): \n')
  
 # Convert interests to vectors
+  
+# Get articles and process them
+articles = article_grabber()
+finalized_articles = preprocess(articles)
+
+# Assuming you want to research the top article
+if finalized_articles:
+    research_results = research(finalized_articles[0])  # Use the first article for research
+    formatted_article = format_article(research_results)
+    print(formatted_article)
   
