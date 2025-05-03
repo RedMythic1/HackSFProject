@@ -40,3 +40,6 @@ etc.
 Then send and email to the user (1 per day.)
 
 Work on backend first, using hard coded prompts, then use basic flask website to take user inputs and accounts. Run on vercel.
+
+IF WORKFLOW CONDITIONS ARE NOT MET:
+Just send whatever u think the user finds interesting
