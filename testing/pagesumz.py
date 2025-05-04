@@ -329,21 +329,29 @@ def extract_webpage_content(url, save_pdf=False):
 # ===============================================================================
 
 @time_function
-def sample_text(text, sample_percentage=15):
+def sample_text(text):
     """
-    Sample the text to get approximately 15% of the original content
+    Sample the text to get approximately 2000 words
     Takes sentences in a pattern to preserve coherence while reducing volume
-    
-    For 15% sampling: take 1 sentence, skip 6 sentences (≈ 14.3% sampling rate)
+    Returns original text if it's already 2000 words or less
     
     Args:
         text: Original text to sample
-        sample_percentage: Target percentage of text to keep
         
     Returns:
-        str: Sampled text
+        str: Sampled text or original text if short enough
     """
-    print(f"[INFO] Sampling text to {sample_percentage}% of original ({len(text.split())} words)")
+    word_count = len(text.split())
+    
+    # Return original text if it's already 2000 words or less
+    if word_count <= 2000:
+        print(f"[INFO] Text already short enough ({word_count} words), skipping sampling")
+        return text
+    
+    # Calculate target sample percentage based on text length
+    # Aim for around 2000 words in the final sample
+    sample_percentage = round(2000/word_count, 2)
+    print(f"[INFO] Sampling text to {100*sample_percentage}% of original ({word_count} words)")
     
     # Split into sentences to maintain sentence integrity - using efficient regex
     sentences = re.split(r'(?<=[.!?])\s+', text)
@@ -352,9 +360,11 @@ def sample_text(text, sample_percentage=15):
     if total_sentences <= 20:  # If very few sentences, return the original
         return text
     
-    # For 15% sampling: take 1 sentence, skip 6 sentences
+    # Calculate dynamic skip count based on sample percentage
+    # For example, if we want 15% sampling (0.15), we need to take 1 sentence and skip (1/0.15 - 1) sentences
+    # This ensures we get approximately the desired percentage
     take_count = 1
-    skip_count = 6
+    skip_count = max(1, int(1/sample_percentage - 1))  # Ensure skip_count is at least 1
     
     sampled_sentences = []
     
@@ -370,7 +380,7 @@ def sample_text(text, sample_percentage=15):
         i = end_idx + skip_count
     
     result = " ".join(sampled_sentences)
-    print(f"[INFO] Sampled text has {len(result.split())} words ({(len(result.split()) / len(text.split()) * 100):.1f}% of original)")
+    print(f"[INFO] Sampled text has {len(result.split())} words ({(len(result.split()) / word_count * 100):.1f}% of original)")
     return result
 
 @time_function
@@ -429,65 +439,6 @@ def split_into_chunks(input_string, chunk_size=500):
         print(f"[DEBUG] Chunk {i}: {len(chunk['text'].split())} words, preview: {chunk['text'][:100]}")
     return chunks
 
-@time_function
-def pre_summarize_text(text, summarizer, max_input_length=4096, max_length=200, min_length=50):
-    """
-    Pre-summarize very long text before chunking to reduce overall processing time
-    Used for extremely long articles/pages to improve processing efficiency
-    
-    Args:
-        text: Long text to pre-summarize
-        summarizer: The summarization pipeline
-        max_input_length: Maximum length the summarizer can handle
-        max_length/min_length: Parameters for summary generation
-        
-    Returns:
-        str: Pre-summarized text
-    """
-    try:
-        print(f"[INFO] Pre-summarizing {len(text.split())} words of text...")
-        
-        # If text is already short enough, return as is
-        if len(text.split()) < max_input_length * 2:
-            return text
-            
-        # Split text into chunks for the summarizer
-        words = text.split()
-        chunks = []
-        
-        # Process in larger chunks for better performance
-        for i in range(0, len(words), max_input_length):
-            chunks.append(' '.join(words[i:i+max_input_length]))
-        
-        print(f"[INFO] Summarizing {len(chunks)} pre-chunks...")
-        
-        # Use ThreadPoolExecutor for parallel summarization
-        summaries = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(chunks))) as executor:
-            futures = []
-            for chunk in chunks:
-                futures.append(executor.submit(
-                    lambda c: summarizer(c, max_length=max_length, min_length=min_length, do_sample=False)[0]['summary_text'],
-                    chunk
-                ))
-            
-            # Collect results as they complete
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    summary = future.result()
-                    summaries.append(summary)
-                except Exception as e:
-                    print(f"[ERROR] Error summarizing pre-chunk: {e}")
-                    # Add a placeholder if summarization fails
-                    summaries.append("Error in summarization.")
-        
-        result = " ".join(summaries)
-        print(f"[INFO] Pre-summarization complete: reduced to {len(result.split())} words")
-        return result
-    except Exception as e:
-        print(f"[ERROR] Error in pre-summarization: {e}")
-        return text
-
 # ===============================================================================
 # CHUNK PROCESSING AND SUMMARIZATION FUNCTIONS
 # ===============================================================================
@@ -515,7 +466,13 @@ def process_chunk(chunk_data):
     if chunk['chunk'] == 0:
         explanation_prompt_text = f"[INST] {explanation_prompt}: {chunk['text']} [/INST]"
     else:
-        explanation_prompt_text = f"[INST] Previous context summary: {previous_summary}\n\nImportant subjects from previous context: {important_subjects}\n\nConsidering the previous context and these subjects, fulfill the following prompt: {explanation_prompt}: {chunk['text']} [/INST]"
+        explanation_prompt_text = f"""[INST]
+
+Key topics and themes from previous context: {important_subjects}
+
+Building upon this context, analyze the following new content.
+
+New content to analyze: {explanation_prompt}: {previous_summary}\n{chunk['text']} [/INST]"""
     
     prompt_length = len(explanation_prompt_text.split())
     print(f"[INFO] Prompt length for chunk {chunk['chunk']}: {prompt_length} words")
@@ -544,14 +501,14 @@ def process_chunk(chunk_data):
     return chunk['chunk'], explanation, new_summary
 
 @time_function
-def final_summarize(text, summarizer):
+def final_summarize(text, llm):
     """
-    Create a concise executive summary from comprehensive text
-    Includes post-processing to fix common formatting issues
+    Create a concise executive summary from comprehensive text using Llama
+    Generates a coherent paragraph without repetition
     
     Args:
         text: The text to summarize (usually the comprehensive summary)
-        summarizer: The summarization pipeline
+        llm: The Llama model instance
         
     Returns:
         str: The final, polished executive summary
@@ -562,29 +519,41 @@ def final_summarize(text, summarizer):
         # Only use the beginning portion if too long
         text = " ".join(text.split()[:max_input_length])
     
-    # Parameters optimized for final summarization
-    summary = summarizer(text, max_length=200, min_length=100, do_sample=False)
-    raw_summary = summary[0]['summary_text']
+    # Create a prompt that encourages a coherent, non-repetitive summary
+    prompt = f"""[INST]
+Create a concise, coherent paragraph that summarizes the following text.
+The summary should be well-structured and avoid repeating any information.
+Focus on the key points and maintain a natural flow.
+
+Text to summarize:
+{text}
+
+Please provide a single, well-written paragraph that captures the essence of the text without repetition.
+[/INST]"""
     
-    # Post-process the summary to fix common issues
-    processed_summary = raw_summary
-    
-    # Fix periods followed by words without spaces
-    processed_summary = re.sub(r'\.([A-Z])', r'. \1', processed_summary)
-    
-    # Fix issue with "views are:" followed by a period
-    processed_summary = processed_summary.replace("views are:.", "views are:")
-    
-    # Fix spaces before punctuation
-    processed_summary = re.sub(r'\s+([.,;:!?])', r'\1', processed_summary)
-    
-    # Fix double spaces
-    processed_summary = re.sub(r'\s{2,}', ' ', processed_summary)
-    
-    # Fix "the" + "AI" without space
-    processed_summary = processed_summary.replace("theAI", "the AI")
-    
-    return processed_summary
+    try:
+        # Use lock to ensure thread safety when using the LLM
+        with _LLM_LOCK:
+            output = llm(prompt, max_tokens=512, temperature=0.1)
+            summary = output["choices"][0]["text"].strip()
+        
+        # Basic post-processing to fix common formatting issues
+        processed_summary = summary
+        
+        # Fix periods followed by words without spaces
+        processed_summary = re.sub(r'\.([A-Z])', r'. \1', processed_summary)
+        
+        # Fix spaces before punctuation
+        processed_summary = re.sub(r'\s+([.,;:!?])', r'\1', processed_summary)
+        
+        # Fix double spaces
+        processed_summary = re.sub(r'\s{2,}', ' ', processed_summary)
+        
+        return processed_summary.strip()
+        
+    except Exception as e:
+        print(f"[ERROR] Error in final_summarize: {e}")
+        return "Error generating final summary."
 
 # ===============================================================================
 # PDF GENERATION FUNCTIONS
@@ -707,12 +676,7 @@ def process_text(input_text, llm, summarizer, explanation_prompt):
     """
     # Sample the text first to get approximately 15% of it
     sampled_text = sample_text(input_text)
-    
-    if len(sampled_text.split()) > 8000:
-        print("[INFO] Long text detected. Pre-summarizing text to reduce length...")
-        summarized_text = pre_summarize_text(sampled_text, summarizer)
-    else:
-        summarized_text = sampled_text
+    summarized_text = sampled_text
     
     # Split the text into manageable chunks
     chunks = split_into_chunks(summarized_text)
@@ -751,7 +715,7 @@ def process_text(input_text, llm, summarizer, explanation_prompt):
     
     # Apply final summarization to get a concise executive summary
     print("[INFO] Creating executive summary...")
-    executive_summary = final_summarize(comprehensive_summary, summarizer)
+    executive_summary = final_summarize(comprehensive_summary, llm)
     
     print("\n" + "="*80)
     print("EXECUTIVE SUMMARY:")
@@ -837,7 +801,7 @@ def main():
     else:
         # Example default for testing
         url = "https://news.ycombinator.com/item?id=43878850"
-        prompt = "What are the main points of this content (generate 5 questions for a power user to search up and dive deeper into the content)?"
+        prompt = "Synthesize the key perspectives in this discussion into a coherent narrative. Identify the main themes, important viewpoints, and any consensus or disagreements. Structure your response with clear topic sentences and supporting details. Present factual information in a way that highlights cause-effect relationships and contextual insights."
         save_pdf = False
         print(f"[INFO] No arguments provided. Using default URL: {url}")
         print(f"[INFO] Default prompt: '{prompt}'")
