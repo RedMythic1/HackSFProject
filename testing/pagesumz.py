@@ -722,7 +722,7 @@ def process_text(input_text, llm, summarizer, explanation_prompt):
     2. Optionally pre-summarize very long text
     3. Split into chunks for processing
     4. Process chunks sequentially with context preservation
-    5. Generate both comprehensive and executive summaries
+    5. Generate executive summary
     6. Report performance metrics
     
     Args:
@@ -732,7 +732,7 @@ def process_text(input_text, llm, summarizer, explanation_prompt):
         explanation_prompt: The prompt to guide LLM explanations
         
     Returns:
-        dict: Both executive and comprehensive summaries
+        str: The executive summary
     """
     # Sample the text first to get approximately 15% of it
     sampled_text = sample_text(input_text)
@@ -779,17 +779,13 @@ def process_text(input_text, llm, summarizer, explanation_prompt):
                 comprehensive_summary = explanation
     
     # Apply final summarization to get a concise executive summary
-    print("[INFO] Creating final executive summary...")
+    print("[INFO] Creating executive summary...")
     executive_summary = final_summarize(comprehensive_summary, summarizer)
     
     print("\n" + "="*80)
     print("EXECUTIVE SUMMARY:")
     print("="*80)
     print(executive_summary)
-    print("\n" + "="*80)
-    print("COMPREHENSIVE SUMMARY:")
-    print("="*80)
-    print(comprehensive_summary)
     print("="*80)
     
     # Print performance metrics
@@ -799,11 +795,7 @@ def process_text(input_text, llm, summarizer, explanation_prompt):
             avg_time = sum(times) / len(times)
             print(f"{func_name}: avg {avg_time:.3f}s, total {sum(times):.3f}s, calls {len(times)}")
     
-    # Return both summaries
-    return {
-        "executive_summary": executive_summary,
-        "comprehensive_summary": comprehensive_summary
-    }
+    return executive_summary
 
 @time_function
 def summarize_webpage(url, explanation_prompt="Explain what this means in simple terms", save_pdf=False):
@@ -817,7 +809,7 @@ def summarize_webpage(url, explanation_prompt="Explain what this means in simple
         save_pdf: Whether to save extracted content as PDF
         
     Returns:
-        dict: Executive and comprehensive summaries
+        str: The executive summary
     """
     # Extract content from the webpage
     webpage_text = extract_webpage_content(url, save_pdf=save_pdf)
@@ -832,8 +824,8 @@ def summarize_webpage(url, explanation_prompt="Explain what this means in simple
     try:
         # Process the extracted text
         print("[INFO] Processing webpage content...")
-        summaries = process_text(webpage_text, llm, summarizer, explanation_prompt)
-        return summaries
+        summary = process_text(webpage_text, llm, summarizer, explanation_prompt)
+        return summary
     finally:
         # Don't close the models - they're cached
         pass
@@ -855,8 +847,6 @@ def main():
                         help="Custom prompt for the summarization")
     parser.add_argument("--pdf", "-pdf", action="store_true",
                         help="Save the scraped webpage content as a plaintext PDF")
-    parser.add_argument("--exec-only", "-e", action="store_true",
-                        help="Show only the executive summary without the comprehensive summary")
     parser.add_argument("--no-cache", "-nc", action="store_true",
                         help="Bypass the cache and fetch fresh content")
     parser.add_argument("--sequential", "-seq", action="store_true",
@@ -868,7 +858,6 @@ def main():
         url = args.url
         prompt = args.prompt
         save_pdf = args.pdf
-        exec_only = args.exec_only
         if args.no_cache:
             # Clear the URL cache if requested
             cache_path = get_cache_path(url)
@@ -877,9 +866,8 @@ def main():
     else:
         # Example default for testing
         url = "https://news.ycombinator.com/item?id=43878850"
-        prompt = "What are the two opposing views on this post?"
+        prompt = "What are the two main sides arguing against each other(paraphrase the argument)?"
         save_pdf = False
-        exec_only = False
         print(f"[INFO] No arguments provided. Using default URL: {url}")
         print(f"[INFO] Default prompt: '{prompt}'")
     
@@ -895,9 +883,6 @@ def main():
         total_time = time() - start_time
         print(f"\n[INFO] Total execution time: {total_time:.2f} seconds")
         
-        # Return just the executive summary if requested, otherwise return both
-        if exec_only and isinstance(result, dict) and 'executive_summary' in result:
-            return result['executive_summary']
         return result
     except Exception as e:
         print(f"[ERROR] An error occurred: {str(e)}")
