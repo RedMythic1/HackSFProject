@@ -7,6 +7,7 @@ from playwright.async_api import async_playwright
 from pdfminer.high_level import extract_text
 from transformers import pipeline
 from io import BytesIO
+from emailsender import send_simple_message
 
 # API Configuration
 client = OpenAI(api_key='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')
@@ -77,7 +78,7 @@ def article_grabber():
 async def scrape_cleaned_text(url, min_words_div=5):
     """
     Scrape and clean text from a given URL.
-    Extracts meaningful text and handles embedded PDFs.
+    Extracts all headers and paragraphs, and handles embedded PDFs.
     """
     try:
         async with async_playwright() as p:
@@ -97,22 +98,13 @@ async def scrape_cleaned_text(url, min_words_div=5):
 
     body = soup.body
     text_chunks = []
+    
     if body:
-        # Collect text from relevant tags
-        for tag in body.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+        # Collect text from all header and paragraph tags
+        for tag in body.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p']):
             text = tag.get_text(separator=' ', strip=True)
             if text:
                 text_chunks.append(text)
-
-        # Collect <div> text only if it's meaningful (min word count)
-        for div in body.find_all('div'):
-            if div.find(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
-                continue
-            text = div.get_text(separator=' ', strip=True)
-            if len(text.split()) >= min_words_div:
-                text_chunks.append(text)
-
-    html_text = "\n\n".join(text_chunks).strip()
 
     # Look for embedded PDFs and extract text
     pdf_urls = set()
@@ -122,22 +114,26 @@ async def scrape_cleaned_text(url, min_words_div=5):
             if src and src.lower().endswith('.pdf'):
                 pdf_urls.add(urllib.parse.urljoin(url, src))
 
+    # Extract text from each PDF
     for pdf_url in pdf_urls:
         try:
             resp = requests.get(pdf_url)
             resp.raise_for_status()
             pdf_text = extract_text(BytesIO(resp.content))
             if pdf_text:
-                html_text += (
-                    f"\n\n--- PDF content from {pdf_url} ---\n\n"
-                    + "\n".join(
-                        [line for line in pdf_text.splitlines() if len(line.split()) >= min_words_div]
-                    )
-                )
+                text_chunks.append(f"\n\n--- PDF content from {pdf_url} ---\n\n" + pdf_text)
         except Exception as e:
-            html_text += f"\n\n[!] Failed to extract PDF at {pdf_url}: {e}\n"
+            text_chunks.append(f"\n\n[!] Failed to extract PDF at {pdf_url}: {e}\n")
+        
+    # Use gpt-4.1-nano to format text chunks into coherent structure
+    formatted_text = client.responses.create(
+        model="gpt-4.1-nano",
+        input="Format:" + "\n".join(text_chunks) + "Into a coherent structure"
+    ).output_text
 
-    return html_text
+    final_text = formatted_text.output_text
+        
+    return final_text
 
 # ===== CONTENT PROCESSING FUNCTIONS =====
 
