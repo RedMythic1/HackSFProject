@@ -43,6 +43,12 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 # Performance timing dictionary
 TIMINGS = {}
 
+# Phrases that indicate non-useful content
+USELESS_PHRASES = [
+    "open menu", "log in", "get app", "expand user menu", "create your account",
+    "members online", "weekly newsquiz", "reddit home", "settings menu", "close button"
+]
+
 # ===============================================================================
 # PERFORMANCE TRACKING AND CACHING FUNCTIONS
 # ===============================================================================
@@ -122,14 +128,68 @@ def fetch_url_with_cache(url, cache_timeout=3600):
         raise
 
 # ===============================================================================
-# CONTENT EXTRACTION FUNCTIONS
+# MODEL INITIALIZATION AND BASIC SUMMARIZATION
 # ===============================================================================
 
-# Phrases that indicate non-useful content
-USELESS_PHRASES = [
-    "open menu", "log in", "get app", "expand user menu", "create your account",
-    "members online", "weekly newsquiz", "reddit home", "settings menu", "close button"
-]
+@time_function
+def initialize_models():
+    """
+    Initialize the LLM and summarization models with caching
+    Uses thread-safe locking to prevent race conditions
+    
+    Returns:
+        tuple: (llm, summarizer) - The initialized models
+    """
+    print("[INFO] Initializing models...")
+    
+    with _MODEL_CACHE_LOCK:
+        # Check if models are already initialized
+        if 'llm' in _MODEL_CACHE and 'summarizer' in _MODEL_CACHE:
+            print("[INFO] Using cached models")
+            return _MODEL_CACHE['llm'], _MODEL_CACHE['summarizer']
+        
+        # Initialize models
+        llm = Llama(
+            model_path="/Users/avneh/llama-models/mistral-7b/mistral-7b-instruct-v0.1.Q4_K_M.gguf",
+            n_ctx=32768,
+            n_threads=12,  # Increased threads for better CPU utilization
+            n_gpu_layers=35,
+            chat_format="mistral-instruct",
+            verbose=False,
+            stop=None
+        )
+        
+        summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+        
+        # Cache the models
+        _MODEL_CACHE['llm'] = llm
+        _MODEL_CACHE['summarizer'] = summarizer
+        
+        return llm, summarizer
+
+@time_function
+def offline_summarize(text, summarizer):
+    """
+    Quick summarization using Hugging Face BART model
+    Used for intermediate summarization steps
+    
+    Args:
+        text: Text to summarize
+        summarizer: The BART summarization pipeline
+        
+    Returns:
+        str: Summarized text
+    """
+    max_input_length = 4096
+    if len(text.split()) > max_input_length:
+        text = " ".join(text.split()[:max_input_length])
+    
+    summary = summarizer(text, max_length=60, min_length=10, do_sample=False)
+    return summary[0]['summary_text']
+
+# ===============================================================================
+# CONTENT EXTRACTION AND CLEANING FUNCTIONS
+# ===============================================================================
 
 def is_useful_block(text):
     """Filter out UI elements and short content blocks"""
@@ -154,39 +214,6 @@ def clean_text(text):
     # Fix spacing after periods that don't end sentences
     text = re.sub(r'(\w\.\w\.)\s+', r'\1', text)
     return text.strip()
-
-def scrape_cleaned_text(url, min_words_div=5, min_block_length=30):
-    """
-    Basic web scraper function
-    Used as a fallback when other extraction methods fail
-    """
-    try:
-        response = requests.get(url)
-        print(f"[DEBUG] Raw HTML (first 500 chars):\n{response.text[:500]}\n")
-        response.raise_for_status()
-        content = response.text
-    except Exception as e:
-        return f"[!] Failed to load {url}: {e}"
-
-    soup = BeautifulSoup(content, 'html.parser')
-
-    for tag in soup(['script', 'style']):
-        tag.decompose()
-
-    body = soup.body
-    all_text_blocks = []
-    
-    if body:
-        for tag in body.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div']):
-            text = tag.get_text(separator=' ', strip=True)
-            cleaned_text = clean_text(text)
-            if cleaned_text and is_useful_block(cleaned_text):
-                all_text_blocks.append(cleaned_text)
-
-    print(f"[DEBUG] Found {len(all_text_blocks)} text blocks.")
-    for i, block in enumerate(all_text_blocks[:5]):
-        print(f"[DEBUG] Block {i}: {len(block.split())} words, preview: {block[:100]}")
-    return "\n\n".join(all_text_blocks)
 
 @time_function
 @lru_cache(maxsize=10)  # Cache recent extractions
@@ -298,160 +325,7 @@ def extract_webpage_content(url, save_pdf=False):
         return f"Failed to extract content from {url}: {str(e)}"
 
 # ===============================================================================
-# PDF GENERATION FUNCTIONS
-# ===============================================================================
-
-@time_function
-def save_as_pdf(text, url, filename=None):
-    """
-    Save the scraped webpage content as a plaintext PDF file
-    Handles Unicode characters by safely replacing them with ASCII equivalents
-    
-    Args:
-        text: The text content to save
-        url: The URL of the webpage (for metadata)
-        filename: Custom filename for the PDF
-    
-    Returns:
-        str: Path to the saved PDF file or None if failed
-    """
-    if not filename:
-        # Create a filename based on the URL domain and timestamp
-        domain = urlparse(url).netloc.replace('.', '_')
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"webpage_{domain}_{timestamp}.pdf"
-    
-    # Ensure filename ends with .pdf
-    if not filename.endswith('.pdf'):
-        filename += '.pdf'
-    
-    print(f"[INFO] Generating PDF: {filename}")
-    
-    try:
-        # Create ASCII-only version of the text for PDF compatibility
-        ascii_text = ""
-        for char in text:
-            if ord(char) < 128:
-                ascii_text += char
-            else:
-                # Replace non-ASCII characters with appropriate replacements
-                if char in "''""":
-                    ascii_text += "'"
-                elif char == '—':
-                    ascii_text += "--"
-                elif char == '–':
-                    ascii_text += "-"
-                elif char == '…':
-                    ascii_text += "..."
-                else:
-                    ascii_text += " "
-        
-        # Initialize PDF
-        pdf = FPDF()
-        pdf.add_page()
-        
-        # Set metadata
-        pdf.set_title(f"Webpage Content: {url}")
-        pdf.set_author("PAGESUMZ Web Scraper")
-        pdf.set_creator("PAGESUMZ using FPDF")
-        
-        # Use built-in font
-        pdf.set_font("Courier", size=11)
-        
-        # Add URL and timestamp
-        pdf.cell(200, 10, txt=f"Source: {url}", ln=True, align='L')
-        pdf.cell(200, 10, txt=f"Extracted: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align='L')
-        pdf.ln(5)
-        
-        # Add a title
-        pdf.set_font("Courier", 'B', size=14)
-        pdf.cell(200, 10, txt="WEBPAGE CONTENT", ln=True, align='C')
-        pdf.ln(5)
-        
-        # Add content with line wrapping - process in larger chunks for better performance
-        pdf.set_font("Courier", size=10)
-        
-        # Split text into chunks and process in batches
-        max_chunk_size = 5000  # Process 5000 chars at a time
-        for i in range(0, len(ascii_text), max_chunk_size):
-            chunk = ascii_text[i:i+max_chunk_size]
-            lines = chunk.split('\n')
-            for line in lines:
-                if line.strip():  # Skip empty lines
-                    pdf.multi_cell(0, 5, txt=line)
-        
-        # Save the PDF
-        pdf.output(filename)
-        
-        print(f"[INFO] PDF successfully created: {os.path.abspath(filename)}")
-        return os.path.abspath(filename)
-    
-    except Exception as e:
-        print(f"[ERROR] Failed to create PDF: {str(e)}")
-        return None
-
-# ===============================================================================
-# MODEL INITIALIZATION AND BASIC SUMMARIZATION
-# ===============================================================================
-
-@time_function
-def initialize_models():
-    """
-    Initialize the LLM and summarization models with caching
-    Uses thread-safe locking to prevent race conditions
-    
-    Returns:
-        tuple: (llm, summarizer) - The initialized models
-    """
-    print("[INFO] Initializing models...")
-    
-    with _MODEL_CACHE_LOCK:
-        # Check if models are already initialized
-        if 'llm' in _MODEL_CACHE and 'summarizer' in _MODEL_CACHE:
-            print("[INFO] Using cached models")
-            return _MODEL_CACHE['llm'], _MODEL_CACHE['summarizer']
-        
-        # Initialize models
-        llm = Llama(
-            model_path="/Users/avneh/llama-models/mistral-7b/mistral-7b-instruct-v0.1.Q4_K_M.gguf",
-            n_ctx=32768,
-            n_threads=12,  # Increased threads for better CPU utilization
-            n_gpu_layers=35,
-            chat_format="mistral-instruct",
-            verbose=False,
-            stop=None
-        )
-        
-        summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
-        
-        # Cache the models
-        _MODEL_CACHE['llm'] = llm
-        _MODEL_CACHE['summarizer'] = summarizer
-        
-        return llm, summarizer
-
-@time_function
-def offline_summarize(text, summarizer):
-    """
-    Quick summarization using Hugging Face BART model
-    Used for intermediate summarization steps
-    
-    Args:
-        text: Text to summarize
-        summarizer: The BART summarization pipeline
-        
-    Returns:
-        str: Summarized text
-    """
-    max_input_length = 4096
-    if len(text.split()) > max_input_length:
-        text = " ".join(text.split()[:max_input_length])
-    
-    summary = summarizer(text, max_length=60, min_length=10, do_sample=False)
-    return summary[0]['summary_text']
-
-# ===============================================================================
-# TEXT PROCESSING AND OPTIMIZATION FUNCTIONS
+# TEXT PROCESSING AND CHUNKING FUNCTIONS
 # ===============================================================================
 
 @time_function
@@ -517,57 +391,6 @@ def extract_subjects(text, summarizer):
     except Exception as e:
         print(f"[ERROR] Error extracting subjects: {e}")
         return ""
-
-@time_function
-def process_chunk(chunk_data):
-    """
-    Process a single chunk of text in the summarization pipeline
-    Maintains context between chunks using previous summaries
-    Implements thread safety with locks for LLM access
-    
-    Args:
-        chunk_data: Tuple containing the chunk and context information
-        
-    Returns:
-        tuple: (chunk_idx, explanation, summary) for the processed chunk
-    """
-    chunk, previous_summary, previous_explanation, llm, summarizer, explanation_prompt = chunk_data
-    
-    print(f"[INFO] Processing chunk {chunk['chunk']} with {len(chunk['text'].split())} words.")
-    important_subjects = ""
-    if previous_explanation and previous_explanation != "No explanation returned." and previous_explanation != "Error during explanation.":
-        important_subjects = extract_subjects(previous_explanation, summarizer)
-    
-    if chunk['chunk'] == 0:
-        explanation_prompt_text = f"[INST] {explanation_prompt}: {chunk['text']} [/INST]"
-    else:
-        explanation_prompt_text = f"[INST] Previous context summary: {previous_summary}\n\nImportant subjects from previous context: {important_subjects}\n\nConsidering the previous context and these subjects, fulfill the following prompt: {explanation_prompt}: {chunk['text']} [/INST]"
-    
-    prompt_length = len(explanation_prompt_text.split())
-    print(f"[INFO] Prompt length for chunk {chunk['chunk']}: {prompt_length} words")
-    
-    if prompt_length > 1000:
-        print(f"[WARNING] Prompt too long for chunk {chunk['chunk']}, truncating...")
-        explanation_prompt_text = " ".join(explanation_prompt_text.split()[:1000])
-    
-    try:
-        # Use lock to ensure thread safety when using the LLM
-        with _LLM_LOCK:
-            output = llm(explanation_prompt_text, max_tokens=1024, temperature=0.1)
-            explanation = output["choices"][0]["text"].strip()
-        
-        print(f"[INFO] Explanation generated: {len(explanation.split())} words")
-        if not explanation:
-            explanation = "No explanation returned."
-        if explanation and explanation != "No explanation returned.":
-            new_summary = offline_summarize(explanation, summarizer)
-        else:
-            new_summary = "Previous explanation was empty or errored."
-    except Exception as e:
-        print(f"[ERROR] Error processing chunk {chunk['chunk']}: {e}")
-        explanation = "Error during explanation."
-        new_summary = "Error occurred in previous chunk processing."
-    return chunk['chunk'], explanation, new_summary
 
 @time_function
 def split_into_chunks(input_string, chunk_size=500):
@@ -665,6 +488,61 @@ def pre_summarize_text(text, summarizer, max_input_length=4096, max_length=200, 
         print(f"[ERROR] Error in pre-summarization: {e}")
         return text
 
+# ===============================================================================
+# CHUNK PROCESSING AND SUMMARIZATION FUNCTIONS
+# ===============================================================================
+
+@time_function
+def process_chunk(chunk_data):
+    """
+    Process a single chunk of text in the summarization pipeline
+    Maintains context between chunks using previous summaries
+    Implements thread safety with locks for LLM access
+    
+    Args:
+        chunk_data: Tuple containing the chunk and context information
+        
+    Returns:
+        tuple: (chunk_idx, explanation, summary) for the processed chunk
+    """
+    chunk, previous_summary, previous_explanation, llm, summarizer, explanation_prompt = chunk_data
+    
+    print(f"[INFO] Processing chunk {chunk['chunk']} with {len(chunk['text'].split())} words.")
+    important_subjects = ""
+    if previous_explanation and previous_explanation != "No explanation returned." and previous_explanation != "Error during explanation.":
+        important_subjects = extract_subjects(previous_explanation, summarizer)
+    
+    if chunk['chunk'] == 0:
+        explanation_prompt_text = f"[INST] {explanation_prompt}: {chunk['text']} [/INST]"
+    else:
+        explanation_prompt_text = f"[INST] Previous context summary: {previous_summary}\n\nImportant subjects from previous context: {important_subjects}\n\nConsidering the previous context and these subjects, fulfill the following prompt: {explanation_prompt}: {chunk['text']} [/INST]"
+    
+    prompt_length = len(explanation_prompt_text.split())
+    print(f"[INFO] Prompt length for chunk {chunk['chunk']}: {prompt_length} words")
+    
+    if prompt_length > 1000:
+        print(f"[WARNING] Prompt too long for chunk {chunk['chunk']}, truncating...")
+        explanation_prompt_text = " ".join(explanation_prompt_text.split()[:1000])
+    
+    try:
+        # Use lock to ensure thread safety when using the LLM
+        with _LLM_LOCK:
+            output = llm(explanation_prompt_text, max_tokens=1024, temperature=0.1)
+            explanation = output["choices"][0]["text"].strip()
+        
+        print(f"[INFO] Explanation generated: {len(explanation.split())} words")
+        if not explanation:
+            explanation = "No explanation returned."
+        if explanation and explanation != "No explanation returned.":
+            new_summary = offline_summarize(explanation, summarizer)
+        else:
+            new_summary = "Previous explanation was empty or errored."
+    except Exception as e:
+        print(f"[ERROR] Error processing chunk {chunk['chunk']}: {e}")
+        explanation = "Error during explanation."
+        new_summary = "Error occurred in previous chunk processing."
+    return chunk['chunk'], explanation, new_summary
+
 @time_function
 def final_summarize(text, summarizer):
     """
@@ -707,6 +585,99 @@ def final_summarize(text, summarizer):
     processed_summary = processed_summary.replace("theAI", "the AI")
     
     return processed_summary
+
+# ===============================================================================
+# PDF GENERATION FUNCTIONS
+# ===============================================================================
+
+@time_function
+def save_as_pdf(text, url, filename=None):
+    """
+    Save the scraped webpage content as a plaintext PDF file
+    Handles Unicode characters by safely replacing them with ASCII equivalents
+    
+    Args:
+        text: The text content to save
+        url: The URL of the webpage (for metadata)
+        filename: Custom filename for the PDF
+    
+    Returns:
+        str: Path to the saved PDF file or None if failed
+    """
+    if not filename:
+        # Create a filename based on the URL domain and timestamp
+        domain = urlparse(url).netloc.replace('.', '_')
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"webpage_{domain}_{timestamp}.pdf"
+    
+    # Ensure filename ends with .pdf
+    if not filename.endswith('.pdf'):
+        filename += '.pdf'
+    
+    print(f"[INFO] Generating PDF: {filename}")
+    
+    try:
+        # Create ASCII-only version of the text for PDF compatibility
+        ascii_text = ""
+        for char in text:
+            if ord(char) < 128:
+                ascii_text += char
+            else:
+                # Replace non-ASCII characters with appropriate replacements
+                if char in "''""":
+                    ascii_text += "'"
+                elif char == '—':
+                    ascii_text += "--"
+                elif char == '–':
+                    ascii_text += "-"
+                elif char == '…':
+                    ascii_text += "..."
+                else:
+                    ascii_text += " "
+        
+        # Initialize PDF
+        pdf = FPDF()
+        pdf.add_page()
+        
+        # Set metadata
+        pdf.set_title(f"Webpage Content: {url}")
+        pdf.set_author("PAGESUMZ Web Scraper")
+        pdf.set_creator("PAGESUMZ using FPDF")
+        
+        # Use built-in font
+        pdf.set_font("Courier", size=11)
+        
+        # Add URL and timestamp
+        pdf.cell(200, 10, txt=f"Source: {url}", ln=True, align='L')
+        pdf.cell(200, 10, txt=f"Extracted: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align='L')
+        pdf.ln(5)
+        
+        # Add a title
+        pdf.set_font("Courier", 'B', size=14)
+        pdf.cell(200, 10, txt="WEBPAGE CONTENT", ln=True, align='C')
+        pdf.ln(5)
+        
+        # Add content with line wrapping - process in larger chunks for better performance
+        pdf.set_font("Courier", size=10)
+        
+        # Split text into chunks and process in batches
+        max_chunk_size = 5000  # Process 5000 chars at a time
+        for i in range(0, len(ascii_text), max_chunk_size):
+            chunk = ascii_text[i:i+max_chunk_size]
+            lines = chunk.split('\n')
+            for line in lines:
+                if line.strip():  # Skip empty lines
+                    pdf.multi_cell(0, 5, txt=line)
+        
+        # Save the PDF
+        pdf.output(filename)
+        
+        print(f"[INFO] PDF successfully created: {os.path.abspath(filename)}")
+        return os.path.abspath(filename)
+    
+    except Exception as e:
+        print(f"[ERROR] Failed to create PDF: {str(e)}")
+        return None
 
 # ===============================================================================
 # MAIN PROCESSING PIPELINE
@@ -866,7 +837,7 @@ def main():
     else:
         # Example default for testing
         url = "https://news.ycombinator.com/item?id=43878850"
-        prompt = "What are the two main sides arguing against each other(paraphrase the argument)?"
+        prompt = "What are the main points of this content (generate 5 questions for a power user to search up and dive deeper into the content)?"
         save_pdf = False
         print(f"[INFO] No arguments provided. Using default URL: {url}")
         print(f"[INFO] Default prompt: '{prompt}'")
