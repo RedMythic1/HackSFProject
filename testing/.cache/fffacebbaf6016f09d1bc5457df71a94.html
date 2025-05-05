@@ -1,0 +1,311 @@
+<html lang="en" op="item"><head><meta name="referrer" content="origin"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" type="text/css" href="news.css?2UBwMHlbGtBIZ7HLI3Zc">
+        <link rel="icon" href="y18.svg">
+    <link rel="canonical" href="https://news.ycombinator.com/item?id=43889610"/>            <title>Graceful Shutdown in Go: Practical Patterns | Hacker News</title></head><body><center><table id="hnmain" border="0" cellpadding="0" cellspacing="0" width="85%" bgcolor="#f6f6ef">
+        <tr><td bgcolor="#ff6600"><table border="0" cellpadding="0" cellspacing="0" width="100%" style="padding:2px"><tr><td style="width:18px;padding-right:4px"><a href="https://news.ycombinator.com"><img src="y18.svg" width="18" height="18" style="border:1px white solid; display:block"></a></td>
+                  <td style="line-height:12pt; height:10px;"><span class="pagetop"><b class="hnname"><a href="news">Hacker News</a></b>
+                            <a href="newest">new</a> | <a href="front">past</a> | <a href="newcomments">comments</a> | <a href="ask">ask</a> | <a href="show">show</a> | <a href="jobs">jobs</a> | <a href="submit" rel="nofollow">submit</a>            </span></td><td style="text-align:right;padding-right:4px;"><span class="pagetop">
+                              <a href="login?goto=item%3Fid%3D43889610">login</a>
+                          </span></td>
+              </tr></table></td></tr>
+<tr id="pagespace" title="Graceful Shutdown in Go: Practical Patterns" style="height:10px"></tr><tr><td><table class="fatitem" border="0">
+        <tr class='athing submission' id='43889610'>
+      <td align="right" valign="top" class="title"><span class="rank"></span></td>      <td valign="top" class="votelinks"><center><a id='up_43889610' href='vote?id=43889610&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center></td><td class="title"><span class="titleline"><a href="https://victoriametrics.com/blog/go-graceful-shutdown/index.html">Graceful Shutdown in Go: Practical Patterns</a><span class="sitebit comhead"> (<a href="from?site=victoriametrics.com"><span class="sitestr">victoriametrics.com</span></a>)</span></span></td></tr><tr><td colspan="2"></td><td class="subtext"><span class="subline">
+          <span class="score" id="score_43889610">120 points</span> by <a href="user?id=mkl95" class="hnuser">mkl95</a> <span class="age" title="2025-05-04T21:09:16 1746392956"><a href="item?id=43889610">9 hours ago</a></span> <span id="unv_43889610"></span> | <a href="hide?id=43889610&amp;goto=item%3Fid%3D43889610">hide</a> | <a href="https://hn.algolia.com/?query=Graceful%20Shutdown%20in%20Go%3A%20Practical%20Patterns&type=story&dateRange=all&sort=byDate&storyText=false&prefix&page=0" class="hnpast">past</a> | <a href="fave?id=43889610&amp;auth=5ff0943ccd9d8cd5e4d4f4fdb5d5fb537c8fc40a">favorite</a> | <a href="item?id=43889610">26&nbsp;comments</a>        </span>
+              </td></tr>
+            <tr><td style="height:10px"></td></tr><tr><td colspan="2"></td><td><form action="comment" method="post"><input type="hidden" name="parent" value="43889610"><input type="hidden" name="goto" value="item?id=43889610"><input type="hidden" name="hmac" value="7e0ab45d8c76dbef8064a74b4df72c095f3d3ad3"><textarea name="text" rows="8" cols="80" wrap="virtual"></textarea><br><br>
+<input type="submit" value="add comment"></form></td></tr>  </table><br><br><table border="0" class='comment-tree'>
+            <tr class='athing comtr' id='43891977'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891977' href='vote?id=43891977&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=zdc1" class="hnuser">zdc1</a> <span class="age" title="2025-05-05T04:38:10 1746419890"><a href="item?id=43891977">1 hour ago</a></span> <span id="unv_43891977"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43891977" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I&#x27;ve been bitten by the surprising amount of time it takes for Kubernetes to update loadbalancer target IPs in some configurations. For me, 90% of the graceful shutdown battle was just ensuring that traffic was actually being drained before pod termination.<p>Adding a global preStop hook with a 15 second sleep did wonders for our HTTP 503 rates. This creates time between when the loadbalancer deregistration gets kicked off, and when SIGTERM is actually passed to the application, which in turn simplifies a lot of the application-side handling.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891977&amp;goto=item%3Fid%3D43889610%2343891977" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43890432'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43890432' href='vote?id=43890432&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=evil-olive" class="hnuser">evil-olive</a> <span class="age" title="2025-05-04T23:14:11 1746400451"><a href="item?id=43890432">7 hours ago</a></span> <span id="unv_43890432"></span>          <span class='navs'>
+             | <a href="#43891977" class="clicky" aria-hidden="true">prev</a> | <a href="#43890032" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43890432" n="12" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">another factor to consider is that if you have a typical Prometheus `&#x2F;metrics` endpoint that gets scraped every N seconds, there&#x27;s a period in between the &quot;final&quot; scrape and the actual process exit where any recorded metrics won&#x27;t get propagated. this may give you a false impression about whether there are any errors occurring during the shutdown sequence.<p>it&#x27;s also possible, if you&#x27;re not careful, to lose the last few seconds of logs from when your service is shutting down. for example, if you write to a log file that is watched by a sidecar process such as Promtail or Vector, and on startup the service truncates and starts writing to that same path, you&#x27;ve got a race condition that can cause you to lose logs from the shutdown.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43890432&amp;goto=item%3Fid%3D43889610%2343890432" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43890934'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43890934' href='vote?id=43890934&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=utrack" class="hnuser">utrack</a> <span class="age" title="2025-05-05T00:46:56 1746406016"><a href="item?id=43890934">5 hours ago</a></span> <span id="unv_43890934"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">parent</a> | <a href="#43891221" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43890934" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Jfyi, I&#x27;m doing exactly this (and more) in a platform library; it covers the issues I&#x27;ve encountered during the last 8+ years I&#x27;ve been working with Go highload apps. During this time developing&#x2F;improving the platform and rolling was a hobby of mine in every company :)<p>It (will) cover the stuff like &quot;sync the logs&quot;&#x2F;&quot;wait for ingresses to catch up with the liveness handler&quot;&#x2F;etc.<p><a href="https:&#x2F;&#x2F;github.com&#x2F;utrack&#x2F;caisson-go&#x2F;blob&#x2F;main&#x2F;caiapp&#x2F;caiapp.go#L87">https:&#x2F;&#x2F;github.com&#x2F;utrack&#x2F;caisson-go&#x2F;blob&#x2F;main&#x2F;caiapp&#x2F;caiapp...</a><p><a href="https:&#x2F;&#x2F;github.com&#x2F;utrack&#x2F;caisson-go&#x2F;tree&#x2F;main&#x2F;closer">https:&#x2F;&#x2F;github.com&#x2F;utrack&#x2F;caisson-go&#x2F;tree&#x2F;main&#x2F;closer</a><p>The docs are sparse and some things aren&#x27;t covered yet; however I&#x27;m planning to do the first release once I&#x27;m back from a holiday.<p>In the end, this will be a meta-platform (carefully crafted building blocks), and a reference platform library, covering a typical k8s&#x2F;otel&#x2F;grpc+http infrastructure.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43890934&amp;goto=item%3Fid%3D43889610%2343890934" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43891221'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891221' href='vote?id=43891221&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=RainyDayTmrw" class="hnuser">RainyDayTmrw</a> <span class="age" title="2025-05-05T01:39:53 1746409193"><a href="item?id=43891221">4 hours ago</a></span> <span id="unv_43891221"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">parent</a> | <a href="#43890934" class="clicky" aria-hidden="true">prev</a> | <a href="#43890712" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43891221" n="4" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I never understood why Prometheus and related use a &quot;pull&quot; model for data, when most things use a &quot;push&quot; model.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891221&amp;goto=item%3Fid%3D43889610%2343891221" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43891577'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891577' href='vote?id=43891577&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=dilyevsky" class="hnuser">dilyevsky</a> <span class="age" title="2025-05-05T02:57:43 1746413863"><a href="item?id=43891577">3 hours ago</a></span> <span id="unv_43891577"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">root</a> | <a href="#43891221" class="clicky" aria-hidden="true">parent</a> | <a href="#43891481" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43891577" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">That’s an artifact of the original google’s borgmon design. Fwiw, in a “v2” system at Google they tried switching to push-only and it went sideways so they settled on sort of hybrid pull-push streaming api</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891577&amp;goto=item%3Fid%3D43889610%2343891577" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43891481'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891481' href='vote?id=43891481&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=evil-olive" class="hnuser">evil-olive</a> <span class="age" title="2025-05-05T02:33:50 1746412430"><a href="item?id=43891481">3 hours ago</a></span> <span id="unv_43891481"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">root</a> | <a href="#43891221" class="clicky" aria-hidden="true">parent</a> | <a href="#43891577" class="clicky" aria-hidden="true">prev</a> | <a href="#43890712" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43891481" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Prometheus doesn&#x27;t necessarily lock you into the &quot;pull&quot; model, see [0].<p>however, there are some benefits to the pull model, which is why I think Prometheus does it by default.<p>with a push model, your service needs to spawn a background thread&#x2F;goroutine&#x2F;whatever that pushes metrics on a given interval.<p>if that background thread crashes or hangs, metrics from that service instance stop getting reported. how do you detect that, and fire an alert about it happening?<p>&quot;cloud-native&quot; gets thrown around as a buzzword, but this is an example where it&#x27;s actually meaningful. Prometheus assumes that whatever service you&#x27;re trying to monitor, you&#x27;re probably already registering each instance in a service-discovery system of some kind, so that other things (such as a load-balancer) know where to find it.<p>you tell Prometheus how to query that service-discovery system (Kubernetes, for example [1]) and it will automatically discover all your service instances, and start scraping their &#x2F;metrics endpoints.<p>this provides an elegant solution to the &quot;how do you monitor a service that is up and running, except its metrics-reporting thread has crashed?&quot; problem. if it&#x27;s up and running, it should be registered for service-discovery, and Prometheus can trivially record (this is the `up` metric) if it discovers a service but it&#x27;s not responding to &#x2F;metrics requests.<p>and this greatly simplifies the client-side metrics implementation, because you don&#x27;t need a separate metrics thread in your service. you don&#x27;t need to ensure it runs forever and never hangs and always retries and all that. you just need to implement a single HTTP GET endpoint, and have it return text in a format simple enough that you can sprintf it yourself if you need to.<p>for a more theoretical understanding, you can also look at it in terms of the &quot;supervision trees&quot; popularized by Erlang. parents monitor their children, by pulling status from them. children are not responsible for pushing status reports to their parents (or siblings). with the push model, you have a supervision graph instead of a supervision tree, with all the added complexity that entails.<p>0: <a href="https:&#x2F;&#x2F;prometheus.io&#x2F;docs&#x2F;instrumenting&#x2F;pushing&#x2F;" rel="nofollow">https:&#x2F;&#x2F;prometheus.io&#x2F;docs&#x2F;instrumenting&#x2F;pushing&#x2F;</a><p>1: <a href="https:&#x2F;&#x2F;prometheus.io&#x2F;docs&#x2F;prometheus&#x2F;latest&#x2F;configuration&#x2F;configuration&#x2F;#kubernetes_sd_config" rel="nofollow">https:&#x2F;&#x2F;prometheus.io&#x2F;docs&#x2F;prometheus&#x2F;latest&#x2F;configuration&#x2F;c...</a></div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891481&amp;goto=item%3Fid%3D43889610%2343891481" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43892050'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43892050' href='vote?id=43892050&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=bbkane" class="hnuser">bbkane</a> <span class="age" title="2025-05-05T05:03:17 1746421397"><a href="item?id=43892050">1 hour ago</a></span> <span id="unv_43892050"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">root</a> | <a href="#43891481" class="clicky" aria-hidden="true">parent</a> | <a href="#43890712" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43892050" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Thanks for writing this out; very insightful!</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43892050&amp;goto=item%3Fid%3D43889610%2343892050" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                        <tr class='athing comtr' id='43890712'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43890712' href='vote?id=43890712&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=tmpz22" class="hnuser">tmpz22</a> <span class="age" title="2025-05-05T00:05:30 1746403530"><a href="item?id=43890712">6 hours ago</a></span> <span id="unv_43890712"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">parent</a> | <a href="#43891221" class="clicky" aria-hidden="true">prev</a> | <a href="#43890032" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43890712" n="6" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Is it me or are observability stacks kind of ridiculous. Logs, metrics, and traces, each with their own databases, sidecars, visualization stacks. Language-specific integration libraries written by whoever felt like it. MASSIVE cloud bills.<p>Then after you go through all that effort most of the data is utterly ignored and rarely are the business insights much better then the trailer park version ssh&#x27;ing into a box and greping a log file to find the error output.<p>Like we put so much effort into this ecosystem but I don&#x27;t think it has paid us back with any significant increase in uptime, performance, or ergonomics.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43890712&amp;goto=item%3Fid%3D43889610%2343890712" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43890774'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43890774' href='vote?id=43890774&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=nkraft11" class="hnuser">nkraft11</a> <span class="age" title="2025-05-05T00:17:20 1746404240"><a href="item?id=43890774">5 hours ago</a></span> <span id="unv_43890774"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">root</a> | <a href="#43890712" class="clicky" aria-hidden="true">parent</a> | <a href="#43891219" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43890774" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I can say that going from a place that had all of that observability tooling set up to one that was at the &quot;ssh&#x27;ing into a box and greping a log&quot; stage, you best believe I missed company A immensely. Even knowing which box to ssh into, which log file to grep, and which magic words to search far was nigh impossible if you weren&#x27;t the dev that set up the machine and wrote the bug in the first place.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43890774&amp;goto=item%3Fid%3D43889610%2343890774" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43890943'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43890943' href='vote?id=43890943&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=MortyWaves" class="hnuser">MortyWaves</a> <span class="age" title="2025-05-05T00:48:04 1746406084"><a href="item?id=43890943">5 hours ago</a></span> <span id="unv_43890943"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">root</a> | <a href="#43890774" class="clicky" aria-hidden="true">parent</a> | <a href="#43891219" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43890943" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I completely agree with you but I also think, like many aspects of &quot;tech&quot; certain segments of it have been monopolised and turned into profit generators for certain organisations. DevOps, Agile&#x2F;Scrum, Observability, Kubernetes, are all examples of this.<p>This dilutes the good and helpful stuff with marketing bullshit.<p>Grafana seemingly inventing new time series databases and engines every few months is absolutely painful to try keep up to date with in order to make informed decisions.<p>So much so I&#x27;ve started using rrdtool&#x2F;smokeping again.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43890943&amp;goto=item%3Fid%3D43889610%2343890943" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43892065'><td><table border='0'>  <tr>    <td class='ind' indent='4'><img src="s.gif" height="1" width="160"></td><td valign="top" class="votelinks">
+      <center><a id='up_43892065' href='vote?id=43892065&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=bbkane" class="hnuser">bbkane</a> <span class="age" title="2025-05-05T05:05:25 1746421525"><a href="item?id=43892065">1 hour ago</a></span> <span id="unv_43892065"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">root</a> | <a href="#43890943" class="clicky" aria-hidden="true">parent</a> | <a href="#43891219" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43892065" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">You might look into <a href="https:&#x2F;&#x2F;openobserve.ai&#x2F;" rel="nofollow">https:&#x2F;&#x2F;openobserve.ai&#x2F;</a> - you can self host it and it&#x27;s a single binary that ingests logs&#x2F;metrics&#x2F;traces. I&#x27;ve found it useful for my side projects.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43892065&amp;goto=item%3Fid%3D43889610%2343892065" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                        <tr class='athing comtr' id='43891219'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891219' href='vote?id=43891219&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=evil-olive" class="hnuser">evil-olive</a> <span class="age" title="2025-05-05T01:39:33 1746409173"><a href="item?id=43891219">4 hours ago</a></span> <span id="unv_43891219"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">root</a> | <a href="#43890712" class="clicky" aria-hidden="true">parent</a> | <a href="#43890774" class="clicky" aria-hidden="true">prev</a> | <a href="#43891064" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43891219" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">if you&#x27;re working on a system simple enough that &quot;SSH to the box and grep the log file&quot; works, then by all means have at it.<p>but many systems are more complicated than that. the observability ecosystem exists for a reason, there is a real problem that it&#x27;s solving.<p>for example, your app might outgrow running on a single box. now you need to SSH into N different hosts and grep the log file from all of them. or you invent your own version of log-shipping with a shell script that does SCP in a loop.<p>going a step further, you might put those boxes into an auto-scaling group so that they would scale up and down automatically based on demand. now you <i>really</i> want some form of automatic log-shipping, or every time a host in the ASG gets terminated, you&#x27;re throwing away the logs of whatever traffic it served during its lifetime.<p>or, maybe you notice a performance regression and narrow it down to one particular API endpoint being slow. often it&#x27;s helpful to be able to graph the response duration of that endpoint over time. has it been slowing down gradually, or did the response time increase suddenly? if it was a sudden increase, what else happened around the same time? maybe a code deployment, maybe a database configuration change, etc.<p>perhaps the service you operate isn&#x27;t standalone, but instead interacts with services written by other teams at your company. when something goes wrong with the system as a whole, how do you go about root-causing the problem? how do you trace the lifecycle of a request or operation through all those different systems?<p>when something goes wrong, you SSH to the box and look at the log file...but how do you know something went wrong to begin with? do you rely solely on user complaints hitting your support@ email? or do you have monitoring rules that will proactively notify you if a &quot;huh, that should never happen&quot; thing is happening?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891219&amp;goto=item%3Fid%3D43889610%2343891219" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43891064'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891064' href='vote?id=43891064&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=01HNNWZ0MV43FF" class="hnuser">01HNNWZ0MV43FF</a> <span class="age" title="2025-05-05T01:09:28 1746407368"><a href="item?id=43891064">5 hours ago</a></span> <span id="unv_43891064"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">root</a> | <a href="#43890712" class="clicky" aria-hidden="true">parent</a> | <a href="#43891219" class="clicky" aria-hidden="true">prev</a> | <a href="#43890032" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43891064" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Programs are for people. That&#x27;s why we got JSON, a bunch of debuggers, Python, and so on. Programming is only like 10 percent of programming</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891064&amp;goto=item%3Fid%3D43889610%2343891064" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                        <tr class='athing comtr' id='43890032'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43890032' href='vote?id=43890032&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=wbl" class="hnuser">wbl</a> <span class="age" title="2025-05-04T22:10:53 1746396653"><a href="item?id=43890032">8 hours ago</a></span> <span id="unv_43890032"></span>          <span class='navs'>
+             | <a href="#43890432" class="clicky" aria-hidden="true">prev</a> | <a href="#43891072" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43890032" n="7" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">If a distribute system relies on clients gracefully exiting to work the system will eventually break badly.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43890032&amp;goto=item%3Fid%3D43889610%2343890032" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43890088'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43890088' href='vote?id=43890088&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=smcleod" class="hnuser">smcleod</a> <span class="age" title="2025-05-04T22:19:28 1746397168"><a href="item?id=43890088">7 hours ago</a></span> <span id="unv_43890088"></span>          <span class='navs'>
+             | <a href="#43890032" class="clicky" aria-hidden="true">parent</a> | <a href="#43891244" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43890088" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Way back when, in physical land - I used STONITH for that! <a href="https:&#x2F;&#x2F;smcleod.net&#x2F;2015&#x2F;07&#x2F;delayed-serial-stonith&#x2F;" rel="nofollow">https:&#x2F;&#x2F;smcleod.net&#x2F;2015&#x2F;07&#x2F;delayed-serial-stonith&#x2F;</a></div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43890088&amp;goto=item%3Fid%3D43889610%2343890088" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43891244'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891244' href='vote?id=43891244&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=Rhapso" class="hnuser">Rhapso</a> <span class="age" title="2025-05-05T01:43:16 1746409396"><a href="item?id=43891244">4 hours ago</a></span> <span id="unv_43891244"></span>          <span class='navs'>
+             | <a href="#43890032" class="clicky" aria-hidden="true">parent</a> | <a href="#43890088" class="clicky" aria-hidden="true">prev</a> | <a href="#43890227" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43891244" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c5A">And i believe that so much that I don&#x27;t even consider graceful shutdown in design. Components should be able to safely (and even frequently) hard-crash and so long as a critical percentage of the system is WAI then it shouldn&#x27;t meaningfully impact the overall system.<p>The only way to make sure a system can handle components hard crashing, is if hard crashing is a normal thing that happens all the time.<p>All glory to the chaos monkey!</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891244&amp;goto=item%3Fid%3D43889610%2343891244" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43890227'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43890227' href='vote?id=43890227&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=ikiris" class="hnuser">ikiris</a> <span class="age" title="2025-05-04T22:40:48 1746398448"><a href="item?id=43890227">7 hours ago</a></span> <span id="unv_43890227"></span>          <span class='navs'>
+             | <a href="#43890032" class="clicky" aria-hidden="true">parent</a> | <a href="#43891244" class="clicky" aria-hidden="true">prev</a> | <a href="#43891101" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43890227" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">There&#x27;s a big gap between graceful shutdown to be nice to clients &#x2F; workflows, and clients relying on it to work.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43890227&amp;goto=item%3Fid%3D43889610%2343890227" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43891101'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891101' href='vote?id=43891101&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=Thaxll" class="hnuser">Thaxll</a> <span class="age" title="2025-05-05T01:15:13 1746407713"><a href="item?id=43891101">4 hours ago</a></span> <span id="unv_43891101"></span>          <span class='navs'>
+             | <a href="#43890032" class="clicky" aria-hidden="true">parent</a> | <a href="#43890227" class="clicky" aria-hidden="true">prev</a> | <a href="#43890152" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43891101" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">No one said that.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891101&amp;goto=item%3Fid%3D43889610%2343891101" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43890152'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43890152' href='vote?id=43890152&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=XorNot" class="hnuser">XorNot</a> <span class="age" title="2025-05-04T22:31:21 1746397881"><a href="item?id=43890152">7 hours ago</a></span> <span id="unv_43890152"></span>          <span class='navs'>
+             | <a href="#43890032" class="clicky" aria-hidden="true">parent</a> | <a href="#43891101" class="clicky" aria-hidden="true">prev</a> | <a href="#43891072" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43890152" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">There&#x27;s valid reasons to want the typical exit not to look like a catastrophic one even if that&#x27;s a recoverable situation.<p>That my application went down from sig int makes a big difference compared to kill.<p>Blue-Green migrations for example require a graceful exit behavior.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43890152&amp;goto=item%3Fid%3D43889610%2343890152" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43890255'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43890255' href='vote?id=43890255&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=shoo" class="hnuser">shoo</a> <span class="age" title="2025-05-04T22:45:01 1746398701"><a href="item?id=43890255">7 hours ago</a></span> <span id="unv_43890255"></span>          <span class='navs'>
+             | <a href="#43890032" class="clicky" aria-hidden="true">root</a> | <a href="#43890152" class="clicky" aria-hidden="true">parent</a> | <a href="#43891072" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43890255" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">&gt; Blue-Green migrations for example require a graceful exit behavior.<p>it may not always be necessary. e.g. if you are deploying a new version of a stateless backend service, and there is a load balancer forwarding traffic to current version and new version backends, the load balancer could be responsible for cutting over, allowing in flight requests to be processed by the current version backends while only forwarding new requests to the new backends.  then the old backends could be ungracefully terminated once the LB says they are not processing any requests.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43890255&amp;goto=item%3Fid%3D43889610%2343890255" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                        <tr class='athing comtr' id='43891072'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891072' href='vote?id=43891072&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=gchamonlive" class="hnuser">gchamonlive</a> <span class="age" title="2025-05-05T01:11:00 1746407460"><a href="item?id=43891072">5 hours ago</a></span> <span id="unv_43891072"></span>          <span class='navs'>
+             | <a href="#43890032" class="clicky" aria-hidden="true">prev</a> | <a href="#43891277" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43891072" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This is one of the things I think Elixir is really smart in handling. I&#x27;m not very experienced in it, but it seems to me that having your processes designed around tiny VM processes that are meant to panic, quit and get respawned eliminates the need to have to intentionally create graceful shutdown routines, because this is already embedded in the application architecture.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891072&amp;goto=item%3Fid%3D43889610%2343891072" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43891163'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891163' href='vote?id=43891163&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=cle" class="hnuser">cle</a> <span class="age" title="2025-05-05T01:26:44 1746408404"><a href="item?id=43891163">4 hours ago</a></span> <span id="unv_43891163"></span>          <span class='navs'>
+             | <a href="#43891072" class="clicky" aria-hidden="true">parent</a> | <a href="#43891277" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43891163" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">How does that eliminate the need for the graceful shutdown the author discusses?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891163&amp;goto=item%3Fid%3D43889610%2343891163" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43891277'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891277' href='vote?id=43891277&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=deathanatos" class="hnuser">deathanatos</a> <span class="age" title="2025-05-05T01:51:00 1746409860"><a href="item?id=43891277">4 hours ago</a></span> <span id="unv_43891277"></span>          <span class='navs'>
+             | <a href="#43891072" class="clicky" aria-hidden="true">prev</a> | <a href="#43891497" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43891277" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">&gt; <i>After updating the readiness probe to indicate the pod is no longer ready, wait a few seconds to give the system time to stop sending new requests.</i><p>&gt; <i>The exact wait time depends on your readiness probe configuration</i><p>A terminating pod is not ready by definition. The service will also mark the endpoint as terminating (and as not ready). This occurs on the transition into Terminating; you don&#x27;t have to fail a readiness check to cause it.<p>(I don&#x27;t know about the ordering of the SIGTERM &amp; the various updates to the objects such as Pod.status or the endpoint slice; there might be a <i>small</i> window after SIGTERM where you could still get a connection, but it isn&#x27;t the large &quot;until we fail a readiness check&quot; TFA implies.)<p>(And as someone who manages clusters, honestly that infintesimal window probably doesn&#x27;t matter. Just stop accepting new connections, gracefully close existing ones, and terminate reasonably fast. But I feel like half of the apps I work with fall into either a bucket of &quot;handle SIGTERM &amp; take forever to terminate&quot; or &quot;fail to handle SIGTERM (and take forever to terminate)&quot;.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891277&amp;goto=item%3Fid%3D43889610%2343891277" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43891497'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891497' href='vote?id=43891497&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=giancarlostoro" class="hnuser">giancarlostoro</a> <span class="age" title="2025-05-05T02:38:05 1746412685"><a href="item?id=43891497">3 hours ago</a></span> <span id="unv_43891497"></span>          <span class='navs'>
+             | <a href="#43891277" class="clicky" aria-hidden="true">prev</a> <a class="togg clicky" id="43891497" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I had a coworker that would always say, if your program cannot cleanly handle ctrl c and a few other commands to close it, then its written poorly.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891497&amp;goto=item%3Fid%3D43889610%2343891497" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43891564'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43891564' href='vote?id=43891564&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=amelius" class="hnuser">amelius</a> <span class="age" title="2025-05-05T02:53:29 1746413609"><a href="item?id=43891564">3 hours ago</a></span> <span id="unv_43891564"></span>          <span class='navs'>
+             | <a href="#43891497" class="clicky" aria-hidden="true">parent</a> <a class="togg clicky" id="43891564" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext cDD">Ctrl-C is reserved for copy into the clipboard ... Stopping the program instead is highly counter-intuitive and will result in angry users.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43891564&amp;goto=item%3Fid%3D43889610%2343891564" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43892143'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43892143' href='vote?id=43892143&amp;how=up&amp;goto=item%3Fid%3D43889610'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=moooo99" class="hnuser">moooo99</a> <span class="age" title="2025-05-05T05:26:20 1746422780"><a href="item?id=43892143">48 minutes ago</a></span> <span id="unv_43892143"></span>          <span class='navs'>
+             | <a href="#43891497" class="clicky" aria-hidden="true">root</a> | <a href="#43891564" class="clicky" aria-hidden="true">parent</a> <a class="togg clicky" id="43892143" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Have you really never cancelled a program in a terminal session?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43892143&amp;goto=item%3Fid%3D43889610%2343892143" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                        </table>
+  <br><br>
+</td></tr>
+<tr><td><img src="s.gif" height="10" width="0"><table width="100%" cellspacing="0" cellpadding="1"><tr><td bgcolor="#ff6600"></td></tr></table><br>
+<center>Join us for <a href="https://events.ycombinator.com/ai-sus"><u>AI Startup School</u></a> this June 16-17 in San Francisco!</center><br>
+<center><span class="yclinks"><a href="newsguidelines.html">Guidelines</a> | <a href="newsfaq.html">FAQ</a> | <a href="lists">Lists</a> | <a href="https://github.com/HackerNews/API">API</a> | <a href="security.html">Security</a> | <a href="https://www.ycombinator.com/legal/">Legal</a> | <a href="https://www.ycombinator.com/apply/">Apply to YC</a> | <a href="mailto:hn@ycombinator.com">Contact</a></span><br><br>
+<form method="get" action="//hn.algolia.com/">Search: <input type="text" name="q" size="17" autocorrect="off" spellcheck="false" autocapitalize="off" autocomplete="off"></form></center></td></tr>      </table></center></body>
+      <script type='text/javascript' src='hn.js?2UBwMHlbGtBIZ7HLI3Zc'></script>
+  </html>
