@@ -1,6 +1,36 @@
 """
 PAGESUMZ - A tool to extract, summarize and analyze webpage content
-Extracts content using multiple methods, processes it with LLMs, and provides multi-level summaries
+
+==== BEGINNER'S GUIDE ====
+
+What is this tool?
+-----------------
+PageSumz is a program that takes a web page URL, extracts the important content, 
+and creates an AI-powered summary of that content. It's like having someone read 
+a webpage for you and tell you the most important points.
+
+How to use it:
+-----------------
+1. Run this program from the command line: python pagesumz.py
+2. When prompted, enter any web URL you'd like to summarize
+3. Wait for the AI to process the content (this may take a minute or two)
+4. Read the summary that's generated!
+
+Technical Overview (for more advanced users):
+-----------------
+This program works in several steps:
+1. It extracts webpage content using multiple methods for best results
+2. It processes the text using AI models to understand the content
+3. It generates summaries at different levels of detail
+4. It handles special cases like Hacker News comment threads
+
+Requirements:
+-----------------
+- Python 3.7+
+- Various Python libraries (installed via pip)
+- A Llama model file (for AI processing)
+
+=========================
 """
 
 # Prevent segmentation faults by disabling sampler __del__ method
@@ -11,43 +41,153 @@ _internals.LlamaSampler.__del__ = lambda self: None
 # IMPORTS AND GLOBAL CONFIGURATION
 # ===============================================================================
 
-from llama_cpp import Llama
-from transformers import pipeline
-import re
-from time import sleep, time
-import requests
-from bs4 import BeautifulSoup
-import argparse
-import sys
-import html2text
-import trafilatura
-from readability import Document
-from urllib.parse import urlparse
-from fpdf import FPDF
-import os
-from datetime import datetime
-import concurrent.futures
-import hashlib
-from functools import lru_cache
-import threading
+# Core libraries for AI models
+from llama_cpp import Llama  # AI model for text processing
+from transformers import pipeline  # Used for summarization tasks
 
-# Global cache for models to avoid reloading
-_MODEL_CACHE = {}
-_MODEL_CACHE_LOCK = threading.Lock()
-_LLM_LOCK = threading.Lock()  # Thread safety lock for LLM inference
+# Standard libraries
+import re  # For text pattern matching
+from time import sleep, time  # For timing and pauses
+import requests  # For fetching web content
+from bs4 import BeautifulSoup  # For parsing HTML
+import argparse  # For command line arguments
+import sys  # For system operations
+import html2text  # For converting HTML to text
+import trafilatura  # For extracting content from webpages
+from readability import Document  # For isolating main content
+from urllib.parse import urlparse  # For URL handling
+from fpdf import FPDF  # For creating PDF files
+import os  # For file operations
+from datetime import datetime  # For timestamps
+import concurrent.futures  # For parallel processing
+import hashlib  # For creating unique file names
+from functools import lru_cache  # For caching results
+import threading  # For thread management
+import numpy as np  # For numerical operations
+from typing import List  # For type hints
+from numpy.typing import NDArray  # For array type hints
+import torch  # For AI model operations
+from transformers import AutoTokenizer, AutoModel  # For AI models
 
-# Web content cache directory
+# Storage for our models so we don't reload them repeatedly
+_MODEL_CACHE = {}  # Stores loaded models
+_MODEL_CACHE_LOCK = threading.Lock()  # Prevents multiple threads from accessing models at once
+_LLM_LOCK = threading.Lock()  # Ensures only one thread uses the AI model at a time
+_VECTOR_MODEL_CACHE = {}  # Stores vector models for similarity comparisons
+
+# Where to save cached web content (saves time when reloading)
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache')
-os.makedirs(CACHE_DIR, exist_ok=True)
+os.makedirs(CACHE_DIR, exist_ok=True)  # Create cache directory if it doesn't exist
 
-# Performance timing dictionary
+# For tracking how long different operations take
 TIMINGS = {}
 
-# Phrases that indicate non-useful content
+# These phrases usually indicate UI elements rather than actual content
 USELESS_PHRASES = [
     "open menu", "log in", "get app", "expand user menu", "create your account",
     "members online", "weekly newsquiz", "reddit home", "settings menu", "close button"
 ]
+
+# ===============================================================================
+# VECTOR MODEL FUNCTIONS
+# ===============================================================================
+
+def get_vector_model():
+    """Get or initialize the vector model"""
+    with _MODEL_CACHE_LOCK:
+        if 'vector_model' not in _VECTOR_MODEL_CACHE:
+            tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-mpnet-base-v2")
+            model = AutoModel.from_pretrained("sentence-transformers/all-mpnet-base-v2")
+            model.eval()
+            _VECTOR_MODEL_CACHE['vector_model'] = (tokenizer, model)
+        return _VECTOR_MODEL_CACHE['vector_model']
+
+def string_to_vector(text: str) -> torch.Tensor:
+    """
+    Convert a string into a vector using a proper transformer model.
+    """
+    tokenizer, model = get_vector_model()
+    
+    # Tokenize the text
+    tokens = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
+    
+    # Generate embeddings
+    with torch.no_grad():
+        outputs = model(**tokens)
+        embedding = outputs.last_hidden_state[:, 0, :]
+    
+    # Normalize the embedding to unit length
+    embedding = embedding.squeeze(0)
+    norm = torch.norm(embedding)
+    if norm > 0:
+        embedding = embedding / norm
+    
+    return embedding
+
+def compute_angle(vector1: torch.Tensor, vector2: torch.Tensor) -> float:
+    """
+    Compute the angle between two vectors in degrees.
+    """
+    cos_angle = torch.dot(vector1, vector2)
+    cos_angle = torch.clamp(cos_angle, -1.0, 1.0)
+    angle_radians = torch.acos(cos_angle)
+    angle_degrees = torch.rad2deg(angle_radians)
+    return angle_degrees.item()
+
+def filter_similar_comments(comments: List[str], angle_threshold: float = 30.0) -> List[str]:
+    """
+    Filter out comments that are too similar to each other based on vector angle.
+    
+    Args:
+        comments: List of comment strings
+        angle_threshold: Minimum angle (in degrees) required to keep a comment
+        
+    Returns:
+        List of filtered comments
+    """
+    if not comments:
+        return []
+    
+    # Convert all comments to vectors
+    print("\n[INFO] Converting comments to vectors...")
+    vectors = []
+    for i, comment in enumerate(comments):
+        print(f"\n[INFO] Processing comment {i+1}/{len(comments)}:")
+        print("-" * 80)
+        print(comment)
+        print("-" * 80)
+        vectors.append(string_to_vector(comment))
+    
+    # Keep track of which comments to keep
+    keep_indices = [0]  # Always keep the first comment
+    
+    # Compare each comment with all previously kept comments
+    print("\n[INFO] Comparing comments for similarity...")
+    for i in range(1, len(comments)):
+        keep = True
+        for j in keep_indices:
+            angle = compute_angle(vectors[i], vectors[j])
+            print(f"\nComparing comment {i+1} with comment {j+1}:")
+            print(f"Angle: {angle:.2f}°")
+            if angle < angle_threshold:
+                print(f"[INFO] Comment {i+1} is too similar to comment {j+1} (angle: {angle:.2f}°)")
+                print("Comment 1:")
+                print("-" * 80)
+                print(comments[j])
+                print("-" * 80)
+                print("Comment 2:")
+                print("-" * 80)
+                print(comments[i])
+                print("-" * 80)
+                keep = False
+                break
+        
+        if keep:
+            keep_indices.append(i)
+            print(f"[INFO] Keeping comment {i+1}")
+    
+    # Return only the kept comments
+    return [comments[i] for i in keep_indices]
 
 # ===============================================================================
 # PERFORMANCE TRACKING AND CACHING FUNCTIONS
@@ -216,22 +356,90 @@ def clean_text(text):
     return text.strip()
 
 @time_function
-@lru_cache(maxsize=10)  # Cache recent extractions
+def process_hacker_news_comments(url, soup):
+    """
+    Special function to extract and process Hacker News comments properly
+    
+    Args:
+        url: The URL being processed
+        soup: BeautifulSoup object of the page
+        
+    Returns:
+        list: List of processed comment blocks
+    """
+    print("[INFO] Processing Hacker News comments...")
+    content_blocks = []
+    
+    # Extract the article title
+    article_title = ""
+    if soup.title:
+        article_title = soup.title.get_text().strip()
+        content_blocks.append(f"# {article_title}\n")
+    
+    # Extract article link (if present)
+    article_text = soup.find('td', class_='title')
+    if article_text and article_text.find('a'):
+        article_link = article_text.find('a').get('href', '')
+        content_blocks.append(f"Source: {article_link}\n")
+    
+    # Find all comments
+    comment_elements = soup.find_all('tr', class_='athing comtr')
+    
+    print(f"[INFO] Found {len(comment_elements)} comments on Hacker News page")
+    
+    comments = []
+    for comment in comment_elements:
+        # Get indentation level
+        indent = comment.find('td', class_='ind')
+        indent_level = int(indent.get('indent', '0')) if indent else 0
+        
+        # Get comment metadata
+        comhead = comment.find('span', class_='comhead')
+        username = "Anonymous"
+        age = ""
+        
+        if comhead:
+            username_elem = comhead.find('a', class_='hnuser')
+            if username_elem:
+                username = username_elem.text
+            
+            age_elem = comhead.find('span', class_='age')
+            if age_elem:
+                age = age_elem.text
+        
+        # Get comment content
+        commtext = comment.find('div', class_='commtext c00')
+        if commtext:
+            # Get pure text without links or formatting
+            text = commtext.get_text(separator=' ', strip=True)
+            
+            # Format the comment
+            if text and len(text.split()) > 3:  # Keep comments with at least 4 words
+                # Format with username, timestamp, and proper indentation
+                prefix = "  " * indent_level
+                formatted_comment = f"{prefix}[{username} {age}]\n{prefix}{text}\n"
+                comments.append(formatted_comment)
+    
+    # Only keep a subset of comments to avoid too much content
+    # Focus on high-level (less indented) comments first
+    comments.sort(key=lambda x: len(x.split('\n')[0]) - len(x.split('\n')[0].lstrip()))
+    
+    # Keep at most 20 comments, prioritizing top-level comments
+    selected_comments = comments[:min(20, len(comments))]
+    
+    if selected_comments:
+        # Add a header for comments section
+        content_blocks.append("\n=== COMMENTS ===\n")
+        content_blocks.extend(selected_comments)
+        # Add a separator after comments
+        content_blocks.append("\n" + "="*50 + "\n")
+    
+    return content_blocks
+
+@time_function
 def extract_webpage_content(url, save_pdf=False):
     """
     Primary content extraction function - tries multiple methods in sequence
-    Uses a cascading approach with fallbacks to ensure best possible extraction:
-    1. Trafilatura (best quality for most sites)
-    2. Readability (Mozilla's algorithm)
-    3. BeautifulSoup custom extraction
-    4. Raw text extraction (last resort)
-    
-    Args:
-        url: The URL to scrape
-        save_pdf: Whether to save the extracted content as a PDF
-        
-    Returns:
-        str: The extracted content as clean text
     """
     print(f"[INFO] Fetching content from {url}...")
     
@@ -239,10 +447,23 @@ def extract_webpage_content(url, save_pdf=False):
         # Use cached/fetched content
         content = fetch_url_with_cache(url)
         
+        # Special handling for known sites
+        soup = BeautifulSoup(content, 'html.parser')
+        
+        if "news.ycombinator.com" in url:
+            content_blocks = process_hacker_news_comments(url, soup)
+            extracted_content = "\n".join(content_blocks)
+            
+            # Generate PDF if requested
+            if save_pdf:
+                save_as_pdf(extracted_content, url)
+                
+            return extracted_content
+            
         # Method 1: Use trafilatura for extraction (generally high quality)
         try:
             trafilatura_text = trafilatura.extract(content, include_comments=False, 
-                                        include_tables=True, output_format="text")
+                                    include_tables=True, output_format="text")
             if trafilatura_text and len(trafilatura_text.split()) > 100:
                 print(f"[INFO] Successfully extracted content using trafilatura: {len(trafilatura_text.split())} words")
                 extracted_content = clean_text(trafilatura_text)
@@ -269,8 +490,6 @@ def extract_webpage_content(url, save_pdf=False):
             return extracted_content
         
         # Method 3: Fallback to BeautifulSoup extraction
-        soup = BeautifulSoup(content, 'html.parser')
-        
         # Remove non-content elements
         for tag in soup(['script', 'style', 'header', 'footer', 'nav', 'aside', 'noscript', 'iframe', 'form']):
             tag.decompose()
@@ -285,7 +504,7 @@ def extract_webpage_content(url, save_pdf=False):
         
         # Add main content areas with priority
         for main_tag in soup.find_all(['main', 'article', 'section', '[role="main"]']):
-            main_content = main_tag.get_text(separator=' ', strip=True)
+            main_content = main_tag.get_text(separator='\n', strip=True)
             if main_content and len(main_content.split()) > 30:
                 content_blocks.append(main_content)
                 break  # If we find a main content area, no need to continue
@@ -299,7 +518,8 @@ def extract_webpage_content(url, save_pdf=False):
                     content_blocks.append(text)
         
         if content_blocks:
-            bs_text = title + " ".join(content_blocks)
+            # Join blocks with double newlines to ensure proper separation
+            bs_text = title + "\n\n".join(content_blocks)
             print(f"[INFO] Successfully extracted content using BeautifulSoup: {len(bs_text.split())} words")
             extracted_content = clean_text(bs_text)
             
@@ -310,7 +530,7 @@ def extract_webpage_content(url, save_pdf=False):
             return extracted_content
             
         # If all methods fail, return the entire visible text
-        all_text = soup.get_text(separator=' ', strip=True)
+        all_text = soup.get_text(separator='\n', strip=True)
         print(f"[INFO] Falling back to raw text extraction: {len(all_text.split())} words")
         extracted_content = clean_text(all_text)
         
@@ -674,9 +894,83 @@ def process_text(input_text, llm, summarizer, explanation_prompt):
     Returns:
         str: The executive summary
     """
-    # Sample the text first to get approximately 15% of it
-    sampled_text = sample_text(input_text)
-    summarized_text = sampled_text
+    # Check if content is from Hacker News by looking for comment formatting
+    is_hacker_news = False
+    if "\n=== COMMENTS ===\n" in input_text:
+        is_hacker_news = True
+        print("[INFO] Detected Hacker News format - preserving comment structure")
+        
+        # Split content into article and comments
+        parts = input_text.split("\n=== COMMENTS ===\n", 1)
+        article_content = parts[0]
+        comments_section = parts[1] if len(parts) > 1 else ""
+        
+        # Process comments differently
+        if comments_section:
+            # Extract individual comments
+            comments = []
+            current_comment = ""
+            comment_lines = comments_section.split('\n')
+            
+            for line in comment_lines:
+                if line.strip() and line.lstrip().startswith('[') and ']' in line:
+                    # This is a new comment header
+                    if current_comment:
+                        comments.append(current_comment.strip())
+                    current_comment = line + "\n"
+                elif current_comment:
+                    current_comment += line + "\n"
+                    
+            # Add the last comment if there is one
+            if current_comment:
+                comments.append(current_comment.strip())
+            
+            print(f"\n[INFO] Extracted {len(comments)} individual comments")
+            
+            # Filter out similar comments
+            print(f"\n[INFO] Filtering {len(comments)} comments for semantic similarity...")
+            filtered_comments = filter_similar_comments(comments)
+            print(f"[INFO] Kept {len(filtered_comments)} unique comments after filtering")
+            
+            print("\n=== FILTERED COMMENTS ===")
+            for i, comment in enumerate(filtered_comments):
+                print(f"\nKept Comment {i+1}:")
+                print("-" * 80)
+                print(comment)
+                print("-" * 80)
+            
+            # Combine article and filtered comments
+            summarized_text = article_content + "\n=== COMMENTS ===\n" + "\n\n".join(filtered_comments)
+        else:
+            summarized_text = article_content
+    else:
+        # Sample the text first if not Hacker News format
+        sampled_text = sample_text(input_text)
+        
+        # Split into comments (using single newlines)
+        comments = [c.strip() for c in sampled_text.split('\n') if c.strip()]
+        
+        print("\n=== COMMENTS FOUND ===")
+        for i, comment in enumerate(comments):
+            print(f"\nComment {i+1}:")
+            print("-" * 80)
+            print(comment)
+            print("-" * 80)
+        
+        # Filter out similar comments
+        print(f"\n[INFO] Filtering {len(comments)} comments for semantic similarity...")
+        filtered_comments = filter_similar_comments(comments)
+        print(f"[INFO] Kept {len(filtered_comments)} unique comments after filtering")
+        
+        print("\n=== FILTERED COMMENTS ===")
+        for i, comment in enumerate(filtered_comments):
+            print(f"\nKept Comment {i+1}:")
+            print("-" * 80)
+            print(comment)
+            print("-" * 80)
+        
+        # Rejoin the filtered comments
+        summarized_text = '\n'.join(filtered_comments)
     
     # Split the text into manageable chunks
     chunks = split_into_chunks(summarized_text)
@@ -777,7 +1071,7 @@ def main():
     start_time = time()
     
     parser = argparse.ArgumentParser(description="Summarize web page content using Llama.")
-    parser.add_argument("url", help="URL of the webpage to summarize")
+    parser.add_argument("url", nargs="?", help="URL of the webpage to summarize")
     parser.add_argument("--prompt", "-p", default="Explain the main points of this content in simple terms",
                         help="Custom prompt for the summarization")
     parser.add_argument("--pdf", "-pdf", action="store_true",
@@ -787,9 +1081,23 @@ def main():
     parser.add_argument("--sequential", "-seq", action="store_true",
                         help="Force sequential processing (safer but slower)")
     
-    # Parse arguments or use defaults if called directly
-    if len(sys.argv) > 1:
-        args = parser.parse_args()
+    # Parse arguments
+    args = parser.parse_args()
+    
+    # Interactive mode if no URL is provided
+    if not args.url:
+        # Super simple input prompt
+        url = input("link here mf: ")
+        
+        # Add https:// if not present
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+            print(f"Added https:// prefix: {url}")
+        
+        prompt = args.prompt
+        save_pdf = args.pdf
+    else:
+        # Normal mode with command line arguments
         url = args.url
         prompt = args.prompt
         save_pdf = args.pdf
@@ -798,13 +1106,6 @@ def main():
             cache_path = get_cache_path(url)
             if os.path.exists(cache_path):
                 os.remove(cache_path)
-    else:
-        # Example default for testing
-        url = "https://news.ycombinator.com/item?id=43878850"
-        prompt = "Synthesize the key perspectives in this discussion into a coherent narrative. Identify the main themes, important viewpoints, and any consensus or disagreements. Structure your response with clear topic sentences and supporting details. Present factual information in a way that highlights cause-effect relationships and contextual insights."
-        save_pdf = False
-        print(f"[INFO] No arguments provided. Using default URL: {url}")
-        print(f"[INFO] Default prompt: '{prompt}'")
     
     print(f"[INFO] Summarizing: {url}")
     print(f"[INFO] Using prompt: '{prompt}'")
