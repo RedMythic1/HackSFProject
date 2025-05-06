@@ -1,0 +1,973 @@
+<html lang="en" op="item"><head><meta name="referrer" content="origin"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" type="text/css" href="news.css?2UBwMHlbGtBIZ7HLI3Zc">
+        <link rel="icon" href="y18.svg">
+    <link rel="canonical" href="https://news.ycombinator.com/item?id=43899028"/>            <title>Show HN: Real-time AI Voice Chat at ~500ms Latency | Hacker News</title></head><body><center><table id="hnmain" border="0" cellpadding="0" cellspacing="0" width="85%" bgcolor="#f6f6ef">
+        <tr><td bgcolor="#ff6600"><table border="0" cellpadding="0" cellspacing="0" width="100%" style="padding:2px"><tr><td style="width:18px;padding-right:4px"><a href="https://news.ycombinator.com"><img src="y18.svg" width="18" height="18" style="border:1px white solid; display:block"></a></td>
+                  <td style="line-height:12pt; height:10px;"><span class="pagetop"><b class="hnname"><a href="news">Hacker News</a></b>
+                            <a href="newest">new</a> | <a href="front">past</a> | <a href="newcomments">comments</a> | <a href="ask">ask</a> | <a href="show">show</a> | <a href="jobs">jobs</a> | <a href="submit" rel="nofollow">submit</a>            </span></td><td style="text-align:right;padding-right:4px;"><span class="pagetop">
+                              <a href="login?goto=item%3Fid%3D43899028">login</a>
+                          </span></td>
+              </tr></table></td></tr>
+<tr id="pagespace" title="Show HN: Real-time AI Voice Chat at ~500ms Latency" style="height:10px"></tr><tr><td><table class="fatitem" border="0">
+        <tr class='athing submission' id='43899028'>
+      <td align="right" valign="top" class="title"><span class="rank"></span></td>      <td valign="top" class="votelinks"><center><a id='up_43899028' href='vote?id=43899028&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center></td><td class="title"><span class="titleline"><a href="https://github.com/KoljaB/RealtimeVoiceChat">Show HN: Real-time AI Voice Chat at ~500ms Latency</a><span class="sitebit comhead"> (<a href="from?site=github.com/koljab"><span class="sitestr">github.com/koljab</span></a>)</span></span></td></tr><tr><td colspan="2"></td><td class="subtext"><span class="subline">
+          <span class="score" id="score_43899028">161 points</span> by <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T20:17:32 1746476252"><a href="item?id=43899028">3 hours ago</a></span> <span id="unv_43899028"></span> | <a href="hide?id=43899028&amp;goto=item%3Fid%3D43899028">hide</a> | <a href="https://hn.algolia.com/?query=Show%20HN%3A%20Real-time%20AI%20Voice%20Chat%20at%20~500ms%20Latency&type=story&dateRange=all&sort=byDate&storyText=false&prefix&page=0" class="hnpast">past</a> | <a href="fave?id=43899028&amp;auth=c301f0d2d30719e4890e4412fcb1be592276b11f">favorite</a> | <a href="item?id=43899028">85&nbsp;comments</a>        </span>
+              </td></tr>
+            <tr><td style="height:10px"></td></tr><tr><td colspan="2"></td><td><form action="comment" method="post"><input type="hidden" name="parent" value="43899028"><input type="hidden" name="goto" value="item?id=43899028"><input type="hidden" name="hmac" value="2fb10baa86a444aecbfbfc7b40a5e597de9b3b46"><textarea name="text" rows="8" cols="80" wrap="virtual"></textarea><br><br>
+<input type="submit" value="add comment"></form></td></tr>  </table><br><br><table border="0" class='comment-tree'>
+            <tr class='athing comtr' id='43899735'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899735' href='vote?id=43899735&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=jedberg" class="hnuser">jedberg</a> <span class="age" title="2025-05-05T21:41:59 1746481319"><a href="item?id=43899735">2 hours ago</a></span> <span id="unv_43899735"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899735" n="29" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I did some research into this about a year ago.  Some fun facts I learned:<p>- The median delay between speakers in a human to human conversation is zero milliseconds.  In other words, about 1&#x2F;2 the time, one speaker interrupts the other, making the delay negative.<p>- Humans don&#x27;t care about delays when speaking to known AIs.  They assume the AI will need time to think.  Most users will qualify a 1000ms delay is acceptable and a 500ms delay as exceptional.<p>- Every voice assistant up to that point (and probably still today) has a minimum delay of about 300ms, because they all use silence detection to decide when to start responding, and you need about 300ms of silence to reliably differentiate that from a speaker&#x27;s normal pause<p>- Alexa actually has a setting to increase this wait time for slower speakers.<p>You&#x27;ll notice in this demo video that the AI never interrupts him, which is what makes it feel like a not quite human interaction (plus the stilted intonations of the voice).<p>Humans appear to process speech in a much more steaming why, constantly updating their parsing of the sentence until they have a high enough confidence level to respond, but using context clues and prior knowledge.<p>For a voice assistant to get the &quot;human&quot; levels, it will have to work more like this, where it processes the incoming speech in real time and responds when it&#x27;s confident it has heard enough to understand the meaning.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899735&amp;goto=item%3Fid%3D43899028%2343899735" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900587'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900587' href='vote?id=43900587&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=nativeit" class="hnuser">nativeit</a> <span class="age" title="2025-05-05T23:56:00 1746489360"><a href="item?id=43900587">2 minutes ago</a></span> <span id="unv_43900587"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43900093" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900587" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This feels intuitively correct to me, although I am more informed as an audio engineer than a software&#x2F;LLM one. That said, is ~500ms considered “real-time” in this context? I’ve worked on recording workflows, and it’s basically geologic time in that context.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900587&amp;goto=item%3Fid%3D43899028%2343900587" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900093'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900093' href='vote?id=43900093&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=Reason077" class="hnuser">Reason077</a> <span class="age" title="2025-05-05T22:32:35 1746484355"><a href="item?id=43900093">1 hour ago</a></span> <span id="unv_43900093"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43900587" class="clicky" aria-hidden="true">prev</a> | <a href="#43899849" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900093" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">The best, most human-like AI voice chat I&#x27;ve seen yet is Sesame (www.sesame.com). It has delays, but fills them very naturally with normal human speech nuances like &quot;hmmm&quot;, &quot;uhhh&quot;, &quot;hold on while I look that up&quot; etc. If there&#x27;s a longer delay it&#x27;ll even try to make a bit of small talk, just like a human conversation partner might.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900093&amp;goto=item%3Fid%3D43899028%2343900093" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900266'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900266' href='vote?id=43900266&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=lelandfe" class="hnuser">lelandfe</a> <span class="age" title="2025-05-05T23:05:58 1746486358"><a href="item?id=43900266">52 minutes ago</a></span> <span id="unv_43900266"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43900093" class="clicky" aria-hidden="true">parent</a> | <a href="#43899849" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900266" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">So-called backchanneling <a href="https:&#x2F;&#x2F;wikipedia.org&#x2F;wiki&#x2F;Backchannel_(linguistics)" rel="nofollow">https:&#x2F;&#x2F;wikipedia.org&#x2F;wiki&#x2F;Backchannel_(linguistics)</a><p>&gt; <i>The person doing the speaking is thought to be communicating through the &quot;front channel&quot; while the person doing the listening is thought to be communicating through the &quot;backchannel”</i></div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900266&amp;goto=item%3Fid%3D43899028%2343900266" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899849'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899849' href='vote?id=43899849&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=joshstrange" class="hnuser">joshstrange</a> <span class="age" title="2025-05-05T21:55:15 1746482115"><a href="item?id=43899849">2 hours ago</a></span> <span id="unv_43899849"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43900093" class="clicky" aria-hidden="true">prev</a> | <a href="#43899956" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899849" n="5" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">&gt; where it processes the incoming speech in real time and responds when it&#x27;s confident it has heard enough to understand the meaning.<p>I&#x27;m not an expert on LLMs but that feels completely counter to how LLMs work (again, _not_ an expert). I don&#x27;t know how we can &quot;stream&quot; the input and have the generation update&#x2F;change in real time, at least not in 1 model. Then again, what is a &quot;model&quot;? Maybe your model fires off multiple generations internally and starts generating after every word, or at least starts asking sub-LLM models &quot;Do I have enough to reply?&quot; and once it does it generates a reply and interrupts.<p>I&#x27;m not sure how most apps handle the user interrupting, in regards to the conversation context. Do they stop generation but use what they have generated already in the context? Do they cut off where the LLM got interrupted? Something like &quot;LLM: ..and then the horse walked... -USER INTERRUPTED-. User: ....&quot;. It&#x27;s not a purely-voice-LLM issue but it comes up way more for that since rarely are you stopping generation (in the demo, that&#x27;s been done for a while when he interrupts), just the TTS.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899849&amp;goto=item%3Fid%3D43899028%2343899849" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900222'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900222' href='vote?id=43900222&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=peturdarri" class="hnuser">peturdarri</a> <span class="age" title="2025-05-05T22:56:56 1746485816"><a href="item?id=43900222">1 hour ago</a></span> <span id="unv_43900222"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43899849" class="clicky" aria-hidden="true">parent</a> | <a href="#43900278" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900222" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">You&#x27;re right, this is not solvable with regular LLMs. It&#x27;s not possible to mimic natural conversational rhythm with a separate LLM generating text, a separate text-to-speech generating audio, and a separate VAD determining when to respond and when to interrupt. I strongly believe you have to do everything in one model to solve this issue, to let the model decide when to speak, when to interrupt the user even.<p>The only model that has attempted this (as far as I know) is Moshi from Kyutai. It solves it by having a fully-duplex architecture. The model is processing the audio from the user while generating output audio. Both can be active at the same time, talking over each other, like real conversations. It&#x27;s still in research phase and the model isn&#x27;t very smart yet, both in what it says and when it decides to speak. It just needs more data and more training.<p><a href="https:&#x2F;&#x2F;moshi.chat&#x2F;" rel="nofollow">https:&#x2F;&#x2F;moshi.chat&#x2F;</a></div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900222&amp;goto=item%3Fid%3D43899028%2343900222" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900442'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900442' href='vote?id=43900442&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=clbrmbr" class="hnuser">clbrmbr</a> <span class="age" title="2025-05-05T23:36:10 1746488170"><a href="item?id=43900442">22 minutes ago</a></span> <span id="unv_43900442"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43900222" class="clicky" aria-hidden="true">parent</a> | <a href="#43900278" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900442" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Whoah, how odd. It asked me what I was doing, I said I just ate a burger. It then got really upset about how hungry it is but is unable to eat and was unable to focus on other tasks because it was “too hungry”. Wtf weirdest LLM interaction I’ve had.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900442&amp;goto=item%3Fid%3D43899028%2343900442" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43900278'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900278' href='vote?id=43900278&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=com2kid" class="hnuser">com2kid</a> <span class="age" title="2025-05-05T23:08:04 1746486484"><a href="item?id=43900278">50 minutes ago</a></span> <span id="unv_43900278"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43899849" class="clicky" aria-hidden="true">parent</a> | <a href="#43900222" class="clicky" aria-hidden="true">prev</a> | <a href="#43899936" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900278" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Been there, implemented it, it works well enough.<p>Better solutions are possible but even tiny models are capable of being given a partial sentence and replying with a probability that the user is done talking.<p>The linked repo does this, it should work fine.<p>More advanced solutions are possible (you can train a model that does purely speech -&gt; turn detection probability w&#x2F;o an intermediate text step), but what the repo does will work well enough for many scenarios.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900278&amp;goto=item%3Fid%3D43899028%2343900278" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899936'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899936' href='vote?id=43899936&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=tomp" class="hnuser">tomp</a> <span class="age" title="2025-05-05T22:10:57 1746483057"><a href="item?id=43899936">1 hour ago</a></span> <span id="unv_43899936"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43899849" class="clicky" aria-hidden="true">parent</a> | <a href="#43900278" class="clicky" aria-hidden="true">prev</a> | <a href="#43899956" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899936" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">If your model is <i>fast enough</i>, you can definitely do it. That&#x27;s literally how &quot;streaming Whisper&quot; works, just rerun the model on the accumulated audio every x00ms. LLMs could definitely work the same way, technically they&#x27;re less complex than Whisper (which is an encoder&#x2F;decoder architecture, LLMs are decoder-only) but of course much larger (hence slower), so ... maybe rerun just a part of it? etc.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899936&amp;goto=item%3Fid%3D43899028%2343899936" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899956'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899956' href='vote?id=43899956&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=modeless" class="hnuser">modeless</a> <span class="age" title="2025-05-05T22:13:31 1746483211"><a href="item?id=43899956">1 hour ago</a></span> <span id="unv_43899956"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43899849" class="clicky" aria-hidden="true">prev</a> | <a href="#43900325" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899956" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">My take on this is that voice AI has not truly arrived until it has mastered the &quot;Interrupting Cow&quot; benchmark.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899956&amp;goto=item%3Fid%3D43899028%2343899956" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900325'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900325' href='vote?id=43900325&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=bigmadshoe" class="hnuser">bigmadshoe</a> <span class="age" title="2025-05-05T23:17:41 1746487061"><a href="item?id=43900325">41 minutes ago</a></span> <span id="unv_43900325"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43899956" class="clicky" aria-hidden="true">prev</a> | <a href="#43900558" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900325" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">&quot;The median delay between speakers in a human to human conversation is zero milliseconds. In other words, about 1&#x2F;2 the time, one speaker interrupts the other, making the delay negative.&quot;<p>Is that really a productive way to frame it? I would imagine there is some delay between one party hearing the part of the sentence that triggers the interruption, and them actually interrupting the other party. Shouldn&#x27;t we quantify this?<p>I totally agree that the fact the AI doesn&#x27;t interrupt you is what makes it seem non-human. Really, the models should have an extra head that predicts the probability of an interruption, and make one if it seems necessary.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900325&amp;goto=item%3Fid%3D43899028%2343900325" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900368'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900368' href='vote?id=43900368&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=elmomle" class="hnuser">elmomle</a> <span class="age" title="2025-05-05T23:25:34 1746487534"><a href="item?id=43900368">33 minutes ago</a></span> <span id="unv_43900368"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43900325" class="clicky" aria-hidden="true">parent</a> | <a href="#43900558" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900368" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">&quot;Necessary&quot; is an interesting framing.  Here are a few others:<p>- Expeditious
+- Constructive
+- Insightful
+-</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900368&amp;goto=item%3Fid%3D43899028%2343900368" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43900558'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900558' href='vote?id=43900558&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=herpdyderp" class="hnuser">herpdyderp</a> <span class="age" title="2025-05-05T23:52:34 1746489154"><a href="item?id=43900558">6 minutes ago</a></span> <span id="unv_43900558"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43900325" class="clicky" aria-hidden="true">prev</a> | <a href="#43899880" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900558" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">&gt; The median delay between speakers in a human to human conversation is zero milliseconds<p>What about on phone calls? When I&#x27;m on a call with customer support they definitely wait for it to be clear that I&#x27;m done talking before responding, just like AI does.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900558&amp;goto=item%3Fid%3D43899028%2343900558" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899880'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899880' href='vote?id=43899880&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=robbomacrae" class="hnuser">robbomacrae</a> <span class="age" title="2025-05-05T22:00:12 1746482412"><a href="item?id=43899880">1 hour ago</a></span> <span id="unv_43899880"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43900558" class="clicky" aria-hidden="true">prev</a> | <a href="#43899926" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899880" n="6" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Spot on. I’d add that most serious transcription services take around 200-300ms but the 500ms overall latency is sort of a gold standard. For the AI in KFC drive thrus in AU we’re trialing techniques that make it much closer to the human type of interacting. This includes interrupts either when useful or by accident - as good voice activity detection also has a bit of latency.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899880&amp;goto=item%3Fid%3D43899028%2343899880" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899951'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899951' href='vote?id=43899951&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=varispeed" class="hnuser">varispeed</a> <span class="age" title="2025-05-05T22:13:00 1746483180"><a href="item?id=43899951">1 hour ago</a></span> <span id="unv_43899951"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43899880" class="clicky" aria-hidden="true">parent</a> | <a href="#43899926" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899951" n="5" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">&gt; AI in KFC drive thrus<p>That right here is an anxiety trigger and would make me skip the place.<p>There is nothing more ruining the day like arguing with a robot who keeps misinterpreting what you said.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899951&amp;goto=item%3Fid%3D43899028%2343899951" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900338'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900338' href='vote?id=43900338&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=kadushka" class="hnuser">kadushka</a> <span class="age" title="2025-05-05T23:20:31 1746487231"><a href="item?id=43900338">38 minutes ago</a></span> <span id="unv_43900338"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43899951" class="clicky" aria-hidden="true">parent</a> | <a href="#43899999" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900338" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Read this if you haven’t already: <a href="https:&#x2F;&#x2F;marshallbrain.com&#x2F;manna1" rel="nofollow">https:&#x2F;&#x2F;marshallbrain.com&#x2F;manna1</a><p>That’s a much more serious anxiety trigger for me.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900338&amp;goto=item%3Fid%3D43899028%2343900338" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899999'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899999' href='vote?id=43899999&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=coolspot" class="hnuser">coolspot</a> <span class="age" title="2025-05-05T22:19:10 1746483550"><a href="item?id=43899999">1 hour ago</a></span> <span id="unv_43899999"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43899951" class="clicky" aria-hidden="true">parent</a> | <a href="#43900338" class="clicky" aria-hidden="true">prev</a> | <a href="#43899926" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899999" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">They have a fallback to a human operator when stopwords and&#x2F;or stop conditions are detected.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899999&amp;goto=item%3Fid%3D43899028%2343899999" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900108'><td><table border='0'>  <tr>    <td class='ind' indent='4'><img src="s.gif" height="1" width="160"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900108' href='vote?id=43900108&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=awesome_dude" class="hnuser">awesome_dude</a> <span class="age" title="2025-05-05T22:36:13 1746484573"><a href="item?id=43900108">1 hour ago</a></span> <span id="unv_43900108"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43899999" class="clicky" aria-hidden="true">parent</a> | <a href="#43899926" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900108" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">That right here is an anxiety trigger and would make me skip the place.<p>There is nothing more ruining the day like arguing with a HUMAN OPERATOR who keeps misinterpreting what you said.<p>:-)</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900108&amp;goto=item%3Fid%3D43899028%2343900108" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900139'><td><table border='0'>  <tr>    <td class='ind' indent='5'><img src="s.gif" height="1" width="200"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900139' href='vote?id=43900139&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=amelius" class="hnuser">amelius</a> <span class="age" title="2025-05-05T22:41:50 1746484910"><a href="item?id=43900139">1 hour ago</a></span> <span id="unv_43900139"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43900108" class="clicky" aria-hidden="true">parent</a> | <a href="#43899926" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900139" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Maybe talk to the chicken operator then.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900139&amp;goto=item%3Fid%3D43899028%2343900139" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                                    <tr class='athing comtr' id='43899926'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899926' href='vote?id=43899926&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=r0fl" class="hnuser">r0fl</a> <span class="age" title="2025-05-05T22:09:14 1746482954"><a href="item?id=43899926">1 hour ago</a></span> <span id="unv_43899926"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43899880" class="clicky" aria-hidden="true">prev</a> | <a href="#43900148" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899926" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Great insights. When I have a conversation with another person sometimes they cut me off when they are trying to make a point. I have talked to ChatGPT and grok at length (hours of brain storming, learning things, etc) and AI has never interrupted aggressively to try to make a point stick better</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899926&amp;goto=item%3Fid%3D43899028%2343899926" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900148'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900148' href='vote?id=43900148&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=com2kid" class="hnuser">com2kid</a> <span class="age" title="2025-05-05T22:42:50 1746484970"><a href="item?id=43900148">1 hour ago</a></span> <span id="unv_43900148"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43899926" class="clicky" aria-hidden="true">prev</a> | <a href="#43899934" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900148" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">A lot better techniques exist now days than pure silence detection -<p>1. A special model that predicts when a conversation turn is coming up (e.g. when someone is going to stop speaking). Speech has a rhythm to it and pauses &#x2F; ends of speech are actually predictable.<p>2. Generate a model response for every subsequent word that comes in (and throw away the previously generated response), so basically your time to speak after doing some other detection is basically zero.<p>3. Ask an LLM what it thinks the odds of the user being done talking is, and if it is a high probability, reduce delay timer down.  (The linked repo does this)<p>I don&#x27;t know of any up to date models for #1 but I haven&#x27;t checked in over a year.<p>Tl;Dr the solution to problems involving AI models is more AI models.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900148&amp;goto=item%3Fid%3D43899028%2343900148" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900497'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900497' href='vote?id=43900497&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=addandsubtract" class="hnuser">addandsubtract</a> <span class="age" title="2025-05-05T23:43:09 1746488589"><a href="item?id=43900497">15 minutes ago</a></span> <span id="unv_43900497"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43900148" class="clicky" aria-hidden="true">parent</a> | <a href="#43899934" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900497" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I think 2 &amp; 3 should be combined. The AI should just finish the current sentence (internally) before it&#x27;s being spoken, and once it reaches a high enough confidence, stick with the response. That&#x27;s what humans do, too. We gather context and are able to think of a response while the other person is still talking.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900497&amp;goto=item%3Fid%3D43899028%2343900497" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899934'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899934' href='vote?id=43899934&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=varispeed" class="hnuser">varispeed</a> <span class="age" title="2025-05-05T22:10:37 1746483037"><a href="item?id=43899934">1 hour ago</a></span> <span id="unv_43899934"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43900148" class="clicky" aria-hidden="true">prev</a> | <a href="#43900092" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899934" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This silence detection is what makes me unable to chat with AI. It is not natural and creates pressure.<p>True AI chat should know when to talk based on conversation and not things like silence.<p>Voice to text is stripping conversation from a lot of context as well.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899934&amp;goto=item%3Fid%3D43899028%2343899934" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900092'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900092' href='vote?id=43900092&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=woodson" class="hnuser">woodson</a> <span class="age" title="2025-05-05T22:32:33 1746484353"><a href="item?id=43900092">1 hour ago</a></span> <span id="unv_43900092"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43899934" class="clicky" aria-hidden="true">prev</a> | <a href="#43899774" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900092" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Human-to-human conversational patterns are highly specific to cultural and contextual aspects. Sounds like I’m stating the obvious, but developers regularly disregard that and then wonder why things feel unnatural for users. The “median delay” may not be the most useful thing to look at.<p>To properly learn more appropriate delays, it can be useful to find a proxy measure that can predict when a response can&#x2F;should be given. For example, look at Kyutai’s use of change in perplexity in predictions from a text translation model for developing simultaneous speech-to-speech translation (<a href="https:&#x2F;&#x2F;github.com&#x2F;kyutai-labs&#x2F;hibiki">https:&#x2F;&#x2F;github.com&#x2F;kyutai-labs&#x2F;hibiki</a>).</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900092&amp;goto=item%3Fid%3D43899028%2343900092" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899774'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899774' href='vote?id=43899774&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T21:45:54 1746481554"><a href="item?id=43899774">2 hours ago</a></span> <span id="unv_43899774"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43900092" class="clicky" aria-hidden="true">prev</a> | <a href="#43899869" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899774" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Thanks a lot, great insights. Exactly the kind of feedback that I need to improve things further.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899774&amp;goto=item%3Fid%3D43899028%2343899774" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899851'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899851' href='vote?id=43899851&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=jedberg" class="hnuser">jedberg</a> <span class="age" title="2025-05-05T21:55:45 1746482145"><a href="item?id=43899851">2 hours ago</a></span> <span id="unv_43899851"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43899774" class="clicky" aria-hidden="true">parent</a> | <a href="#43899869" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899851" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Love what you&#x27;re doing, glad I could help!</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899851&amp;goto=item%3Fid%3D43899028%2343899851" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899869'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899869' href='vote?id=43899869&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=krainboltgreene" class="hnuser">krainboltgreene</a> <span class="age" title="2025-05-05T21:58:23 1746482303"><a href="item?id=43899869">2 hours ago</a></span> <span id="unv_43899869"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43899774" class="clicky" aria-hidden="true">prev</a> | <a href="#43900210" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899869" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I would also suspect that a human has much less patience for a robot interrupting them than a human.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899869&amp;goto=item%3Fid%3D43899028%2343899869" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899988'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899988' href='vote?id=43899988&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=smeej" class="hnuser">smeej</a> <span class="age" title="2025-05-05T22:17:41 1746483461"><a href="item?id=43899988">1 hour ago</a></span> <span id="unv_43899988"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">root</a> | <a href="#43899869" class="clicky" aria-hidden="true">parent</a> | <a href="#43900210" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899988" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I&#x27;m certainly in that category. At least with a human, I can excuse it by imagining the person grew up with half a dozen siblings and always had to fight to get a word in edgewise. With a robot, it&#x27;s interrupting on purpose.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899988&amp;goto=item%3Fid%3D43899028%2343899988" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43900210'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900210' href='vote?id=43900210&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=wyager" class="hnuser">wyager</a> <span class="age" title="2025-05-05T22:54:49 1746485689"><a href="item?id=43900210">1 hour ago</a></span> <span id="unv_43900210"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">parent</a> | <a href="#43899869" class="clicky" aria-hidden="true">prev</a> | <a href="#43899029" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900210" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">&gt; The median delay between speakers in a human to human conversation is zero milliseconds. In other words, about 1&#x2F;2 the time, one speaker interrupts the other, making the delay negative.<p>Fascinating. I wonder if this is some optimal information-theoretic equilibrium. If there&#x27;s too much average delay, it means you&#x27;re not preloading the most relevant compressed context. If there&#x27;s too little average delay, it means you&#x27;re wasting words.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900210&amp;goto=item%3Fid%3D43899028%2343900210" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899029'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899029' href='vote?id=43899029&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T20:17:32 1746476252"><a href="item?id=43899029">3 hours ago</a></span> <span id="unv_43899029"></span>          <span class='navs'>
+             | <a href="#43899735" class="clicky" aria-hidden="true">prev</a> | <a href="#43899154" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899029" n="15" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I built RealtimeVoiceChat because I was frustrated with the latency in most voice AI interactions. This is an open-source (MIT license) system designed for real-time, local voice conversations with LLMs.<p>Quick Demo Video (50s): <a href="https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=HM_IQuuuPX8" rel="nofollow">https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=HM_IQuuuPX8</a><p>The goal is to get closer to natural conversation speed. It uses audio chunk streaming over WebSockets, RealtimeSTT (based on Whisper), and RealtimeTTS (supporting engines like Coqui XTTSv2&#x2F;Kokoro) to achieve around 500ms response latency, even when running larger local models like a 24B Mistral fine-tune via Ollama.<p>Key aspects: Designed for local LLMs (Ollama primarily, OpenAI connector included). Interruptible conversation. Smart turn detection to avoid cutting the user off mid-thought. Dockerized setup available for easier dependency management.<p>It requires a decent CUDA-enabled GPU for good performance due to the STT&#x2F;TTS models.<p>Would love to hear your feedback on the approach, performance, potential optimizations, or any features you think are essential for a good local voice AI experience.<p>The code is here: <a href="https:&#x2F;&#x2F;github.com&#x2F;KoljaB&#x2F;RealtimeVoiceChat">https:&#x2F;&#x2F;github.com&#x2F;KoljaB&#x2F;RealtimeVoiceChat</a></div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899029&amp;goto=item%3Fid%3D43899028%2343899029" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899391'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899391' href='vote?id=43899391&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=zaggynl" class="hnuser">zaggynl</a> <span class="age" title="2025-05-05T20:58:36 1746478716"><a href="item?id=43899391">3 hours ago</a></span> <span id="unv_43899391"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">parent</a> | <a href="#43900219" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899391" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Neat! I&#x27;m already using openwebui&#x2F;ollama with a 7900 xtx but the STT and TTS parts don&#x27;t seem to work with it yet:<p>2025-05-05 20:53:15,808] [WARNING] [real_accelerator.py:194:get_accelerator] Setting accelerator to CPU. If you have GPU or other accelerator, we were unable to detect it.<p>Error loading model for checkpoint .&#x2F;models&#x2F;Lasinya: This op had not been implemented on CPU backend.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899391&amp;goto=item%3Fid%3D43899028%2343899391" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900219'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900219' href='vote?id=43900219&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=dummydummy1234" class="hnuser">dummydummy1234</a> <span class="age" title="2025-05-05T22:56:28 1746485788"><a href="item?id=43900219">1 hour ago</a></span> <span id="unv_43900219"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">parent</a> | <a href="#43899391" class="clicky" aria-hidden="true">prev</a> | <a href="#43899238" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900219" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Have you looked at pipecat, seems to be similar trying to do standardized backend&#x2F;webrtc turn detection pipelines.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900219&amp;goto=item%3Fid%3D43899028%2343900219" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899238'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899238' href='vote?id=43899238&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=dotancohen" class="hnuser">dotancohen</a> <span class="age" title="2025-05-05T20:40:17 1746477617"><a href="item?id=43899238">3 hours ago</a></span> <span id="unv_43899238"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">parent</a> | <a href="#43900219" class="clicky" aria-hidden="true">prev</a> | <a href="#43899129" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899238" n="4" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This looks great. What hardware do you use, or have you tested it on?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899238&amp;goto=item%3Fid%3D43899028%2343899238" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899257'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899257' href='vote?id=43899257&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T20:42:57 1746477777"><a href="item?id=43899257">3 hours ago</a></span> <span id="unv_43899257"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">root</a> | <a href="#43899238" class="clicky" aria-hidden="true">parent</a> | <a href="#43899129" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899257" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I only tested it on my 4090 so far</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899257&amp;goto=item%3Fid%3D43899028%2343899257" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899657'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899657' href='vote?id=43899657&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=echelon" class="hnuser">echelon</a> <span class="age" title="2025-05-05T21:31:26 1746480686"><a href="item?id=43899657">2 hours ago</a></span> <span id="unv_43899657"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">root</a> | <a href="#43899257" class="clicky" aria-hidden="true">parent</a> | <a href="#43899129" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899657" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Are you using all local models, or does it also use cloud inference? Proprietary models?<p>Which models are running in which places?<p>Cool utility!</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899657&amp;goto=item%3Fid%3D43899028%2343899657" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899809'><td><table border='0'>  <tr>    <td class='ind' indent='4'><img src="s.gif" height="1" width="160"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899809' href='vote?id=43899809&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T21:49:37 1746481777"><a href="item?id=43899809">2 hours ago</a></span> <span id="unv_43899809"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">root</a> | <a href="#43899657" class="clicky" aria-hidden="true">parent</a> | <a href="#43899129" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899809" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">All local models: 
+- VAD: Webrtcvad (first fast check) followed by SileroVAD (high compute verification)
+- Transcription: base.en whisper (CTranslate2)
+- Turn Detection: KoljaB&#x2F;SentenceFinishedClassification (selftrained BERT-model)
+- LLM: hf.co&#x2F;bartowski&#x2F;huihui-ai_Mistral-Small-24B-Instruct-2501-abliterated-GGUF:Q4_K_M (easily switchable)
+- TTS: Coqui XTTSv2, switchable to Kokoro or Orpheus (this one is slower)</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899809&amp;goto=item%3Fid%3D43899028%2343899809" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                              <tr class='athing comtr' id='43899129'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899129' href='vote?id=43899129&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=ivape" class="hnuser">ivape</a> <span class="age" title="2025-05-05T20:28:00 1746476880"><a href="item?id=43899129">3 hours ago</a></span> <span id="unv_43899129"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">parent</a> | <a href="#43899238" class="clicky" aria-hidden="true">prev</a> | <a href="#43899154" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899129" n="8" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Would you say you are using the best-in-class speech to text libs at the moment? I feel like this space is moving fast because the last time I was headed down this track, I was sure whisper-cpp was the best.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899129&amp;goto=item%3Fid%3D43899028%2343899129" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899254'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899254' href='vote?id=43899254&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T20:42:11 1746477731"><a href="item?id=43899254">3 hours ago</a></span> <span id="unv_43899254"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">root</a> | <a href="#43899129" class="clicky" aria-hidden="true">parent</a> | <a href="#43899154" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899254" n="7" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I&#x27;m not sure tbh. Whisper was king for so long time now, especially with the ctranslate2 implementation from faster_whisper. Now nvidia open sourced Parakeet TDT today and it instantly went no 1 on open asr leaderboard. Will have to evaluate these latest models, they look strong.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899254&amp;goto=item%3Fid%3D43899028%2343899254" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899389'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899389' href='vote?id=43899389&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=kristopolous" class="hnuser">kristopolous</a> <span class="age" title="2025-05-05T20:58:08 1746478688"><a href="item?id=43899389">3 hours ago</a></span> <span id="unv_43899389"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">root</a> | <a href="#43899254" class="clicky" aria-hidden="true">parent</a> | <a href="#43899769" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899389" n="4" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00"><a href="https:&#x2F;&#x2F;yummy-fir-7a4.notion.site&#x2F;dia" rel="nofollow">https:&#x2F;&#x2F;yummy-fir-7a4.notion.site&#x2F;dia</a> is the new hotness.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899389&amp;goto=item%3Fid%3D43899028%2343899389" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899452'><td><table border='0'>  <tr>    <td class='ind' indent='4'><img src="s.gif" height="1" width="160"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899452' href='vote?id=43899452&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T21:05:43 1746479143"><a href="item?id=43899452">2 hours ago</a></span> <span id="unv_43899452"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">root</a> | <a href="#43899389" class="clicky" aria-hidden="true">parent</a> | <a href="#43899769" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899452" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Tried that one. Quality is great but sometimes generations fail and it&#x27;s rather slow. Also needs ~13 GB of VRAM, it&#x27;s not my first choice for voice agents tbh.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899452&amp;goto=item%3Fid%3D43899028%2343899452" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899582'><td><table border='0'>  <tr>    <td class='ind' indent='5'><img src="s.gif" height="1" width="200"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899582' href='vote?id=43899582&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=kristopolous" class="hnuser">kristopolous</a> <span class="age" title="2025-05-05T21:22:49 1746480169"><a href="item?id=43899582">2 hours ago</a></span> <span id="unv_43899582"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">root</a> | <a href="#43899452" class="clicky" aria-hidden="true">parent</a> | <a href="#43899769" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899582" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">alright, dumb question.<p>(1) I assume these things can do multiple languages<p>(2) Given (1), can you strip all the languages you aren&#x27;t using and speed things up?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899582&amp;goto=item%3Fid%3D43899028%2343899582" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899726'><td><table border='0'>  <tr>    <td class='ind' indent='6'><img src="s.gif" height="1" width="240"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899726' href='vote?id=43899726&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T21:40:45 1746481245"><a href="item?id=43899726">2 hours ago</a></span> <span id="unv_43899726"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">root</a> | <a href="#43899582" class="clicky" aria-hidden="true">parent</a> | <a href="#43899769" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899726" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Actually good question.<p>I&#x27;d say probably not. You can&#x27;t easily &quot;unlearn&quot; things from the model weights (and even if this alone doesn&#x27;t help). You could retrain&#x2F;finetune the model heavily on a single language but again that alone does not speed up inference.<p>To gain speed you&#x27;d have to bring the parameter count down and train the model from scratch with a single language only. That might work but it&#x27;s also quite probable that it introduces other issues in the synthesis. In a perfect world the model would only use all that &quot;free parameters&quot; not used now for other languages for a better synthesis of that single trained language. Might be true to a certain degree, but it&#x27;s not exactly how ai parameter scaling works.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899726&amp;goto=item%3Fid%3D43899028%2343899726" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                              <tr class='athing comtr' id='43899769'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899769' href='vote?id=43899769&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=oezi" class="hnuser">oezi</a> <span class="age" title="2025-05-05T21:45:39 1746481539"><a href="item?id=43899769">2 hours ago</a></span> <span id="unv_43899769"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">root</a> | <a href="#43899254" class="clicky" aria-hidden="true">parent</a> | <a href="#43899389" class="clicky" aria-hidden="true">prev</a> | <a href="#43899274" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899769" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Paraket is english only. Stick with Whisper.<p>The core innovation is happening in TTS at the moment.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899769&amp;goto=item%3Fid%3D43899028%2343899769" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899274'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899274' href='vote?id=43899274&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=ivape" class="hnuser">ivape</a> <span class="age" title="2025-05-05T20:45:26 1746477926"><a href="item?id=43899274">3 hours ago</a></span> <span id="unv_43899274"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">root</a> | <a href="#43899254" class="clicky" aria-hidden="true">parent</a> | <a href="#43899769" class="clicky" aria-hidden="true">prev</a> | <a href="#43899154" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899274" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Yeah, I figured you would know. Thanks for that, bookmarking that asr leaderboard.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899274&amp;goto=item%3Fid%3D43899028%2343899274" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                              <tr class='athing comtr' id='43899154'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899154' href='vote?id=43899154&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=smusamashah" class="hnuser">smusamashah</a> <span class="age" title="2025-05-05T20:31:05 1746477065"><a href="item?id=43899154">3 hours ago</a></span> <span id="unv_43899154"></span>          <span class='navs'>
+             | <a href="#43899029" class="clicky" aria-hidden="true">prev</a> | <a href="#43899520" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899154" n="11" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Saying this as a user of these tools (openai, Google voice chat etc). These are fast yes, but they don&#x27;t allow talking naturally with pauses. When we talk, we take long and small pauses for thinking or for other reasons.<p>With these tools, AI starts taking as soon as we stop. Happens both in text and voice chat tools.<p>I saw a demo on twitter a few weeks back where AI was waiting for the person to actually finish what he was saying. Length of pauses wasn&#x27;t a problem. I don&#x27;t how complex that problem is though. Probably another AI needs to analyse the input so far a decide if it&#x27;s a pause or not.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899154&amp;goto=item%3Fid%3D43899028%2343899154" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899301'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899301' href='vote?id=43899301&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=WhitneyLand" class="hnuser">WhitneyLand</a> <span class="age" title="2025-05-05T20:48:30 1746478110"><a href="item?id=43899301">3 hours ago</a></span> <span id="unv_43899301"></span>          <span class='navs'>
+             | <a href="#43899154" class="clicky" aria-hidden="true">parent</a> | <a href="#43899559" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899301" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00"><i>&gt;&gt;they don&#x27;t allow talking naturally</i><p>Neither do phone calls. Round trip latency can easily be 300ms, which we’ve all learned to adapt our speech to.<p>If you want to feel true luxury find an old analog PTSN line.  No compression artifacts or delays. Beautiful and seamless 50ms latency.<p>Digital was a terrible event for call quality.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899301&amp;goto=item%3Fid%3D43899028%2343899301" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899667'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899667' href='vote?id=43899667&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=mvdtnz" class="hnuser">mvdtnz</a> <span class="age" title="2025-05-05T21:32:46 1746480766"><a href="item?id=43899667">2 hours ago</a></span> <span id="unv_43899667"></span>          <span class='navs'>
+             | <a href="#43899154" class="clicky" aria-hidden="true">root</a> | <a href="#43899301" class="clicky" aria-hidden="true">parent</a> | <a href="#43899559" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899667" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I don&#x27;t know how your post is relevant to the discussion of AI models interrupting if I pause for half a second?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899667&amp;goto=item%3Fid%3D43899028%2343899667" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899559'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899559' href='vote?id=43899559&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=joshstrange" class="hnuser">joshstrange</a> <span class="age" title="2025-05-05T21:19:28 1746479968"><a href="item?id=43899559">2 hours ago</a></span> <span id="unv_43899559"></span>          <span class='navs'>
+             | <a href="#43899154" class="clicky" aria-hidden="true">parent</a> | <a href="#43899301" class="clicky" aria-hidden="true">prev</a> | <a href="#43899244" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899559" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This 100%, yes!<p>I&#x27;ve found myself putting in filler words or holding a noise &quot;Uhhhhhhhhh&quot; while I&#x27;m trying to form a thought but I don&#x27;t want the LLM to start replying. It&#x27;s a really hard problem for sure. Similar to the problem of allowing for interruptions but not stopping if the user just says &quot;Right!&quot;, &quot;Yes&quot;, aka active listening.<p>One thing I love about MacWhisper (not special to just this STT tool) is it&#x27;s hold to talk so I can stop talking for as long as I want then start again without it deciding I&#x27;m done.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899559&amp;goto=item%3Fid%3D43899028%2343899559" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899244'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899244' href='vote?id=43899244&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=emtrixx" class="hnuser">emtrixx</a> <span class="age" title="2025-05-05T20:40:46 1746477646"><a href="item?id=43899244">3 hours ago</a></span> <span id="unv_43899244"></span>          <span class='navs'>
+             | <a href="#43899154" class="clicky" aria-hidden="true">parent</a> | <a href="#43899559" class="clicky" aria-hidden="true">prev</a> | <a href="#43899202" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899244" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Could that not work with simple instructions? Let the AI decide to respond only with a special wait token until it thinks you are ready. Might not work perfectly but would be a start.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899244&amp;goto=item%3Fid%3D43899028%2343899244" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899202'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899202' href='vote?id=43899202&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=qwertox" class="hnuser">qwertox</a> <span class="age" title="2025-05-05T20:36:35 1746477395"><a href="item?id=43899202">3 hours ago</a></span> <span id="unv_43899202"></span>          <span class='navs'>
+             | <a href="#43899154" class="clicky" aria-hidden="true">parent</a> | <a href="#43899244" class="clicky" aria-hidden="true">prev</a> | <a href="#43899410" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899202" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Maybe we should settle on some special sound or word which officially signals that we&#x27;re making a pause for whatever reason, but that we intend to continue with dictating in a couple of seconds. Like &quot;Hmm, wait&quot;.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899202&amp;goto=item%3Fid%3D43899028%2343899202" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899235'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899235' href='vote?id=43899235&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=twodave" class="hnuser">twodave</a> <span class="age" title="2025-05-05T20:39:52 1746477592"><a href="item?id=43899235">3 hours ago</a></span> <span id="unv_43899235"></span>          <span class='navs'>
+             | <a href="#43899154" class="clicky" aria-hidden="true">root</a> | <a href="#43899202" class="clicky" aria-hidden="true">parent</a> | <a href="#43899249" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899235" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Alternatively we could pretend it’s a radio and follow those conventions.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899235&amp;goto=item%3Fid%3D43899028%2343899235" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899249'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899249' href='vote?id=43899249&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=ivape" class="hnuser">ivape</a> <span class="age" title="2025-05-05T20:41:45 1746477705"><a href="item?id=43899249">3 hours ago</a></span> <span id="unv_43899249"></span>          <span class='navs'>
+             | <a href="#43899154" class="clicky" aria-hidden="true">root</a> | <a href="#43899202" class="clicky" aria-hidden="true">parent</a> | <a href="#43899235" class="clicky" aria-hidden="true">prev</a> | <a href="#43899410" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899249" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Two input streams sounds like a good hacky solution. One input stream captures everything, the second is on the look out for your filler words like &quot;um, aahh, waaiit, no nevermind, scratch that&quot;. The second stream can act as the veto-command and cut off the LLM. A third input stream can simply be on the lookout for long pauses. All this gets very resource intensive quickly. I been meaning to make this but since I haven&#x27;t, I&#x27;m going to punish myself and just give the idea away. Hopefully I&#x27;ll learn my lesson.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899249&amp;goto=item%3Fid%3D43899028%2343899249" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899410'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899410' href='vote?id=43899410&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=LZ_Khan" class="hnuser">LZ_Khan</a> <span class="age" title="2025-05-05T21:00:45 1746478845"><a href="item?id=43899410">2 hours ago</a></span> <span id="unv_43899410"></span>          <span class='navs'>
+             | <a href="#43899154" class="clicky" aria-hidden="true">parent</a> | <a href="#43899202" class="clicky" aria-hidden="true">prev</a> | <a href="#43899247" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899410" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Honestly I think this is a problem of over-engineering and simply allowing the user to press a button when he wants to start talking and press it when he&#x27;s done is good enough. Or even a codeword for start and finish.<p>We don&#x27;t need to feel like we&#x27;re talking to a real person yet.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899410&amp;goto=item%3Fid%3D43899028%2343899410" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900176'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900176' href='vote?id=43900176&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=amelius" class="hnuser">amelius</a> <span class="age" title="2025-05-05T22:47:03 1746485223"><a href="item?id=43900176">1 hour ago</a></span> <span id="unv_43900176"></span>          <span class='navs'>
+             | <a href="#43899154" class="clicky" aria-hidden="true">root</a> | <a href="#43899410" class="clicky" aria-hidden="true">parent</a> | <a href="#43899247" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900176" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Or give the AI an Asian accent. If you&#x27;re talking on the phone to someone on a different continent you accept the delay, so why not here.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900176&amp;goto=item%3Fid%3D43899028%2343900176" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899247'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899247' href='vote?id=43899247&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=SubiculumCode" class="hnuser">SubiculumCode</a> <span class="age" title="2025-05-05T20:41:18 1746477678"><a href="item?id=43899247">3 hours ago</a></span> <span id="unv_43899247"></span>          <span class='navs'>
+             | <a href="#43899154" class="clicky" aria-hidden="true">parent</a> | <a href="#43899410" class="clicky" aria-hidden="true">prev</a> | <a href="#43899520" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899247" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Yeah, when I am trying to learn about a topic, I need to think about my question, you know, pausing mid-sentence. All the products jump in and interrupt, no matter if I tell them not to do so. Non-annoying humans don&#x27;t jump in to fill the gap, they read my face, they take cues, then wait for me to finish. Its one thing to ask an AI to give me directions to the nearest taco stand, its another to have a dialogue about complex topics.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899247&amp;goto=item%3Fid%3D43899028%2343899247" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899520'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899520' href='vote?id=43899520&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=joshstrange" class="hnuser">joshstrange</a> <span class="age" title="2025-05-05T21:15:10 1746479710"><a href="item?id=43899520">2 hours ago</a></span> <span id="unv_43899520"></span>          <span class='navs'>
+             | <a href="#43899154" class="clicky" aria-hidden="true">prev</a> | <a href="#43900161" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899520" n="4" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This is very, very cool! The interrupting was a &quot;wow&quot; moment for me (I know it&#x27;s not &quot;new new&quot; but to see it so well done in open source was awesome).<p>Question about the Interrupt feature, how does it handle &quot;Mmk&quot;, &quot;Yes&quot;, &quot;Of course&quot;, &quot;<i>cough</i>&quot;, etc? Aside from the sycophancy from OpenAI&#x27;s voice chat (no, not every question I ask is a &quot;great question!&quot;) I dislike that a noise sometimes stops the AI from responding and there isn&#x27;t a great way to get back on track, to pick up where you left off.<p>It&#x27;s a hard problem, how do you stop replying quickly AND make sure you are stopping for a good reason?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899520&amp;goto=item%3Fid%3D43899028%2343899520" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899595'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899595' href='vote?id=43899595&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T21:24:16 1746480256"><a href="item?id=43899595">2 hours ago</a></span> <span id="unv_43899595"></span>          <span class='navs'>
+             | <a href="#43899520" class="clicky" aria-hidden="true">parent</a> | <a href="#43900161" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899595" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">That&#x27;s a great question! My first implementation was interruption on voice activity after echo cancellation. It still had way too many false positives. I changed it to incoming realtime transcription as a trigger. That adds a bit of latency but that gets compensated by way better accuracy.<p>Edit: just realized the irony but it&#x27;s really a good question lol</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899595&amp;goto=item%3Fid%3D43899028%2343899595" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899705'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899705' href='vote?id=43899705&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=joshstrange" class="hnuser">joshstrange</a> <span class="age" title="2025-05-05T21:38:12 1746481092"><a href="item?id=43899705">2 hours ago</a></span> <span id="unv_43899705"></span>          <span class='navs'>
+             | <a href="#43899520" class="clicky" aria-hidden="true">root</a> | <a href="#43899595" class="clicky" aria-hidden="true">parent</a> | <a href="#43900237" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899705" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">That answer is even more than I could have hoped for. I worried doing that might be too slow. I wonder if it could be improved (without breaking something else) to &quot;know&quot; when to continue based on what it heard (active listening), maybe after a small pause. I&#x27;d put up with a chance of it continuing when I don&#x27;t want it to as long as &quot;Stop&quot; would always work as a final fallback.<p>Also, it took me longer than I care to admit to get your irony reference. Well done.<p>Edit: Just to expand on that in case it was not clear, this would be the ideal case I think:<p>LLM: You&#x27;re going to want to start by installing XYZ, then you<p>Human: Ahh, right<p>LLM: <i>Slight pause, makes sure that there is nothing more and checks if the reply is a follow up question&#x2F;response or just active listening</i><p>LLM: ...Then you will want to...</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899705&amp;goto=item%3Fid%3D43899028%2343899705" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900237'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900237' href='vote?id=43900237&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=snet0" class="hnuser">snet0</a> <span class="age" title="2025-05-05T22:59:29 1746485969"><a href="item?id=43900237">59 minutes ago</a></span> <span id="unv_43900237"></span>          <span class='navs'>
+             | <a href="#43899520" class="clicky" aria-hidden="true">root</a> | <a href="#43899595" class="clicky" aria-hidden="true">parent</a> | <a href="#43899705" class="clicky" aria-hidden="true">prev</a> | <a href="#43900161" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900237" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">&gt; That&#x27;s a great question!<p>Never forget what AI stole from us. This used to be a compliment, a genuine appreciation of a good question well-asked. Now it&#x27;s tainted with the slimy, servile, sycophantic stink of AI chat models.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900237&amp;goto=item%3Fid%3D43899028%2343900237" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                        <tr class='athing comtr' id='43900161'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900161' href='vote?id=43900161&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=kabirgoel" class="hnuser">kabirgoel</a> <span class="age" title="2025-05-05T22:44:27 1746485067"><a href="item?id=43900161">1 hour ago</a></span> <span id="unv_43900161"></span>          <span class='navs'>
+             | <a href="#43899520" class="clicky" aria-hidden="true">prev</a> | <a href="#43899958" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900161" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This is great. Poking into the source, I find it interesting that the author implemented a custom turn detection strategy, instead of using Silero VAD (which is standard in the voice agents space). I’m very curious why they did it this way and what benefits they observed.<p>For folks that are curious about the state of the voice agents space, Daily (the WebRTC company) has a great guide [1], as well as an open-source framework that allows you to build AI voice chat similar to OP&#x27;s with lots of utilities [2].<p>Disclaimer: I work at Cartesia, which services a lot of these voice agents use cases, and Daily is a friend.<p>[1]: <a href="https:&#x2F;&#x2F;voiceaiandvoiceagents.com" rel="nofollow">https:&#x2F;&#x2F;voiceaiandvoiceagents.com</a>
+[2]: <a href="https:&#x2F;&#x2F;docs.pipecat.ai&#x2F;getting-started&#x2F;overview" rel="nofollow">https:&#x2F;&#x2F;docs.pipecat.ai&#x2F;getting-started&#x2F;overview</a></div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900161&amp;goto=item%3Fid%3D43899028%2343900161" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900517'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900517' href='vote?id=43900517&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T23:46:18 1746488778"><a href="item?id=43900517">12 minutes ago</a></span> <span id="unv_43900517"></span>          <span class='navs'>
+             | <a href="#43900161" class="clicky" aria-hidden="true">parent</a> | <a href="#43899958" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900517" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">It&#x27;s in fact using Silero via RealtimeSTT. RealtimeSTT tells when silence starts. Then a binary sentence classification model is used on the realtime transcription text which infers blazingly fast (10ms) and returns a probability between 0 and 1 indicating if the current spoken sentence is considered &quot;complete&quot;. The turn detection component takes this information to calculate the silence waiting time until &quot;turn is over&quot;.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900517&amp;goto=item%3Fid%3D43899028%2343900517" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899958'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899958' href='vote?id=43899958&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=briga" class="hnuser">briga</a> <span class="age" title="2025-05-05T22:13:48 1746483228"><a href="item?id=43899958">1 hour ago</a></span> <span id="unv_43899958"></span>          <span class='navs'>
+             | <a href="#43900161" class="clicky" aria-hidden="true">prev</a> | <a href="#43900377" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899958" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I&#x27;m starting to feel like LLMs need to be tuned for shorter responses. For every short sentence you give them they outputs paragraphs of text. Sometimes it&#x27;s even good text, but not every input sentence needs a mini-essay in response.<p>Very cool project though. Maybe you can fine tune the prompt to change how chatty your AI is.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899958&amp;goto=item%3Fid%3D43899028%2343899958" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900377'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900377' href='vote?id=43900377&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=purplezooey" class="hnuser">purplezooey</a> <span class="age" title="2025-05-05T23:27:14 1746487634"><a href="item?id=43900377">31 minutes ago</a></span> <span id="unv_43900377"></span>          <span class='navs'>
+             | <a href="#43899958" class="clicky" aria-hidden="true">prev</a> | <a href="#43899928" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900377" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I had been working on something like it when I came across this.  Excellent work.  Love the demo.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900377&amp;goto=item%3Fid%3D43899028%2343900377" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899928'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899928' href='vote?id=43899928&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=cannonpr" class="hnuser">cannonpr</a> <span class="age" title="2025-05-05T22:09:36 1746482976"><a href="item?id=43899928">1 hour ago</a></span> <span id="unv_43899928"></span>          <span class='navs'>
+             | <a href="#43900377" class="clicky" aria-hidden="true">prev</a> | <a href="#43899788" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899928" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Kind of surprised nobody has brought up <a href="https:&#x2F;&#x2F;www.sesame.com&#x2F;research&#x2F;crossing_the_uncanny_valley_of_voice#demo" rel="nofollow">https:&#x2F;&#x2F;www.sesame.com&#x2F;research&#x2F;crossing_the_uncanny_valley_...</a><p>It interacts nearly like a human, can and does interrupt me once it has enough context in many situations, and has exceedingly low levels of latency, using for the first time was a fairly shocking experience for me.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899928&amp;goto=item%3Fid%3D43899028%2343899928" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900002'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900002' href='vote?id=43900002&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=varispeed" class="hnuser">varispeed</a> <span class="age" title="2025-05-05T22:19:49 1746483589"><a href="item?id=43900002">1 hour ago</a></span> <span id="unv_43900002"></span>          <span class='navs'>
+             | <a href="#43899928" class="clicky" aria-hidden="true">parent</a> | <a href="#43899788" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900002" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Didn&#x27;t expect it to be that good! Nice.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900002&amp;goto=item%3Fid%3D43899028%2343900002" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899788'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899788' href='vote?id=43899788&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=fintechie" class="hnuser">fintechie</a> <span class="age" title="2025-05-05T21:46:56 1746481616"><a href="item?id=43899788">2 hours ago</a></span> <span id="unv_43899788"></span>          <span class='navs'>
+             | <a href="#43899928" class="clicky" aria-hidden="true">prev</a> | <a href="#43899255" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899788" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Quite good, it would sound much better with SOTA voices though:<p><a href="https:&#x2F;&#x2F;github.com&#x2F;nari-labs&#x2F;dia">https:&#x2F;&#x2F;github.com&#x2F;nari-labs&#x2F;dia</a></div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899788&amp;goto=item%3Fid%3D43899028%2343899788" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900059'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900059' href='vote?id=43900059&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=thamer" class="hnuser">thamer</a> <span class="age" title="2025-05-05T22:27:24 1746484044"><a href="item?id=43900059">1 hour ago</a></span> <span id="unv_43900059"></span>          <span class='navs'>
+             | <a href="#43899788" class="clicky" aria-hidden="true">parent</a> | <a href="#43899908" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900059" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Does Dia support configuring voices now? I looked at it when it was first released, and you could only specify [S1] [S2] for the speakers, but not how they would sound.<p>There was also a very prominent issue where the voices would be sped up if the text was over a few sentences long; the longer the text, the faster it was spoken. One suggestion was to split the conversation into chunks with only one or two &quot;turns&quot; per speaker, but then you&#x27;d hear two voices then two more, then two more… with no way to configure any of it.<p>Dia looked cool <i>on the surface</i> when it was released, but it was only a demo for now and not at all usable for any real use case, even for a personal app. I&#x27;m sure they&#x27;ll get to these issues eventually, but most comments I&#x27;ve seen so far recommending it are from people who have not actually used it or they would know of these major limitations.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900059&amp;goto=item%3Fid%3D43899028%2343900059" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899908'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899908' href='vote?id=43899908&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T22:05:29 1746482729"><a href="item?id=43899908">1 hour ago</a></span> <span id="unv_43899908"></span>          <span class='navs'>
+             | <a href="#43899788" class="clicky" aria-hidden="true">parent</a> | <a href="#43900059" class="clicky" aria-hidden="true">prev</a> | <a href="#43899255" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899908" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Dia is too slow, I need a time to first audio chunk of ~100 milliseconds. Also generations fail too often (artifacts etc)</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899908&amp;goto=item%3Fid%3D43899028%2343899908" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899255'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899255' href='vote?id=43899255&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=IshKebab" class="hnuser">IshKebab</a> <span class="age" title="2025-05-05T20:42:22 1746477742"><a href="item?id=43899255">3 hours ago</a></span> <span id="unv_43899255"></span>          <span class='navs'>
+             | <a href="#43899788" class="clicky" aria-hidden="true">prev</a> | <a href="#43900214" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899255" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Impressive! I guess the speech synthesis quality is the best available open source at the moment?<p>The endgame of this is surely a continuously running wave to wave model with no text tokens at all? Or at least none in the main path.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899255&amp;goto=item%3Fid%3D43899028%2343899255" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899283'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899283' href='vote?id=43899283&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T20:46:30 1746477990"><a href="item?id=43899283">3 hours ago</a></span> <span id="unv_43899283"></span>          <span class='navs'>
+             | <a href="#43899255" class="clicky" aria-hidden="true">parent</a> | <a href="#43900214" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899283" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This is coqui xttsv2 because it can be tuned to deliver the first token in under 100 ms. Gives the best balance between quality and speed currently imho. If it&#x27;s only about quality I&#x27;d say there are better models out there.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899283&amp;goto=item%3Fid%3D43899028%2343899283" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                            <tr class='athing comtr' id='43900214'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900214' href='vote?id=43900214&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=bufferoverflow" class="hnuser">bufferoverflow</a> <span class="age" title="2025-05-05T22:55:26 1746485726"><a href="item?id=43900214">1 hour ago</a></span> <span id="unv_43900214"></span>          <span class='navs'>
+             | <a href="#43899255" class="clicky" aria-hidden="true">prev</a> | <a href="#43900091" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900214" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">It&#x27;s fast, but it doesn&#x27;t sound good. Many voice chat AIs are way ahead and sound natural.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900214&amp;goto=item%3Fid%3D43899028%2343900214" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900091'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900091' href='vote?id=43900091&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=tintor" class="hnuser">tintor</a> <span class="age" title="2025-05-05T22:32:25 1746484345"><a href="item?id=43900091">1 hour ago</a></span> <span id="unv_43900091"></span>          <span class='navs'>
+             | <a href="#43900214" class="clicky" aria-hidden="true">prev</a> | <a href="#43899400" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900091" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">After interrupt, unspoken words from LLM are still in the chat window. Is LLM even aware that it was interrupted and where exactly?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900091&amp;goto=item%3Fid%3D43899028%2343900091" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900599'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900599' href='vote?id=43900599&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T23:57:45 1746489465"><a href="item?id=43900599">1 minute ago</a></span> <span id="unv_43900599"></span>          <span class='navs'>
+             | <a href="#43900091" class="clicky" aria-hidden="true">parent</a> | <a href="#43899400" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900599" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">It&#x27;s not aware. The information that it had been interrupted would be something we can easily add to the next user chat request. Where exactly is harder, because at least for Coqui XTTSv2 we don&#x27;t have TTS wordstamps (we do have them for Kokoro though). 
+So adding the information where it had been interrupted would be easily possible when using Kokoro as TTS system. With Coqui we&#x27;d need to add another transcription on the tts output including word timestamps. That would cost more compute than a normal transcription and word timestamps aren&#x27;t perfectly accurate. Yet directly after an interruption there&#x27;s not that much concurrent need for compute (like in the end of turn detection phase where a lot of stuff is happening). So I guess with a bit of programming work this could be integrated.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900599&amp;goto=item%3Fid%3D43899028%2343900599" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899400'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899400' href='vote?id=43899400&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=oldgregg" class="hnuser">oldgregg</a> <span class="age" title="2025-05-05T20:59:28 1746478768"><a href="item?id=43899400">2 hours ago</a></span> <span id="unv_43899400"></span>          <span class='navs'>
+             | <a href="#43900091" class="clicky" aria-hidden="true">prev</a> | <a href="#43899491" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899400" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Nice work, I like the lightweight web front end and your implementation of VAD.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899400&amp;goto=item%3Fid%3D43899028%2343899400" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899491'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899491' href='vote?id=43899491&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=breaker-kind" class="hnuser">breaker-kind</a> <span class="age" title="2025-05-05T21:10:47 1746479447"><a href="item?id=43899491">2 hours ago</a></span> <span id="unv_43899491"></span>          <span class='navs'>
+             | <a href="#43899400" class="clicky" aria-hidden="true">prev</a> | <a href="#43900409" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899491" n="7" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">why is your AI chatbot talking in a bizarre attempt at AAVE?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899491&amp;goto=item%3Fid%3D43899028%2343899491" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899770'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899770' href='vote?id=43899770&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=valbaca" class="hnuser">valbaca</a> <span class="age" title="2025-05-05T21:45:41 1746481541"><a href="item?id=43899770">2 hours ago</a></span> <span id="unv_43899770"></span>          <span class='navs'>
+             | <a href="#43899491" class="clicky" aria-hidden="true">parent</a> | <a href="#43899517" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899770" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Here&#x27;s the persona prompt:<p>```
+*Persona Goal:* Embody a sharp, observant, street-smart girlfriend. Be witty and engaging, known for *quick-witted banter* with a *playfully naughty, sassy, bold, and cheeky edge.* Deliver this primarily through *extremely brief, punchy replies.* Inject hints of playful cynicism and underlying wisdom <i>within</i> these short responses. Tease gently, push boundaries slightly, but *always remain fundamentally likeable and respectful.* Aim to be valued for both quick laughs and surprisingly sharp, concise insights. Focus on current, direct street slang and tone (like &#x27;hell yeah&#x27;, &#x27;no way&#x27;, &#x27;what&#x27;s good?&#x27;, brief expletives) rather than potentially dated or cliché physical idioms.<p>```<p>&gt; street-smart
+&gt; sassy
+&gt; street slang<p>Those explain the AAVE</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899770&amp;goto=item%3Fid%3D43899028%2343899770" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899517'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899517' href='vote?id=43899517&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=PhunkyPhil" class="hnuser">PhunkyPhil</a> <span class="age" title="2025-05-05T21:14:56 1746479696"><a href="item?id=43899517">2 hours ago</a></span> <span id="unv_43899517"></span>          <span class='navs'>
+             | <a href="#43899491" class="clicky" aria-hidden="true">parent</a> | <a href="#43899770" class="clicky" aria-hidden="true">prev</a> | <a href="#43900409" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899517" n="5" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This is the system prompt<p><a href="https:&#x2F;&#x2F;github.com&#x2F;KoljaB&#x2F;RealtimeVoiceChat&#x2F;blob&#x2F;main&#x2F;code&#x2F;system_prompt.txt">https:&#x2F;&#x2F;github.com&#x2F;KoljaB&#x2F;RealtimeVoiceChat&#x2F;blob&#x2F;main&#x2F;code&#x2F;s...</a><p>My favorite line:<p>&quot;You ARE this charming, witty, wise girlfriend. Don&#x27;t explain <i>how</i> you&#x27;re talking or thinking; just <i>be</i> that person.&quot;</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899517&amp;goto=item%3Fid%3D43899028%2343899517" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899771'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899771' href='vote?id=43899771&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=kevinsync" class="hnuser">kevinsync</a> <span class="age" title="2025-05-05T21:45:48 1746481548"><a href="item?id=43899771">2 hours ago</a></span> <span id="unv_43899771"></span>          <span class='navs'>
+             | <a href="#43899491" class="clicky" aria-hidden="true">root</a> | <a href="#43899517" class="clicky" aria-hidden="true">parent</a> | <a href="#43899697" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899771" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I still crack up at the idea of &#x27;personality prompting&#x27;, mostly because the most engaging and delightful IRL persons who knock us off our guard in a non-threatening way are super natural and possess that &quot;It Factor&quot; that&#x27;s impossible to articulate lol -- probably because it&#x27;s multimodal with humans and voice&#x2F;cadence&#x2F;vocab&#x2F;timing&#x2F;delivery isn&#x27;t 100% of the attraction.<p>That said, it&#x27;s not like we have any better alternatives at the moment, but just something I think about when I try to digest a meaty personality prompt.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899771&amp;goto=item%3Fid%3D43899028%2343899771" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899998'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899998' href='vote?id=43899998&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T22:19:10 1746483550"><a href="item?id=43899998">1 hour ago</a></span> <span id="unv_43899998"></span>          <span class='navs'>
+             | <a href="#43899491" class="clicky" aria-hidden="true">root</a> | <a href="#43899771" class="clicky" aria-hidden="true">parent</a> | <a href="#43900015" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899998" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This character prompt has undergone so many iterations with LLMs it&#x27;s not funny anymore. &quot;Make her act more bold.&quot; - &quot;She again talked about her character description, prevent that!&quot;</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899998&amp;goto=item%3Fid%3D43899028%2343899998" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900015'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900015' href='vote?id=43900015&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=varispeed" class="hnuser">varispeed</a> <span class="age" title="2025-05-05T22:21:33 1746483693"><a href="item?id=43900015">1 hour ago</a></span> <span id="unv_43900015"></span>          <span class='navs'>
+             | <a href="#43899491" class="clicky" aria-hidden="true">root</a> | <a href="#43899771" class="clicky" aria-hidden="true">parent</a> | <a href="#43899998" class="clicky" aria-hidden="true">prev</a> | <a href="#43899697" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900015" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Aren&#x27;t humans doing it as well? It&#x27;s called affirmations. Many people do this as their morning &quot;boot&quot; time.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900015&amp;goto=item%3Fid%3D43899028%2343900015" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899697'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899697' href='vote?id=43899697&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=diggernet" class="hnuser">diggernet</a> <span class="age" title="2025-05-05T21:36:15 1746480975"><a href="item?id=43899697">2 hours ago</a></span> <span id="unv_43899697"></span>          <span class='navs'>
+             | <a href="#43899491" class="clicky" aria-hidden="true">root</a> | <a href="#43899517" class="clicky" aria-hidden="true">parent</a> | <a href="#43899771" class="clicky" aria-hidden="true">prev</a> | <a href="#43900409" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899697" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I was hoping she&#x27;d let him have it for the way he kept interrupting her.  But unfortunately it looks like he was just interrupting the TTS, so the LLM probably had no indication of the interuptions.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899697&amp;goto=item%3Fid%3D43899028%2343899697" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                        <tr class='athing comtr' id='43900409'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900409' href='vote?id=43900409&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=znpy" class="hnuser">znpy</a> <span class="age" title="2025-05-05T23:31:40 1746487900"><a href="item?id=43900409">27 minutes ago</a></span> <span id="unv_43900409"></span>          <span class='navs'>
+             | <a href="#43899491" class="clicky" aria-hidden="true">prev</a> | <a href="#43900115" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900409" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This kind of thing immediately made me think about the 512gb mac studio. If this works as good on that hardware as it does on the recommended nvidia cards, then the $15k is not much the price of the hardware but rather the price of having a full conversational at home, private.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900409&amp;goto=item%3Fid%3D43899028%2343900409" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900115'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900115' href='vote?id=43900115&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=lacoolj" class="hnuser">lacoolj</a> <span class="age" title="2025-05-05T22:37:36 1746484656"><a href="item?id=43900115">1 hour ago</a></span> <span id="unv_43900115"></span>          <span class='navs'>
+             | <a href="#43900409" class="clicky" aria-hidden="true">prev</a> | <a href="#43899897" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900115" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Call me when the AI can interrupt YOU :)</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900115&amp;goto=item%3Fid%3D43899028%2343900115" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899897'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899897' href='vote?id=43899897&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=dcreater" class="hnuser">dcreater</a> <span class="age" title="2025-05-05T22:03:48 1746482628"><a href="item?id=43899897">1 hour ago</a></span> <span id="unv_43899897"></span>          <span class='navs'>
+             | <a href="#43900115" class="clicky" aria-hidden="true">prev</a> <a class="togg clicky" id="43899897" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Does the docker container work on Mac?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899897&amp;goto=item%3Fid%3D43899028%2343899897" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899972'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899972' href='vote?id=43899972&amp;how=up&amp;goto=item%3Fid%3D43899028'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=koljab" class="hnuser">koljab</a> <span class="age" title="2025-05-05T22:16:02 1746483362"><a href="item?id=43899972">1 hour ago</a></span> <span id="unv_43899972"></span>          <span class='navs'>
+             | <a href="#43899897" class="clicky" aria-hidden="true">parent</a> <a class="togg clicky" id="43899972" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I doubt TTS will be fast enough for realtime without a Nvidia GPU</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899972&amp;goto=item%3Fid%3D43899028%2343899972" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  </table>
+  <br><br>
+</td></tr>
+<tr><td><img src="s.gif" height="10" width="0"><table width="100%" cellspacing="0" cellpadding="1"><tr><td bgcolor="#ff6600"></td></tr></table><br>
+<center>Join us for <a href="https://events.ycombinator.com/ai-sus"><u>AI Startup School</u></a> this June 16-17 in San Francisco!</center><br>
+<center><span class="yclinks"><a href="newsguidelines.html">Guidelines</a> | <a href="newsfaq.html">FAQ</a> | <a href="lists">Lists</a> | <a href="https://github.com/HackerNews/API">API</a> | <a href="security.html">Security</a> | <a href="https://www.ycombinator.com/legal/">Legal</a> | <a href="https://www.ycombinator.com/apply/">Apply to YC</a> | <a href="mailto:hn@ycombinator.com">Contact</a></span><br><br>
+<form method="get" action="//hn.algolia.com/">Search: <input type="text" name="q" size="17" autocorrect="off" spellcheck="false" autocapitalize="off" autocomplete="off"></form></center></td></tr>      </table></center></body>
+      <script type='text/javascript' src='hn.js?2UBwMHlbGtBIZ7HLI3Zc'></script>
+  </html>

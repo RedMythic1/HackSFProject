@@ -333,7 +333,7 @@ class HackerNewsSummarizer:
     
     def offline_summarize(self, text: str) -> str:
         """Quick summarization using Hugging Face BART model"""
-        max_input_length = 4096
+        max_input_length = 2048  # Reduced from 4096 to speed up processing
         if len(text.split()) > max_input_length:
             text = " ".join(text.split()[:max_input_length])
         
@@ -351,7 +351,7 @@ class HackerNewsSummarizer:
         text = re.sub(r'(\w\.\w\.)\s+', r'\1', text)
         return text.strip()
     
-    def sample_text(self, text: str, target_words: int = 2000) -> str:
+    def sample_text(self, text: str, target_words: int = 1000) -> str:  # Reduced target words from 2000 to 1000 for faster processing
         """Sample the text to reduce volume while preserving coherence"""
         word_count = len(text.split())
         
@@ -368,7 +368,7 @@ class HackerNewsSummarizer:
         sentences = re.split(r'(?<=[.!?])\s+', text)
         total_sentences = len(sentences)
         
-        if total_sentences <= 20:  # If very few sentences, return the original
+        if total_sentences <= 10:  # Reduced from 20 to 10 for quicker decision
             return text
         
         # Calculate dynamic skip count
@@ -400,7 +400,7 @@ class HackerNewsSummarizer:
             self.log('error', f"Error extracting subjects: {e}")
             return ""
     
-    def split_into_chunks(self, input_string: str, chunk_size: int = 500) -> List[Dict]:
+    def split_into_chunks(self, input_string: str, chunk_size: int = 300) -> List[Dict]:  # Reduced chunk size from 500 to 300 for faster processing
         """Split input text into chunks for processing"""
         # Efficient sentence splitting
         sentences = re.split(r'(?<=[.!?])\s+', input_string)

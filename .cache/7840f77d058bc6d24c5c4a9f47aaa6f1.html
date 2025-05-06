@@ -1,0 +1,624 @@
+<html lang="en" op="item"><head><meta name="referrer" content="origin"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" type="text/css" href="news.css?2UBwMHlbGtBIZ7HLI3Zc">
+        <link rel="icon" href="y18.svg">
+    <link rel="canonical" href="https://news.ycombinator.com/item?id=43899236"/>            <title>Replacing Kubernetes with systemd (2024) | Hacker News</title></head><body><center><table id="hnmain" border="0" cellpadding="0" cellspacing="0" width="85%" bgcolor="#f6f6ef">
+        <tr><td bgcolor="#ff6600"><table border="0" cellpadding="0" cellspacing="0" width="100%" style="padding:2px"><tr><td style="width:18px;padding-right:4px"><a href="https://news.ycombinator.com"><img src="y18.svg" width="18" height="18" style="border:1px white solid; display:block"></a></td>
+                  <td style="line-height:12pt; height:10px;"><span class="pagetop"><b class="hnname"><a href="news">Hacker News</a></b>
+                            <a href="newest">new</a> | <a href="front">past</a> | <a href="newcomments">comments</a> | <a href="ask">ask</a> | <a href="show">show</a> | <a href="jobs">jobs</a> | <a href="submit" rel="nofollow">submit</a>            </span></td><td style="text-align:right;padding-right:4px;"><span class="pagetop">
+                              <a href="login?goto=item%3Fid%3D43899236">login</a>
+                          </span></td>
+              </tr></table></td></tr>
+<tr id="pagespace" title="Replacing Kubernetes with systemd (2024)" style="height:10px"></tr><tr><td><table class="fatitem" border="0">
+        <tr class='athing submission' id='43899236'>
+      <td align="right" valign="top" class="title"><span class="rank"></span></td>      <td valign="top" class="votelinks"><center><a id='up_43899236' href='vote?id=43899236&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center></td><td class="title"><span class="titleline"><a href="https://blog.yaakov.online/replacing-kubernetes-with-systemd/">Replacing Kubernetes with systemd (2024)</a><span class="sitebit comhead"> (<a href="from?site=yaakov.online"><span class="sitestr">yaakov.online</span></a>)</span></span></td></tr><tr><td colspan="2"></td><td class="subtext"><span class="subline">
+          <span class="score" id="score_43899236">94 points</span> by <a href="user?id=birdculture" class="hnuser">birdculture</a> <span class="age" title="2025-05-05T20:40:14 1746477614"><a href="item?id=43899236">3 hours ago</a></span> <span id="unv_43899236"></span> | <a href="hide?id=43899236&amp;goto=item%3Fid%3D43899236">hide</a> | <a href="https://hn.algolia.com/?query=Replacing%20Kubernetes%20with%20systemd&type=story&dateRange=all&sort=byDate&storyText=false&prefix&page=0" class="hnpast">past</a> | <a href="fave?id=43899236&amp;auth=1647bd9c3edea0266613b7c3bd55d1b75b932302">favorite</a> | <a href="item?id=43899236">54&nbsp;comments</a>        </span>
+              </td></tr>
+            <tr><td style="height:10px"></td></tr><tr><td colspan="2"></td><td><form action="comment" method="post"><input type="hidden" name="parent" value="43899236"><input type="hidden" name="goto" value="item?id=43899236"><input type="hidden" name="hmac" value="b27feefc4c1f398bde4235c3a72969ca30ac7c31"><textarea name="text" rows="8" cols="80" wrap="virtual"></textarea><br><br>
+<input type="submit" value="add comment"></form></td></tr>  </table><br><br><table border="0" class='comment-tree'>
+            <tr class='athing comtr' id='43900604'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900604' href='vote?id=43900604&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=kgeist" class="hnuser">kgeist</a> <span class="age" title="2025-05-05T23:59:16 1746489556"><a href="item?id=43900604">0 minutes ago</a></span> <span id="unv_43900604"></span>          <span class='navs'>
+             | <a href="#43900595" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900604" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">When a service is updated like this:<p>- is there downtime? (old service down, new service hasn&#x27;t started yet)<p>- does it do health checks before directing traffic? (the process is up, but its HTTP service hasn&#x27;t initialized yet)<p>Or it&#x27;s solved with nginx which sits in front of the containers? Articles like this often omit such details. Or no one cares about intermittent downtimes?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900604&amp;goto=item%3Fid%3D43899236%2343900604" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900595'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900595' href='vote?id=43900595&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=mattrighetti" class="hnuser">mattrighetti</a> <span class="age" title="2025-05-05T23:57:13 1746489433"><a href="item?id=43900595">2 minutes ago</a></span> <span id="unv_43900595"></span>          <span class='navs'>
+             | <a href="#43900604" class="clicky" aria-hidden="true">prev</a> | <a href="#43900516" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900595" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I host all of my hobby projects on a couple of raspi zeros using systemd alone, zero containers. Haven’t had a problem since when I started using it. Single binaries are super easy to setup and things rarely break, you have auto restart and launch at startup.<p>All of the binaries get generated on GitHub using Actions and when I need to update stuff I login using ssh and execute a script that uses a GitHub token to download and replace the binary, if something is not okay I also have a rollback script that switches things back to its previous setup. It’s as simple as it gets and it’s been my go-to for 2 years now.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900595&amp;goto=item%3Fid%3D43899236%2343900595" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900516'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900516' href='vote?id=43900516&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=mattbillenstein" class="hnuser">mattbillenstein</a> <span class="age" title="2025-05-05T23:46:14 1746488774"><a href="item?id=43900516">13 minutes ago</a></span> <span id="unv_43900516"></span>          <span class='navs'>
+             | <a href="#43900595" class="clicky" aria-hidden="true">prev</a> | <a href="#43900575" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900516" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I never moved to containers and seeing the churn the community has went through with all of this complicated container tooling, I&#x27;m happy orchestrating small-scale systems with supervisord and saltstack-like chatops deployments - it&#x27;s just stupid simple by comparison and provides parity between dev and prod environments that&#x27;s nice.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900516&amp;goto=item%3Fid%3D43899236%2343900516" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900584'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900584' href='vote?id=43900584&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=baggy_trough" class="hnuser">baggy_trough</a> <span class="age" title="2025-05-05T23:55:46 1746489346"><a href="item?id=43900584">3 minutes ago</a></span> <span id="unv_43900584"></span>          <span class='navs'>
+             | <a href="#43900516" class="clicky" aria-hidden="true">parent</a> | <a href="#43900575" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900584" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">try the built-in systemd containers - via nspawn. Underrated tool!</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900584&amp;goto=item%3Fid%3D43899236%2343900584" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43900575'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900575' href='vote?id=43900575&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=dorongrinstein" class="hnuser">dorongrinstein</a> <span class="age" title="2025-05-05T23:54:57 1746489297"><a href="item?id=43900575">4 minutes ago</a></span> <span id="unv_43900575"></span>          <span class='navs'>
+             | <a href="#43900516" class="clicky" aria-hidden="true">prev</a> | <a href="#43900468" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900575" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">At <a href="https:&#x2F;&#x2F;controlplane.com" rel="nofollow">https:&#x2F;&#x2F;controlplane.com</a> we give you the power of Kubernetes without the toil of k8s. A line of code gets you a tls terminated endpoint that is geo routed to any cloud region and on-prem location. We created the Global Virtual Cloud that let&#x27;s you run compute on any cloud, on premises hardware or vm&#x27;s and any combination. I left vmware to start the company because the cognitive load on engineers was becoming ridiculous. Logs, metrics, tracing, service discovery, TLS, DNS, service mesh, network tunnels and much more - we made it easy. We do to the cloud what vmware did to hardware - you don&#x27;t care what underlying cloud you&#x27;re on. Yet you can use ANY backing service of AWS, GCP and Azure - as if they merged and your workloads are portable - they run unmodified anywhere and can consume any combination of services like RDS, Big Query, Cosmos db and any other. It is as if the cloud providers decided to merge and then lower your cost by 60-80%.<p>Check it out. 
+Doron</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900575&amp;goto=item%3Fid%3D43899236%2343900575" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900468'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900468' href='vote?id=43900468&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=thebeardisred" class="hnuser">thebeardisred</a> <span class="age" title="2025-05-05T23:39:25 1746488365"><a href="item?id=43900468">20 minutes ago</a></span> <span id="unv_43900468"></span>          <span class='navs'>
+             | <a href="#43900575" class="clicky" aria-hidden="true">prev</a> | <a href="#43899840" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900468" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Funny, because when we built Fleet (<a href="https:&#x2F;&#x2F;github.com&#x2F;coreos&#x2F;fleet&#x2F;">https:&#x2F;&#x2F;github.com&#x2F;coreos&#x2F;fleet&#x2F;</a>) Kubernetes didn&#x27;t exist.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900468&amp;goto=item%3Fid%3D43899236%2343900468" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899840'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899840' href='vote?id=43899840&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=drivenextfunc" class="hnuser">drivenextfunc</a> <span class="age" title="2025-05-05T21:53:50 1746482030"><a href="item?id=43899840">2 hours ago</a></span> <span id="unv_43899840"></span>          <span class='navs'>
+             | <a href="#43900468" class="clicky" aria-hidden="true">prev</a> | <a href="#43899664" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899840" n="20" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I share the author&#x27;s sentiment completely. At my day job, I manage multiple Kubernetes clusters running dozens of microservices with relative ease. However, for my hobby projects—which generate no revenue and thus have minimal budgets—I find myself in a frustrating position: desperately wanting to use Kubernetes but unable to due to its resource requirements. Kubernetes is simply too resource-intensive to run on a $10&#x2F;month VPS with just 1 shared vCPU and 2GB of RAM.<p>This limitation creates numerous headaches. Instead of Deployments, I&#x27;m stuck with manual docker compose up&#x2F;down commands over SSH. Rather than using Ingress, I have to rely on Traefik&#x27;s container discovery functionality. Recently, I even wrote a small script to manage crontab idempotently because I can&#x27;t use CronJobs. I&#x27;m constantly reinventing solutions to problems that Kubernetes already solves—just less efficiently.<p>What I really wish for is a lightweight alternative offering a Kubernetes-compatible API that runs well on inexpensive VPS instances. The gap between enterprise-grade container orchestration and affordable hobby hosting remains frustratingly wide.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899840&amp;goto=item%3Fid%3D43899236%2343899840" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899871'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899871' href='vote?id=43899871&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=sweettea" class="hnuser">sweettea</a> <span class="age" title="2025-05-05T21:58:40 1746482320"><a href="item?id=43899871">2 hours ago</a></span> <span id="unv_43899871"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">parent</a> | <a href="#43900004" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899871" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Have you seen k0s or k3s? Lots of stories about folks using these to great success on a tiny scale, e.g. <a href="https:&#x2F;&#x2F;news.ycombinator.com&#x2F;item?id=43593269">https:&#x2F;&#x2F;news.ycombinator.com&#x2F;item?id=43593269</a></div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899871&amp;goto=item%3Fid%3D43899236%2343899871" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899939'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899939' href='vote?id=43899939&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=mikepurvis" class="hnuser">mikepurvis</a> <span class="age" title="2025-05-05T22:11:17 1746483077"><a href="item?id=43899939">1 hour ago</a></span> <span id="unv_43899939"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">root</a> | <a href="#43899871" class="clicky" aria-hidden="true">parent</a> | <a href="#43900300" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899939" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Or microk8s. I&#x27;m curious what it is about k8s that is sucking up all these resources. Surely the control plane is mostly idle when you aren&#x27;t doing things with it?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899939&amp;goto=item%3Fid%3D43899236%2343899939" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900300'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900300' href='vote?id=43900300&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=Seattle3503" class="hnuser">Seattle3503</a> <span class="age" title="2025-05-05T23:12:57 1746486777"><a href="item?id=43900300">46 minutes ago</a></span> <span id="unv_43900300"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">root</a> | <a href="#43899871" class="clicky" aria-hidden="true">parent</a> | <a href="#43899939" class="clicky" aria-hidden="true">prev</a> | <a href="#43900004" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900300" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">How hard is it to host a Postgres server on one node and access it from another?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900300&amp;goto=item%3Fid%3D43899236%2343900300" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43900004'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900004' href='vote?id=43900004&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=Alupis" class="hnuser">Alupis</a> <span class="age" title="2025-05-05T22:20:07 1746483607"><a href="item?id=43900004">1 hour ago</a></span> <span id="unv_43900004"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">parent</a> | <a href="#43899871" class="clicky" aria-hidden="true">prev</a> | <a href="#43899948" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900004" n="5" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">&gt; Kubernetes is simply too resource-intensive to run on a $10&#x2F;month VPS with just 1 shared vCPU and 2GB of RAM<p>I hate sounding like an Oracle shill, but Oracle Cloud&#x27;s Free Tier is hands-down the most generous. It can support running quite a bit, including a small k8s cluster[1]. Their k8s backplane service is also free.<p>They&#x27;ll give you 4 x ARM64 cores and 24GB of ram for free. You can split this into 1-4 nodes, depending on what you want.<p>[1] <a href="https:&#x2F;&#x2F;www.oracle.com&#x2F;cloud&#x2F;free&#x2F;" rel="nofollow">https:&#x2F;&#x2F;www.oracle.com&#x2F;cloud&#x2F;free&#x2F;</a></div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900004&amp;goto=item%3Fid%3D43899236%2343900004" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900478'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900478' href='vote?id=43900478&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=lemoncucumber" class="hnuser">lemoncucumber</a> <span class="age" title="2025-05-05T23:40:34 1746488434"><a href="item?id=43900478">18 minutes ago</a></span> <span id="unv_43900478"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">root</a> | <a href="#43900004" class="clicky" aria-hidden="true">parent</a> | <a href="#43900094" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900478" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">One thing to watch out for is that you pick your &quot;home region&quot; when you create your account. This cannot be changed later, and your &quot;Always Free&quot; instances can only be created in your home region (the non-free tier doesn&#x27;t have that restriction).<p>So choose your home region carefully. Also, note that some regions have multiple availability domains (OCI-speak for availability zones) but some only have one AD. Though if you&#x27;re only running one free instance then ADs don&#x27;t really matter.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900478&amp;goto=item%3Fid%3D43899236%2343900478" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900094'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900094' href='vote?id=43900094&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=waveringana" class="hnuser">waveringana</a> <span class="age" title="2025-05-05T22:32:37 1746484357"><a href="item?id=43900094">1 hour ago</a></span> <span id="unv_43900094"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">root</a> | <a href="#43900004" class="clicky" aria-hidden="true">parent</a> | <a href="#43900478" class="clicky" aria-hidden="true">prev</a> | <a href="#43899948" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900094" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">the catch is: no commercial usage and half the time you try to spin up an instance itll tell you theres no room left</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900094&amp;goto=item%3Fid%3D43899236%2343900094" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900151'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900151' href='vote?id=43900151&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=SOLAR_FIELDS" class="hnuser">SOLAR_FIELDS</a> <span class="age" title="2025-05-05T22:43:24 1746485004"><a href="item?id=43900151">1 hour ago</a></span> <span id="unv_43900151"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">root</a> | <a href="#43900094" class="clicky" aria-hidden="true">parent</a> | <a href="#43900213" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900151" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">That limitation (spinning up an instance) only exists if you don&#x27;t put a payment card in. If you put a payment card in, it goes away immediately. You don&#x27;t have to actually pay anything, you can provision the always free resources, but obviously in this regard you have to ensure that you don&#x27;t accidentally provision something with cost. I used terraform to make my little kube cluster on there and have not had a cost event at all in over 1.5 years. I think at one point I accidentally provisioned a volume or something and it cost me like one cent.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900151&amp;goto=item%3Fid%3D43899236%2343900151" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900213'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900213' href='vote?id=43900213&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=Alupis" class="hnuser">Alupis</a> <span class="age" title="2025-05-05T22:55:24 1746485724"><a href="item?id=43900213">1 hour ago</a></span> <span id="unv_43900213"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">root</a> | <a href="#43900094" class="clicky" aria-hidden="true">parent</a> | <a href="#43900151" class="clicky" aria-hidden="true">prev</a> | <a href="#43899948" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900213" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">&gt; no commercial usage<p>I think that&#x27;s if you are literally on their free tier, vs. having a billable account which doesn&#x27;t accumulate enough charges to be billed.<p>Similar to the sibling comment - you add a credit card and set yourself up to be billed (which removes you from the &quot;free tier&quot;), but you are still granted the resources monthly for free. If you exceed your allocation, they bill the difference.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900213&amp;goto=item%3Fid%3D43899236%2343900213" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                        <tr class='athing comtr' id='43899948'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899948' href='vote?id=43899948&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=404mm" class="hnuser">404mm</a> <span class="age" title="2025-05-05T22:12:17 1746483137"><a href="item?id=43899948">1 hour ago</a></span> <span id="unv_43899948"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">parent</a> | <a href="#43900004" class="clicky" aria-hidden="true">prev</a> | <a href="#43899864" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899948" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I found k3s to be a happy medium. It feels very lean and works well even on a Pi, and scales ok to a few node cluster if needed. You can even host the database on a remote mysql server, if local sqlite is too much IO.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899948&amp;goto=item%3Fid%3D43899236%2343899948" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899864'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899864' href='vote?id=43899864&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=thenewwazoo" class="hnuser">thenewwazoo</a> <span class="age" title="2025-05-05T21:57:53 1746482273"><a href="item?id=43899864">2 hours ago</a></span> <span id="unv_43899864"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">parent</a> | <a href="#43899948" class="clicky" aria-hidden="true">prev</a> | <a href="#43900423" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899864" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">&gt; I&#x27;m constantly reinventing solutions to problems that Kubernetes already solves—just less efficiently.<p>But you&#x27;ve already said yourself that the cost of using K8s is too high. In one sense, you&#x27;re solving those solutions <i>more</i> efficiently, it just depends on the axis you use to measure things.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899864&amp;goto=item%3Fid%3D43899236%2343899864" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900423'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900423' href='vote?id=43900423&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=vrosas" class="hnuser">vrosas</a> <span class="age" title="2025-05-05T23:32:54 1746487974"><a href="item?id=43900423">26 minutes ago</a></span> <span id="unv_43900423"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">parent</a> | <a href="#43899864" class="clicky" aria-hidden="true">prev</a> | <a href="#43899900" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900423" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Why not just use something like Cloud Run? If you&#x27;re only running a microVM deploying it there will probably be at or near free.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900423&amp;goto=item%3Fid%3D43899236%2343900423" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899900'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899900' href='vote?id=43899900&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=nvarsj" class="hnuser">nvarsj</a> <span class="age" title="2025-05-05T22:04:14 1746482654"><a href="item?id=43899900">1 hour ago</a></span> <span id="unv_43899900"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">parent</a> | <a href="#43900423" class="clicky" aria-hidden="true">prev</a> | <a href="#43900134" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899900" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Just do it like the olden days, use ansible or similar.<p>I have a couple dedicated servers I fully manage with ansible. It&#x27;s docker compose on steroids. Use traefik and labeling to handle reverse proxy and tls certs in a generic way, with authelia as simple auth provider. There&#x27;s a lot of example projects on github.<p>A weekend of setup and you have a pretty easy to manage system.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899900&amp;goto=item%3Fid%3D43899236%2343899900" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900039'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900039' href='vote?id=43900039&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=nicce" class="hnuser">nicce</a> <span class="age" title="2025-05-05T22:25:04 1746483904"><a href="item?id=43900039">1 hour ago</a></span> <span id="unv_43900039"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">root</a> | <a href="#43899900" class="clicky" aria-hidden="true">parent</a> | <a href="#43900134" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900039" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">What is the advantage of traefik over oldschool Nginx?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900039&amp;goto=item%3Fid%3D43899236%2343900039" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900412'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900412' href='vote?id=43900412&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=gonzo41" class="hnuser">gonzo41</a> <span class="age" title="2025-05-05T23:31:58 1746487918"><a href="item?id=43900412">27 minutes ago</a></span> <span id="unv_43900412"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">root</a> | <a href="#43900039" class="clicky" aria-hidden="true">parent</a> | <a href="#43900134" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900412" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">There&#x27;s very little advantage IMO. I&#x27;ve used both. I always end up back at Nginx. Traefik was just another configuration layer that got in the way of things.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900412&amp;goto=item%3Fid%3D43899236%2343900412" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                        <tr class='athing comtr' id='43900134'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900134' href='vote?id=43900134&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=czhu12" class="hnuser">czhu12</a> <span class="age" title="2025-05-05T22:40:53 1746484853"><a href="item?id=43900134">1 hour ago</a></span> <span id="unv_43900134"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">parent</a> | <a href="#43899900" class="clicky" aria-hidden="true">prev</a> | <a href="#43900018" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900134" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This is exactly why I built <a href="https:&#x2F;&#x2F;canine.sh" rel="nofollow">https:&#x2F;&#x2F;canine.sh</a> -- basically for indie hackers to have the full experience of Heroku with the power and portability of Kubernetes.<p>For single server setups, it uses k3s, which takes up ~200MB of memory on your host machine. Its not ideal, but the pain of trying to wrangle docker deployments, and the cheapness of hetzner made it worth it.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900134&amp;goto=item%3Fid%3D43899236%2343900134" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900018'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900018' href='vote?id=43900018&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=kartikarti" class="hnuser">kartikarti</a> <span class="age" title="2025-05-05T22:22:35 1746483755"><a href="item?id=43900018">1 hour ago</a></span> <span id="unv_43900018"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">parent</a> | <a href="#43900134" class="clicky" aria-hidden="true">prev</a> | <a href="#43900016" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900018" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Virtual Kubelet is one step forward towards Kubernetes as an API<p><a href="https:&#x2F;&#x2F;github.com&#x2F;virtual-kubelet&#x2F;virtual-kubelet">https:&#x2F;&#x2F;github.com&#x2F;virtual-kubelet&#x2F;virtual-kubelet</a></div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900018&amp;goto=item%3Fid%3D43899236%2343900018" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900016'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900016' href='vote?id=43900016&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=investa" class="hnuser">investa</a> <span class="age" title="2025-05-05T22:21:40 1746483700"><a href="item?id=43900016">1 hour ago</a></span> <span id="unv_43900016"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">parent</a> | <a href="#43900018" class="clicky" aria-hidden="true">prev</a> | <a href="#43900280" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900016" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">SSH up&#x2F;down can be scripted.<p>Or maybe look into Kamal?<p>Or use Digital Ocean app service. Got integration, cheap, just run a container. But get your postgres from a cheaper VC funded shop :)</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900016&amp;goto=item%3Fid%3D43899236%2343900016" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900280'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900280' href='vote?id=43900280&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=singron" class="hnuser">singron</a> <span class="age" title="2025-05-05T23:08:18 1746486498"><a href="item?id=43900280">51 minutes ago</a></span> <span id="unv_43900280"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">parent</a> | <a href="#43900016" class="clicky" aria-hidden="true">prev</a> | <a href="#43899991" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900280" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c5A">NixOS works really well for me. I used to write these kinds of idempotent scripts too but they are usually irrelevant in NixOS where that&#x27;s the default behavior.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900280&amp;goto=item%3Fid%3D43899236%2343900280" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899991'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899991' href='vote?id=43899991&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=hkon" class="hnuser">hkon</a> <span class="age" title="2025-05-05T22:18:02 1746483482"><a href="item?id=43899991">1 hour ago</a></span> <span id="unv_43899991"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">parent</a> | <a href="#43900280" class="clicky" aria-hidden="true">prev</a> | <a href="#43899664" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899991" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I&#x27;ve used caprover a bunch</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899991&amp;goto=item%3Fid%3D43899236%2343899991" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899664'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899664' href='vote?id=43899664&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=masneyb" class="hnuser">masneyb</a> <span class="age" title="2025-05-05T21:32:07 1746480727"><a href="item?id=43899664">2 hours ago</a></span> <span id="unv_43899664"></span>          <span class='navs'>
+             | <a href="#43899840" class="clicky" aria-hidden="true">prev</a> | <a href="#43899534" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899664" n="6" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">The next step to simplify this even further is to use Quadlet within systemd to manage the containers. More details are at <a href="https:&#x2F;&#x2F;www.redhat.com&#x2F;en&#x2F;blog&#x2F;quadlet-podman" rel="nofollow">https:&#x2F;&#x2F;www.redhat.com&#x2F;en&#x2F;blog&#x2F;quadlet-podman</a></div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899664&amp;goto=item%3Fid%3D43899236%2343899664" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900461'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900461' href='vote?id=43900461&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=al_borland" class="hnuser">al_borland</a> <span class="age" title="2025-05-05T23:38:43 1746488323"><a href="item?id=43900461">20 minutes ago</a></span> <span id="unv_43900461"></span>          <span class='navs'>
+             | <a href="#43899664" class="clicky" aria-hidden="true">parent</a> | <a href="#43899986" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900461" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This was touched on at the end of the article, but the author hadn&#x27;t yet explored it. Thanks for the link.<p>&gt; Of course, as my luck would have it, Podman integration with systemd appears to be deprecated already and they&#x27;re now talking about defining containers in &quot;Quadlet&quot; files, whatever those are. I guess that will be something to learn some other time.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900461&amp;goto=item%3Fid%3D43899236%2343900461" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899986'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899986' href='vote?id=43899986&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=rsolva" class="hnuser">rsolva</a> <span class="age" title="2025-05-05T22:17:27 1746483447"><a href="item?id=43899986">1 hour ago</a></span> <span id="unv_43899986"></span>          <span class='navs'>
+             | <a href="#43899664" class="clicky" aria-hidden="true">parent</a> | <a href="#43900461" class="clicky" aria-hidden="true">prev</a> | <a href="#43900028" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899986" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This us the way! Quadlets is such a nice way to run containers, really a set and forget experience. No need to install extra packages, at least on Fedora or Rocky Linux. I should do a write up of this some time...</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899986&amp;goto=item%3Fid%3D43899236%2343899986" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900028'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900028' href='vote?id=43900028&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=overtone1000" class="hnuser">overtone1000</a> <span class="age" title="2025-05-05T22:23:30 1746483810"><a href="item?id=43900028">1 hour ago</a></span> <span id="unv_43900028"></span>          <span class='navs'>
+             | <a href="#43899664" class="clicky" aria-hidden="true">parent</a> | <a href="#43899986" class="clicky" aria-hidden="true">prev</a> | <a href="#43899534" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900028" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I came to the comments to make sure someone mentioned quadlets. Just last week, I migrated my home server from docker compose to rootless podman quadlets. The transition was challenging, but I am very happy with the result.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900028&amp;goto=item%3Fid%3D43899236%2343900028" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900272'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900272' href='vote?id=43900272&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=sureglymop" class="hnuser">sureglymop</a> <span class="age" title="2025-05-05T23:06:39 1746486399"><a href="item?id=43900272">52 minutes ago</a></span> <span id="unv_43900272"></span>          <span class='navs'>
+             | <a href="#43899664" class="clicky" aria-hidden="true">root</a> | <a href="#43900028" class="clicky" aria-hidden="true">parent</a> | <a href="#43899534" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900272" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Seems very cool but can it do <i>all</i> one can do with compose? In other words, declare networks, multiple services, volumes, config(maps) and labels for e.g. traefik all in one single file?<p>To me that&#x27;s why compose is neat. It&#x27;s simple. Works well with rootless podman also.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900272&amp;goto=item%3Fid%3D43899236%2343900272" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900452'><td><table border='0'>  <tr>    <td class='ind' indent='3'><img src="s.gif" height="1" width="120"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900452' href='vote?id=43900452&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=0xC0ncord" class="hnuser">0xC0ncord</a> <span class="age" title="2025-05-05T23:37:28 1746488248"><a href="item?id=43900452">22 minutes ago</a></span> <span id="unv_43900452"></span>          <span class='navs'>
+             | <a href="#43899664" class="clicky" aria-hidden="true">root</a> | <a href="#43900272" class="clicky" aria-hidden="true">parent</a> | <a href="#43899534" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900452" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">You can if you convert your docker-compose.yaml into Kubernetes YAML and deploy that as a quadlet with a .kube extension.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900452&amp;goto=item%3Fid%3D43899236%2343900452" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                              <tr class='athing comtr' id='43899534'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899534' href='vote?id=43899534&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=byrnedo" class="hnuser">byrnedo</a> <span class="age" title="2025-05-05T21:17:02 1746479822"><a href="item?id=43899534">2 hours ago</a></span> <span id="unv_43899534"></span>          <span class='navs'>
+             | <a href="#43899664" class="clicky" aria-hidden="true">prev</a> | <a href="#43900021" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899534" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I created skate (<a href="https:&#x2F;&#x2F;github.com&#x2F;skateco&#x2F;skate">https:&#x2F;&#x2F;github.com&#x2F;skateco&#x2F;skate</a>) to be basically this but multihost and support k8s manifests. Under the hood it’s podman and systemd</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899534&amp;goto=item%3Fid%3D43899236%2343899534" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900021'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900021' href='vote?id=43900021&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=dullcrisp" class="hnuser">dullcrisp</a> <span class="age" title="2025-05-05T22:22:37 1746483757"><a href="item?id=43900021">1 hour ago</a></span> <span id="unv_43900021"></span>          <span class='navs'>
+             | <a href="#43899534" class="clicky" aria-hidden="true">prev</a> | <a href="#43899614" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900021" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I’m here just doing docker compose pull &amp;&amp; docker compose down &amp;&amp; docker compose up -d and it’s basically fine.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900021&amp;goto=item%3Fid%3D43899236%2343900021" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899614'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899614' href='vote?id=43899614&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=zokier" class="hnuser">zokier</a> <span class="age" title="2025-05-05T21:27:18 1746480438"><a href="item?id=43899614">2 hours ago</a></span> <span id="unv_43899614"></span>          <span class='navs'>
+             | <a href="#43900021" class="clicky" aria-hidden="true">prev</a> | <a href="#43900299" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899614" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Why on earth would you run services on a server with --user and then fiddle with lingering logins instead of just using the system service manager?</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899614&amp;goto=item%3Fid%3D43899236%2343899614" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899763'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899763' href='vote?id=43899763&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=phoronixrly" class="hnuser">phoronixrly</a> <span class="age" title="2025-05-05T21:45:00 1746481500"><a href="item?id=43899763">2 hours ago</a></span> <span id="unv_43899763"></span>          <span class='navs'>
+             | <a href="#43899614" class="clicky" aria-hidden="true">parent</a> | <a href="#43900299" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899763" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I&#x27;ll answer this for you. You want rootless podman because docker is the defacto standard way of packaging non-legacy software now including autoupdates. I know, sad... Podman still does not offer convenient and mature way for systemd to run it with an unprivileged user. It is the only gripe I&#x27;ve had with this approach...</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899763&amp;goto=item%3Fid%3D43899236%2343899763" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43900299'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900299' href='vote?id=43900299&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=mdeeks" class="hnuser">mdeeks</a> <span class="age" title="2025-05-05T23:11:34 1746486694"><a href="item?id=43900299">47 minutes ago</a></span> <span id="unv_43900299"></span>          <span class='navs'>
+             | <a href="#43899614" class="clicky" aria-hidden="true">prev</a> | <a href="#43900027" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900299" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">From what I read, I think you can replace this all with a docker compose command and something like Caddy to automatically get certs.<p>It&#x27;s basically just this command once you have compose.yaml: `docker compose up -d --pull always`<p>And then the CI setup is this:<p><pre><code>  scp compose.yaml user@remote-host:~&#x2F;
+  ssh user@remote-host &#x27;docker compose up -d --pull always&#x27;
+</code></pre>
+The benefit here is that it is simple and also works on your development machine.<p>Of course if the side goal is to also do something fun and cool and learn, then Quadlet&#x2F;k8s&#x2F;systemd are great options too!</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900299&amp;goto=item%3Fid%3D43899236%2343900299" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900027'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900027' href='vote?id=43900027&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=arjie" class="hnuser">arjie</a> <span class="age" title="2025-05-05T22:23:15 1746483795"><a href="item?id=43900027">1 hour ago</a></span> <span id="unv_43900027"></span>          <span class='navs'>
+             | <a href="#43900299" class="clicky" aria-hidden="true">prev</a> | <a href="#43899256" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900027" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I also use systemd+podman. I manage the access into the machine via an nginx that reverse proxies the services. With quadlets things will probably be even better but right now I have a manual flow with `podman run` etc. because sometimes I just want to run on the host instead and this allows for me to incrementally move in.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900027&amp;goto=item%3Fid%3D43899236%2343900027" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900294'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900294' href='vote?id=43900294&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=sureglymop" class="hnuser">sureglymop</a> <span class="age" title="2025-05-05T23:10:24 1746486624"><a href="item?id=43900294">49 minutes ago</a></span> <span id="unv_43900294"></span>          <span class='navs'>
+             | <a href="#43900027" class="clicky" aria-hidden="true">parent</a> | <a href="#43899256" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900294" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I do this with traefik as the reverse proxy. To host something new, all I need to do is add a label to the new container for traefik to recognize. It&#x27;s neat with a wildcard cert that traefik automatically renews. I&#x27;ve also heard good things about caddy, a similar alternative.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900294&amp;goto=item%3Fid%3D43899236%2343900294" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43899256'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899256' href='vote?id=43899256&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=klooney" class="hnuser">klooney</a> <span class="age" title="2025-05-05T20:42:33 1746477753"><a href="item?id=43899256">3 hours ago</a></span> <span id="unv_43899256"></span>          <span class='navs'>
+             | <a href="#43900027" class="clicky" aria-hidden="true">prev</a> | <a href="#43900295" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899256" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00"><a href="https:&#x2F;&#x2F;github.com&#x2F;coreos&#x2F;fleet">https:&#x2F;&#x2F;github.com&#x2F;coreos&#x2F;fleet</a> I feel like fleet deserved more of a shot than it ultimately got.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899256&amp;goto=item%3Fid%3D43899236%2343899256" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900487'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900487' href='vote?id=43900487&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=thebeardisred" class="hnuser">thebeardisred</a> <span class="age" title="2025-05-05T23:41:02 1746488462"><a href="item?id=43900487">18 minutes ago</a></span> <span id="unv_43900487"></span>          <span class='navs'>
+             | <a href="#43899256" class="clicky" aria-hidden="true">parent</a> | <a href="#43899819" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900487" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Well, it&#x27;s funny you mention that because I started working on a PoC of running vLLM atop Fleet this morning.  :grin:</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900487&amp;goto=item%3Fid%3D43899236%2343900487" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899819'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899819' href='vote?id=43899819&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=pa7ch" class="hnuser">pa7ch</a> <span class="age" title="2025-05-05T21:50:35 1746481835"><a href="item?id=43899819">2 hours ago</a></span> <span id="unv_43899819"></span>          <span class='navs'>
+             | <a href="#43899256" class="clicky" aria-hidden="true">parent</a> | <a href="#43900487" class="clicky" aria-hidden="true">prev</a> | <a href="#43900295" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899819" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">agreed, coreos pivoted to k8s almost immediately after releaseing fleet and didn&#x27;t really get the chance to use and develop it much.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899819&amp;goto=item%3Fid%3D43899236%2343899819" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43900295'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900295' href='vote?id=43900295&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=arevno" class="hnuser">arevno</a> <span class="age" title="2025-05-05T23:10:43 1746486643"><a href="item?id=43900295">48 minutes ago</a></span> <span id="unv_43900295"></span>          <span class='navs'>
+             | <a href="#43899256" class="clicky" aria-hidden="true">prev</a> | <a href="#43899628" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900295" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">This is cool, but it doesn&#x27;t address the redundancy&#x2F;availability aspect of k8s, specifically, being able to re-schedule dead services when a node (inevitably) dies.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900295&amp;goto=item%3Fid%3D43899236%2343900295" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899628'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899628' href='vote?id=43899628&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=maxclark" class="hnuser">maxclark</a> <span class="age" title="2025-05-05T21:28:39 1746480519"><a href="item?id=43899628">2 hours ago</a></span> <span id="unv_43899628"></span>          <span class='navs'>
+             | <a href="#43900295" class="clicky" aria-hidden="true">prev</a> | <a href="#43900175" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899628" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I know some large AWS environments that run a variation of this<p>Autoscaling fleet - image starts, downloads container from registry and starts on instance<p>1:1 relationship between instance and container - and they’re running 4XLs<p>When you get past the initial horror it’s actually beautiful</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899628&amp;goto=item%3Fid%3D43899236%2343899628" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900175'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900175' href='vote?id=43900175&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=lrvick" class="hnuser">lrvick</a> <span class="age" title="2025-05-05T22:46:45 1746485205"><a href="item?id=43900175">1 hour ago</a></span> <span id="unv_43900175"></span>          <span class='navs'>
+             | <a href="#43899628" class="clicky" aria-hidden="true">prev</a> | <a href="#43900552" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900175" n="3" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Or drop all brittle c code entirely and replace systemd with kubernetes: <a href="https:&#x2F;&#x2F;www.talos.dev&#x2F;" rel="nofollow">https:&#x2F;&#x2F;www.talos.dev&#x2F;</a></div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900175&amp;goto=item%3Fid%3D43899236%2343900175" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900199'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900199' href='vote?id=43900199&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=weikju" class="hnuser">weikju</a> <span class="age" title="2025-05-05T22:52:26 1746485546"><a href="item?id=43900199">1 hour ago</a></span> <span id="unv_43900199"></span>          <span class='navs'>
+             | <a href="#43900175" class="clicky" aria-hidden="true">parent</a> | <a href="#43900552" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900199" n="2" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Just replace the battle tested brittle C code with a brittle bespoke yaml mess!</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900199&amp;goto=item%3Fid%3D43899236%2343900199" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43900321'><td><table border='0'>  <tr>    <td class='ind' indent='2'><img src="s.gif" height="1" width="80"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900321' href='vote?id=43900321&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=sepositus" class="hnuser">sepositus</a> <span class="age" title="2025-05-05T23:17:25 1746487045"><a href="item?id=43900321">42 minutes ago</a></span> <span id="unv_43900321"></span>          <span class='navs'>
+             | <a href="#43900175" class="clicky" aria-hidden="true">root</a> | <a href="#43900199" class="clicky" aria-hidden="true">parent</a> | <a href="#43900552" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900321" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">To suggest that Kubernetes doesn&#x27;t fall under the scope of &quot;battle tested&quot; is a bit misleading. As much as systemd? Of course not. But it&#x27;s not 2016 anymore and we have billions of collective operational hours with Kubernetes.<p>Just the other day I found a cluster I had inadvertently left running on my macBook using Kind. It literally had three weeks of uptime (running a full stack of services) and everything was still working, even with the system getting suspended repeatedly.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900321&amp;goto=item%3Fid%3D43899236%2343900321" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                        <tr class='athing comtr' id='43900552'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900552' href='vote?id=43900552&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=IAmNotACellist" class="hnuser">IAmNotACellist</a> <span class="age" title="2025-05-05T23:52:19 1746489139"><a href="item?id=43900552">7 minutes ago</a></span> <span id="unv_43900552"></span>          <span class='navs'>
+             | <a href="#43900175" class="clicky" aria-hidden="true">prev</a> | <a href="#43900529" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900552" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c5A">That&#x27;s the most disgusting sentence fragment I&#x27;ve ever heard. I wish it could be sent back in a localized wormhole and float across the table when Systemd was being voted on to become the next so-called init system.<p>Edit: Nevermind, I misunderstood the article from just the headline. But I&#x27;m keeping the comment as I find the reference funny</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900552&amp;goto=item%3Fid%3D43899236%2343900552" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900529'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900529' href='vote?id=43900529&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=TZubiri" class="hnuser">TZubiri</a> <span class="age" title="2025-05-05T23:47:46 1746488866"><a href="item?id=43900529">11 minutes ago</a></span> <span id="unv_43900529"></span>          <span class='navs'>
+             | <a href="#43900552" class="clicky" aria-hidden="true">prev</a> | <a href="#43899715" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900529" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Looking forward to the follow up &quot;replacing systemd with init and bash scripts.&quot;</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900529&amp;goto=item%3Fid%3D43899236%2343900529" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899715'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899715' href='vote?id=43899715&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=VWWHFSfQ" class="hnuser">VWWHFSfQ</a> <span class="age" title="2025-05-05T21:39:18 1746481158"><a href="item?id=43899715">2 hours ago</a></span> <span id="unv_43899715"></span>          <span class='navs'>
+             | <a href="#43900529" class="clicky" aria-hidden="true">prev</a> | <a href="#43900166" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899715" n="4" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">We went back to just packaging debs and running them directly on ec2 instances with systemd.  no more containers.  Put the instances in an autoscaling group with an ALB.  A simple ansible-pull installs the debs on-boot.<p>really raw-dogging it here but I got tired of endless json-inside-yaml-inside-hcl.  ansible yaml is about all I want to deal with at this point.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899715&amp;goto=item%3Fid%3D43899236%2343899715" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                <tr class='athing comtr' id='43899902'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899902' href='vote?id=43899902&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=secabeen" class="hnuser">secabeen</a> <span class="age" title="2025-05-05T22:04:32 1746482672"><a href="item?id=43899902">1 hour ago</a></span> <span id="unv_43899902"></span>          <span class='navs'>
+             | <a href="#43899715" class="clicky" aria-hidden="true">parent</a> | <a href="#43900545" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899902" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">I also really like in this approach that if there is a bug in a common library that I use, all I have to do is `apt full-upgrade` and restart my running processes, and I am protected. No rebuilding anything, or figuring out how to update some library buried deep a container that I may (or may not) have created.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899902&amp;goto=item%3Fid%3D43899236%2343899902" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43900545'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900545' href='vote?id=43900545&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=r3trohack3r" class="hnuser">r3trohack3r</a> <span class="age" title="2025-05-05T23:51:06 1746489066"><a href="item?id=43900545">8 minutes ago</a></span> <span id="unv_43900545"></span>          <span class='navs'>
+             | <a href="#43899715" class="clicky" aria-hidden="true">parent</a> | <a href="#43899902" class="clicky" aria-hidden="true">prev</a> | <a href="#43899827" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43900545" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">The number of human lifetimes wasted on the problem domain of &quot;managing YAML at scale&quot;...</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900545&amp;goto=item%3Fid%3D43899236%2343900545" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            <tr class='athing comtr' id='43899827'><td><table border='0'>  <tr>    <td class='ind' indent='1'><img src="s.gif" height="1" width="40"></td><td valign="top" class="votelinks">
+      <center><a id='up_43899827' href='vote?id=43899827&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=SvenL" class="hnuser">SvenL</a> <span class="age" title="2025-05-05T21:51:34 1746481894"><a href="item?id=43899827">2 hours ago</a></span> <span id="unv_43899827"></span>          <span class='navs'>
+             | <a href="#43899715" class="clicky" aria-hidden="true">parent</a> | <a href="#43900545" class="clicky" aria-hidden="true">prev</a> | <a href="#43900166" class="clicky" aria-hidden="true">next</a> <a class="togg clicky" id="43899827" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">Yes, I also have gone this route for a very simple application. Systemd was actually delightful, using a system assigned user account to run the service with the least amount of privileges is pretty cool. Also cgroup support does really make it nice to run many different services on one vps.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43899827&amp;goto=item%3Fid%3D43899236%2343899827" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+                  <tr class='athing comtr' id='43900166'><td><table border='0'>  <tr>    <td class='ind' indent='0'><img src="s.gif" height="1" width="0"></td><td valign="top" class="votelinks">
+      <center><a id='up_43900166' href='vote?id=43900166&amp;how=up&amp;goto=item%3Fid%3D43899236'><div class='votearrow' title='upvote'></div></a></center>    </td><td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
+          <a href="user?id=iAm25626" class="hnuser">iAm25626</a> <span class="age" title="2025-05-05T22:45:28 1746485128"><a href="item?id=43900166">1 hour ago</a></span> <span id="unv_43900166"></span>          <span class='navs'>
+             | <a href="#43899715" class="clicky" aria-hidden="true">prev</a> <a class="togg clicky" id="43900166" n="1" href="javascript:void(0)">[–]</a><span class="onstory"></span>          </span>
+                  </span></div><br><div class="comment">
+                  <div class="commtext c00">on the resource part - try running k8s on Talos linux.
+much less overhead.</div>
+              <div class='reply'>        <p><font size="1">
+                      <u><a href="reply?id=43900166&amp;goto=item%3Fid%3D43899236%2343900166" rel="nofollow">reply</a></u>
+                  </font>
+      </div></div></td></tr>
+        </table></td></tr>
+            </table>
+  <br><br>
+</td></tr>
+<tr><td><img src="s.gif" height="10" width="0"><table width="100%" cellspacing="0" cellpadding="1"><tr><td bgcolor="#ff6600"></td></tr></table><br>
+<center>Join us for <a href="https://events.ycombinator.com/ai-sus"><u>AI Startup School</u></a> this June 16-17 in San Francisco!</center><br>
+<center><span class="yclinks"><a href="newsguidelines.html">Guidelines</a> | <a href="newsfaq.html">FAQ</a> | <a href="lists">Lists</a> | <a href="https://github.com/HackerNews/API">API</a> | <a href="security.html">Security</a> | <a href="https://www.ycombinator.com/legal/">Legal</a> | <a href="https://www.ycombinator.com/apply/">Apply to YC</a> | <a href="mailto:hn@ycombinator.com">Contact</a></span><br><br>
+<form method="get" action="//hn.algolia.com/">Search: <input type="text" name="q" size="17" autocorrect="off" spellcheck="false" autocapitalize="off" autocomplete="off"></form></center></td></tr>      </table></center></body>
+      <script type='text/javascript' src='hn.js?2UBwMHlbGtBIZ7HLI3Zc'></script>
+  </html>
