@@ -19,7 +19,12 @@ import argparse
 import requests
 from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
-from transformers import pipeline
+try:
+    from transformers import pipeline
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+    print("Transformers library not found. Install with 'pip install transformers'")
 try:
     from selenium import webdriver
     from selenium.webdriver.chrome.service import Service
@@ -85,9 +90,9 @@ def fallback_llm_call(prompt, max_tokens=100, temperature=0.5):
         instruction = prompt.split("[INST]")[1].split("[/INST]")[0].strip()
         
         # Determine what kind of prompt this is
-        if "generate three deep" in instruction.lower() or "questions" in instruction.lower():
+        if "generate two deep" in instruction.lower() or "questions" in instruction.lower():
             return {
-                "choices": [{"text": "1. What are the key components of this system?\n2. How does this technology compare to alternatives?\n3. What are the future implications of this development?"}]
+                "choices": [{"text": "1. What are the key components of this system?\n2. How does this technology compare to alternatives?"}]
             }
         elif "alignment" in instruction.lower() and "rate" in instruction.lower():
             return {"choices": [{"text": "50"}]}
@@ -525,8 +530,35 @@ async def summarize_all_articles_async(articles):
 
 def is_valid_hn_link(link):
     """Check if link matches the format: ends with item?id= followed by 8 digits"""
-    pattern = r'item\?id=\d{8}$'
+    pattern = r'item\\?id=\\d{8}$'
     return bool(re.search(pattern, link))
+
+def fallback_scoring(title, user_interests):
+    """Fallback method to score article relevance using keyword matching on title only"""
+    # Simple relevance scoring without Llama calls
+    interest_score = 0
+    interest_terms = user_interests.lower().split(',')
+    
+    # Clean up the terms
+    interest_terms = [term.strip() for term in interest_terms]
+    
+    # Calculate a simple score based on keyword matching
+    title_lower = title.lower()
+    
+    # Check title against each interest term
+    for term in interest_terms:
+        if term and len(term) > 1:  # Skip empty or single-char terms
+            if term in title_lower:
+                interest_score += 25  # Base score for term match
+            
+            # Check for partial matches in title
+            for word in term.split():
+                if word and len(word) > 3 and word in title_lower:
+                    interest_score += 10
+    
+    # Ensure score is within 0-100 range
+    interest_score = min(100, interest_score)
+    return interest_score
 
 # ===== CONTENT ACQUISITION FUNCTIONS =====
 
@@ -741,8 +773,10 @@ def preprocess(articles, user_interests):
             if llm is not None:
                 try:
                     with LLM_LOCK:
-                        subject_response = llm(prompt, max_tokens=64, temperature=0.1)
+                        subject_response = llm(prompt, max_tokens=64, temperature=0.4)
                     subject_line = subject_response["choices"][0]["text"].strip()
+                    # Print the subject line and the raw Llama response for debugging
+                    safe_print(f"[DEBUG] Article: {title}\n[DEBUG] Llama subject prompt: {prompt}\n[DEBUG] Llama subject response: {subject_response}\n[DEBUG] Extracted subject line: {subject_line}")
                 except Exception as e:
                     safe_print(f"Error using Llama for subject extraction: {e}, using fallback")
                     subject_response = fallback_llm_call(prompt)
@@ -752,31 +786,43 @@ def preprocess(articles, user_interests):
                 subject_response = fallback_llm_call(prompt)
             subject_line = subject_response["choices"][0]["text"].strip()
             
-            # Simple relevance scoring without additional Llama calls
-            # This reduces the load and potential errors
+            # Use AI to determine interest score using article summary from cache
             interest_score = 0
-            interest_terms = user_interests.lower().split(',')
+            article_summary = ""
             
-            # Clean up the terms
-            interest_terms = [term.strip() for term in interest_terms]
-            
-            # Calculate a simple score based on keyword matching
-            title_lower = title.lower()
-            subject_lower = subject_line.lower()
-            
-            # Check title and subject against each interest term
-            for term in interest_terms:
-                if term and len(term) > 1:  # Skip empty or single-char terms
-                    if term in title_lower or term in subject_lower:
-                        interest_score += 25  # Base score for term match
-                    
-                    # Check for partial matches
-                    for word in term.split():
-                        if word and len(word) > 3 and (word in title_lower or word in subject_lower):
-                            interest_score += 10
-            
-            # Ensure score is within 0-100 range
-            interest_score = min(100, interest_score)
+            # Get cached summary if available
+            if link in ARTICLE_SUMMARY_CACHE:
+                article_summary = ARTICLE_SUMMARY_CACHE[link].get('summary', '')
+                safe_print(f"Using cached summary for scoring: {article_summary[:100]}...")
+
+            try:
+                # Create a prompt for the AI to evaluate article relevance with summary
+                score_prompt = f"""[INST] On a scale of 0-100, rate how well this article aligns with these interests: {user_interests}
+                
+                Article title: {title}
+                Article summary: {article_summary[:1000]}  # Truncate for token limits
+                
+                Consider the summary content, relevance to interests, and potential value.
+                Respond ONLY with a number between 0-100. No explanations. [/INST]"""
+                print(f"[DEBUG] Score prompt: {score_prompt}")
+                with LLM_LOCK:
+                    score_response = llm(score_prompt, max_tokens=16, temperature=0.2)
+                
+                score_text = score_response["choices"][0]["text"].strip()
+                safe_print(f"[DEBUG] Raw score response: {score_text}")
+                # Extract the number from the response
+                score_match = re.search(r'(\d+)', score_text)
+                if score_match:
+                    interest_score = int(score_match.group(1))
+                    # Ensure score is within 0-100 range
+                    interest_score = max(0, min(100, interest_score))
+                    safe_print(f"[DEBUG] AI-determined score for '{title}': {interest_score}")
+                else:
+                    safe_print(f"[DEBUG] No valid score found, using fallback")
+                    interest_score = fallback_scoring(title, user_interests)
+            except Exception as e:
+                safe_print(f"Error using AI for scoring: {e}, using fallback")
+                interest_score = fallback_scoring(title, user_interests)
             
             # Create result data
             result = {
@@ -796,7 +842,7 @@ def preprocess(articles, user_interests):
             return {
                 'title': title,
                 'link': link,
-                'subject': "Error processing",
+                'subject': "Error Processing Subject",
                 'score': 0
             }
     
@@ -811,18 +857,18 @@ def preprocess(articles, user_interests):
         except Exception as e:
             safe_print(f"Error processing article: {e}")
     
-    # Sort by score in descending order and keep only top 3
+    # Sort by score in descending order but return all articles
     results.sort(key=lambda x: x['score'], reverse=True)
-    top_results = results[:3]
     
-    safe_print(f"Processed {len(articles)} articles, top scores: {[r['score'] for r in top_results]}")
+    safe_print(f"Processed {len(articles)} articles, scores: {[r['score'] for r in results[:5]]}")
     
-    return top_results
+    return results
 
 def generate_deep_dive_questions(article_data):
-    """Generate three deep dive questions based on the article summary"""
+    """Generate two deep dive questions based on the article summary focusing on fundamental concepts"""
     subject_line = article_data['subject']
     article_link = article_data['link']
+    article_title = article_data['title']
     
     # Get the article summary if available in cache
     article_summary = ""
@@ -886,28 +932,31 @@ def generate_deep_dive_questions(article_data):
     
     # Default questions in case the model fails
     default_questions = [
-        f"What are the key aspects of {subject_line}?",
-        f"How does {subject_line} compare to alternatives?",
-        f"What future developments might we see with {subject_line}?"
+        f"What are the fundamental concepts of {subject_line}?",
+        f"What are the basic principles related to {subject_line}?"
     ]
     
     # Try to use Llama, but have fallbacks
     llm = get_llama_model()
     if llm is not None:
         try:
-            # Use Llama to generate deep dive questions
-            prompt = f"""[INST] Based on this article subject: "{subject_line}" and the following summary snippet: "{article_summary[:200]}...", 
-            generate three deep, insightful questions about this topic.
+            # Use Llama to generate conceptual questions
+            prompt = f"""[INST] Based on this article title: "{article_title}" and subject area: "{subject_line}", 
+            extract the fundamental concepts and generate two questions about basic principles or core concepts.
+            
+            For example, if the article is "Dimension 126 proves twisted shape of Kervaire's constant 1", 
+            generate questions like "What are 4+ dimensional shapes?" and "What is Kervaire's constant?"
+            
+            Don't ask about the specific details in the title, but rather the underlying concepts and subjects.
             
             Format your response as a numbered list with just the questions:
-            1. First question
-            2. Second question
-            3. Third question
+            1. First question about a basic concept
+            2. Second question about a basic concept
             [/INST]"""
             
             # Get the questions using Llama
             with LLM_LOCK:
-                questions_response = llm(prompt, max_tokens=256, temperature=0.7)
+                questions_response = llm(prompt, max_tokens=256, temperature=0.4)
             
             # Extract questions from the response
             questions_text = questions_response["choices"][0]["text"].strip()
@@ -924,13 +973,82 @@ def generate_deep_dive_questions(article_data):
             
             # If we got valid questions, use them
             if questions:
-                # Ensure we only return 3 questions
-                while len(questions) < 3:
+                # Ensure we only return 2 questions
+                while len(questions) < 2:
                     questions.append(default_questions[len(questions)])
-                return questions[:3]
+                return questions[:2]
             
         except Exception as e:
             safe_print(f"Error generating questions with Llama: {e}, using defaults")
+    
+    # Use default questions if Llama failed
+    return default_questions
+
+def generate_additional_questions(subject, article_title):
+    """Generate 5 additional questions for further exploration"""
+    
+    # Default questions in case the model fails
+    default_questions = [
+        f"What are the historical developments that led to {subject}?",
+        f"How is {subject} applied in different industries?",
+        f"What are the ethical considerations related to {subject}?",
+        f"How might {subject} evolve in the next decade?",
+        f"What are the alternative approaches to solving problems that {subject} addresses?"
+    ]
+    
+    # Try to use Llama, but have fallbacks
+    llm = get_llama_model()
+    if llm is not None:
+        try:
+            # Use Llama to generate additional questions
+            prompt = f"""[INST] Based on this subject: "{subject}" from the article "{article_title}", 
+            generate 5 additional questions for readers to explore further.
+            
+            These should be thought-provoking questions that go beyond the basic concepts
+            and encourage deeper research. The questions should cover different aspects like:
+            - Historical context
+            - Practical applications
+            - Ethical considerations
+            - Future developments
+            - Alternative approaches
+            
+            Format your response as a numbered list with just the questions:
+            1. First question
+            2. Second question
+            3. Third question
+            4. Fourth question
+            5. Fifth question
+            [/INST]"""
+            
+            # Get the questions using Llama
+            with LLM_LOCK:
+                questions_response = llm(prompt, max_tokens=512, temperature=0.4)
+            
+            # Extract questions from the response
+            questions_text = questions_response["choices"][0]["text"].strip()
+            
+            # Parse the numbered list
+            questions = []
+            for line in questions_text.split('\n'):
+                line = line.strip()
+                if re.match(r'^\d+\.', line):  # Lines starting with a number and period
+                    # Extract the question text
+                    question = re.sub(r'^\d+\.\s*', '', line).strip()
+                    if question:
+                        questions.append(question)
+            
+            # If we got valid questions, use them
+            if questions and len(questions) >= 5:
+                return questions[:5]
+            else:
+                # If we didn't get enough questions, use defaults to fill in
+                combined_questions = questions.copy()
+                for i in range(5 - len(combined_questions)):
+                    combined_questions.append(default_questions[i])
+                return combined_questions
+            
+        except Exception as e:
+            safe_print(f"Error generating additional questions with Llama: {e}, using defaults")
     
     # Use default questions if Llama failed
     return default_questions
@@ -1093,11 +1211,11 @@ async def process_single_article(article_data):
         
         # Add a delay between searches to avoid rate limits
         await asyncio.sleep(2)
-                                
-        return {
-            'article': article_data,
-            'questions': all_results
-        }
+    
+    return {
+        'article': article_data,
+        'questions': all_results
+    }
 
 def format_blog_article(all_article_results):
     """Format all the research results into a structured blog article"""
@@ -1136,7 +1254,7 @@ Keep it under 150 words and make it engaging. [/INST]"""
     
     llm = get_llama_model()
     with LLM_LOCK:
-        intro_response = llm(intro_prompt, max_tokens=512, temperature=0.7)
+        intro_response = llm(intro_prompt, max_tokens=512, temperature=0.4)
     
     blog.append(intro_response["choices"][0]["text"].strip())
     
@@ -1184,15 +1302,27 @@ Keep it under 150 words and make it engaging. [/INST]"""
 Keep it under 100 words and end with a thought-provoking statement or question. [/INST]"""
     
     with LLM_LOCK:
-        conclusion_response = llm(conclusion_prompt, max_tokens=512, temperature=0.7)
+        conclusion_response = llm(conclusion_prompt, max_tokens=512, temperature=0.4)
     
     blog.append(conclusion_response["choices"][0]["text"].strip())
     
+    # Add additional questions for further exploration
+    safe_print(f"Generating additional questions for further exploration...")
+    additional_questions = generate_additional_questions(main_article['subject'], main_article['title'])
+    
+    blog.append("\n## Further Exploration")
+    blog.append("Want to dive deeper into this topic? Here are some thought-provoking questions to explore:")
+    
+    for i, question in enumerate(additional_questions):
+        blog.append(f"{i+1}. {question}")
+    
+    blog.append("\nFeel free to research these questions and share your findings!")
+    
     # Join all sections into a single document
-    blog_content = "\n\n".join(blog)
+    blog_article = "\n\n".join(blog)
     
     # Return both the blog content and the main article reference
-    return blog_content, main_article
+    return blog_article, main_article
 
 # ===== SCRIPT EXECUTION =====
 
@@ -1212,8 +1342,9 @@ async def main():
             safe_print(f"Cached {len(articles)} articles")
             return
 
-        # Normal flow - Get user interests
-        user_interests = input('What are your 4 interests? (separated by commas): \n')
+        # Use a default broad set of interests instead of asking the user
+        user_interests = "technology, programming, science, AI, machine learning, finance, health, politics, education, data science"
+        safe_print(f"Using default interests: {user_interests}")
         
         # Get articles and process them
         safe_print("Fetching articles from Hacker News...")
@@ -1226,146 +1357,158 @@ async def main():
         ranked_articles = preprocess(articles, user_interests)
         
         if not ranked_articles:
-            safe_print("No relevant articles found. Please try again with different interests.")
+            safe_print("No relevant articles found.")
             return
         
-        # Display top articles but only process the highest scoring one
-        safe_print(f"\nTop articles based on your interests:")
-        for i, article in enumerate(ranked_articles[:3]):
-            safe_print(f"{i+1}. {article['title']} (relevance score: {article['score']})")
+        # Process all articles instead of just the top 3
+        safe_print(f"\nProcessing all {len(ranked_articles)} articles...")
         
-        # Get the top article
-        top_article = ranked_articles[0]
-        safe_print(f"\nProcessing the highest scoring article: {top_article['title']}")
-        
-        # Create improved deep dive questions with better context
-        original_questions = generate_deep_dive_questions(top_article)
-        improved_questions = []
-        
-        # Improve each question with specific context from the article
-        llm = get_llama_model()
-        subject = top_article['subject']
-        article_title = top_article['title']
-        
-        for q in original_questions:
-            # Make the question more specific with full context
-            improved_q = f"What is the significance of {subject} in the context of {article_title}?" if "What" in q else q
-            improved_q = f"How does {subject} work in relation to {article_title}?" if "How" in q else improved_q
-            improved_q = f"What future applications might {subject} have in the field of {article_title}?" if "future" in q.lower() else improved_q
-            improved_questions.append(improved_q)
-        
-        safe_print(f"Generated {len(improved_questions)} improved questions for: {subject}")
-        
-        # Process improved questions
-        all_results = {}
-        for question in improved_questions:
-            # Search for information related to the question
-            search_results = search_for_question(question)
-            all_results[question] = search_results
-            # Add a delay between searches to avoid rate limits
-            await asyncio.sleep(2)
-        
-        # Create a single article result for the top article
-        article_result = {
-            'article': top_article,
-            'questions': all_results
-        }
-        
-        # Format results into a blog article
-        safe_print("\nGenerating final blog article...")
-        
-        # Create a simpler blog format focusing only on the top article
-        blog = []
-        
-        # Add the title and introduction
-        blog.append(f"# Deep Dive: {top_article['subject']}")
-        blog.append("\n## Introduction")
-        
-        # Get article summary for introduction
-        article_summary = ""
-        article_link = top_article['link']
-        
-        # Try to get the article summary
-        if article_link in ARTICLE_SUMMARY_CACHE:
-            article_summary = ARTICLE_SUMMARY_CACHE[article_link].get('summary', '')
-        
-        # Generate an introduction using Llama based on the article summary
-        intro_prompt = f"""[INST] Based on this article subject: "{top_article['subject']}" and article title: "{top_article['title']}", 
-        write a short introduction paragraph that explains the topic and why it's interesting or important.
-        
-        If available, use this summary:
-        {article_summary}
-        
-        Keep it under 150 words and make it engaging. [/INST]"""
-        
-        with LLM_LOCK:
-            intro_response = llm(intro_prompt, max_tokens=512, temperature=0.7)
-        
-        blog.append(intro_response["choices"][0]["text"].strip())
-        
-        # Add article section
-        blog.append(f"\n## {top_article['subject']}")
-        
-        # Add article summary if available
-        if article_link in ARTICLE_SUMMARY_CACHE:
-            summary = ARTICLE_SUMMARY_CACHE[article_link].get('summary', '')
-            blog.append(f"### Summary\n{summary}\n")
-        
-        # Process questions and search results
-        blog.append("### Deep Dive Questions")
-        
-        for question, results in all_results.items():
-            blog.append(f"#### {question}")
+        # Process each article - limit to 10 for practical reasons if there are too many
+        article_limit = min(len(ranked_articles), 10)
+        for article_idx in range(article_limit):
+            current_article = ranked_articles[article_idx]
+            safe_print(f"\nProcessing article {article_idx+1}/{article_limit}: {current_article['title']}")
             
-            if not results:
-                blog.append("*No relevant information found for this question.*\n")
-                continue
+            # Create improved deep dive questions with better context
+            original_questions = generate_deep_dive_questions(current_article)
+            improved_questions = []
             
-            # Process each search result
-            for i, result in enumerate(results):
-                # Special formatting for PDF sources
-                if result.get('is_pdf', False):
-                    blog.append(f"**Source {i+1}**: 📄 [{result['url']}]({result['url']}) *(PDF)*")
+            # Improve each question with specific context from the article
+            llm = get_llama_model()
+            subject = current_article['subject']
+            article_title = current_article['title']
+            
+            for q in original_questions:
+                # Keep questions focused on fundamental concepts
+                # Don't make the questions more specific, just ensure they're well-formatted
+                # Check if it's already a well-formed question (ends with ?)
+                if q.endswith('?'):
+                    improved_questions.append(q)
                 else:
-                    blog.append(f"**Source {i+1}**: [{result['url']}]({result['url']})")
+                    # If it doesn't end with a question mark, formulate it as a question
+                    improved_q = f"What are the core principles of {q}?" if not "what" in q.lower() else q
+                    improved_q = f"How do the fundamental concepts of {q} work?" if not "how" in q.lower() and not "what" in q.lower() else improved_q
+                    improved_questions.append(improved_q)
+            
+            safe_print(f"Generated {len(improved_questions)} questions about fundamental concepts for: {subject}")
+            
+            # Process improved questions
+            all_results = {}
+            for question in improved_questions:
+                # Search for information related to the question
+                search_results = search_for_question(question)
+                all_results[question] = search_results
+                # Add a delay between searches to avoid rate limits
+                await asyncio.sleep(2)
+            
+            # Create a single article result for the current article
+            article_result = {
+                'article': current_article,
+                'questions': all_results
+            }
+            
+            # Format results into a blog article
+            safe_print(f"\nGenerating final blog article for {article_title}...")
+            
+            # Create a blog format focusing on the current article
+            blog = []
+            
+            # Add the title and introduction
+            blog.append(f"# Deep Dive: {subject}")
+            blog.append("\n## Introduction")
+            
+            # Get article summary for introduction
+            article_summary = ""
+            article_link = current_article['link']
+            
+            # Try to get the article summary
+            if article_link in ARTICLE_SUMMARY_CACHE:
+                article_summary = ARTICLE_SUMMARY_CACHE[article_link].get('summary', '')
+            
+            # Generate an introduction using Llama based on the article summary
+            intro_prompt = f"""[INST] Based on this article subject: "{subject}" and article title: "{article_title}", 
+            write a short introduction paragraph that explains the topic and why it's interesting or important.
+            
+            If available, use this summary:
+            {article_summary}
+            
+            Keep it under 150 words and make it engaging. [/INST]"""
+            
+            with LLM_LOCK:
+                intro_response = llm(intro_prompt, max_tokens=512, temperature=0.4)
+            
+            blog.append(intro_response["choices"][0]["text"].strip())
+            
+            # Add article section
+            blog.append(f"\n## {subject}")
+            
+            # Add article summary if available
+            if article_link in ARTICLE_SUMMARY_CACHE:
+                summary = ARTICLE_SUMMARY_CACHE[article_link].get('summary', '')
+                blog.append(f"### Summary\n{summary}\n")
+            
+            # Process questions and search results
+            blog.append("### Deep Dive Questions")
+            
+            for question, results in all_results.items():
+                blog.append(f"#### {question}")
                 
-                blog.append(f"{result['summary']}\n")
-        
-        # Add a conclusion
-        blog.append("## Conclusion")
-        
-        conclusion_prompt = f"""[INST] Based on the information about {top_article['subject']} from the article "{top_article['title']}", 
-        write a brief conclusion paragraph that summarizes the key insights and why this topic matters.
-        
-        Keep it under 100 words and end with a thought-provoking statement or question. [/INST]"""
-        
-        with LLM_LOCK:
-            conclusion_response = llm(conclusion_prompt, max_tokens=512, temperature=0.7)
-        
-        blog.append(conclusion_response["choices"][0]["text"].strip())
-        
-        # Join all sections into a single document
-        blog_article = "\n\n".join(blog)
-        
-        # Output the final blog
-        safe_print("\n" + "="*50)
-        safe_print("YOUR PERSONALIZED TECH DEEP DIVE")
-        safe_print("="*50 + "\n")
-        safe_print(blog_article)
-        
-        # Save the blog to a file
-        timestamp = int(time())
-        blog_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'tech_deep_dive_{timestamp}.md')
-        with open(blog_file, 'w', encoding='utf-8') as f:
-            f.write(blog_article)
-        
-        # Also save a styled HTML version for better formatting
-        html_content = f"""<!DOCTYPE html>
+                if not results:
+                    blog.append("*No relevant information found for this question.*\n")
+                    continue
+                
+                # Process each search result
+                for i, result in enumerate(results):
+                    # Special formatting for PDF sources
+                    if result.get('is_pdf', False):
+                        blog.append(f"**Source {i+1}**: 📄 [{result['url']}]({result['url']}) *(PDF)*")
+                    else:
+                        blog.append(f"**Source {i+1}**: [{result['url']}]({result['url']})")
+                    
+                    blog.append(f"{result['summary']}\n")
+            
+            # Add a conclusion
+            blog.append("## Conclusion")
+            
+            conclusion_prompt = f"""[INST] Based on the information about {subject} from the article "{article_title}", 
+            write a brief conclusion paragraph that summarizes the key insights and why this topic matters.
+            
+            Keep it under 100 words and end with a thought-provoking statement or question. [/INST]"""
+            
+            with LLM_LOCK:
+                conclusion_response = llm(conclusion_prompt, max_tokens=512, temperature=0.4)
+            
+            blog.append(conclusion_response["choices"][0]["text"].strip())
+            
+            # Add additional questions for further exploration
+            safe_print(f"Generating additional questions for further exploration...")
+            additional_questions = generate_additional_questions(subject, article_title)
+            
+            blog.append("\n## Further Exploration")
+            blog.append("Want to dive deeper into this topic? Here are some thought-provoking questions to explore:")
+            
+            for i, question in enumerate(additional_questions):
+                blog.append(f"{i+1}. {question}")
+            
+            blog.append("\nFeel free to research these questions and share your findings!")
+            
+            # Join all sections into a single document
+            blog_article = "\n\n".join(blog)
+            
+            # Save the blog to a file
+            timestamp = int(time())
+            blog_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'tech_deep_dive_{timestamp}_{subject.replace(" ", "_")}.md')
+            with open(blog_file, 'w', encoding='utf-8') as f:
+                f.write(blog_article)
+            safe_print(f"Saved article to: {blog_file}")
+            
+            # Also save a styled HTML version for better formatting
+            html_content = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tech Deep Dive: {top_article['subject']}</title>
+    <title>Tech Deep Dive: {subject}</title>
     <style>
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -1436,20 +1579,55 @@ async def main():
             background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));
             margin: 30px 0;
         }}
+        .exploration-questions {{
+            background-color: #f7f9fa;
+            border: 1px solid #e3e6e8;
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin: 25px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }}
+        .exploration-questions ol {{
+            padding-left: 25px;
+        }}
+        .exploration-questions li {{
+            margin-bottom: 10px;
+            font-weight: 500;
+        }}
+        .exploration-note {{
+            font-style: italic;
+            color: #666;
+            margin-top: 15px;
+        }}
     </style>
 </head>
 <body>
-    {blog_article.replace("# ", "<h1>").replace("## ", "<h2>").replace("### ", "<h3>").replace("#### ", "<h4>").replace("\n\n", "<br><br>").replace("**Source", "<div class='source'><strong>Source").replace("**(PDF)*", "</strong><span class='pdf-icon'></span>").replace("**", "</strong>").replace("*No relevant", "<em>No relevant").replace("*\n", "</em></div>")}
+    {blog_article.replace("# ", "<h1>").replace("## ", "<h2>").replace("### ", "<h3>").replace("#### ", "<h4>").replace("\n\n", "<br><br>").replace("**Source", "<div class='source'><strong>Source").replace("**(PDF)*", "</strong><span class='pdf-icon'></span>").replace("**", "</strong>").replace("*No relevant", "<em>No relevant").replace("*\n", "</em></div>").replace("## Further Exploration", "<h2>Further Exploration</h2><div class='exploration-questions'>").replace("Feel free to research these questions and share your findings!", "Feel free to research these questions and share your findings!</div>")}
 </body>
 </html>
-        """
+            """
+            
+            html_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'tech_deep_dive_{timestamp}_{subject.replace(" ", "_")}.html')
+            with open(html_file, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            
+            # Cache the final article
+            try:
+                # Create a cache path for this final article
+                cache_path = os.path.join(CACHE_DIR, f"final_article_{timestamp}_{subject.replace(' ', '_')}.json")
+                
+                # Cache the content
+                with open(cache_path, 'w', encoding='utf-8') as f:
+                    json.dump({
+                        'content': blog_article,
+                        'timestamp': timestamp
+                    }, f)
+                safe_print(f"Cached final article to {cache_path}")
+            except Exception as e:
+                safe_print(f"Error caching final article: {e}")
         
-        html_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'tech_deep_dive_{timestamp}.html')
-        with open(html_file, 'w', encoding='utf-8') as f:
-            f.write(html_content)
+        safe_print("\nAll articles processed successfully!")
         
-        safe_print(f"\nBlog saved to: {blog_file}")
-        safe_print(f"HTML version saved to: {html_file}")
     except Exception as e:
         safe_print(f"An error occurred in main: {e}")
         import traceback
