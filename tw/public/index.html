@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interests Analyzer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <h1>Tech Interests Analyzer</h1>
+        
+        <!-- Loading screen (visible initially) -->
+        <div id="loading-section">
+            <div class="loader"></div>
+            <p id="loading-message">Checking article cache...</p>
+        </div>
+        
+        <!-- Email signup form (hidden initially) -->
+        <div id="email-section" style="display: none;">
+            <p>Please enter your email to get started</p>
+            <form id="email-form">
+                <div class="form-group">
+                    <input type="email" id="email-input" placeholder="Enter your email..." autocomplete="off" required>
+                    <button type="submit">Continue</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Interests form (hidden initially) -->
+        <div id="interests-section" style="display: none;">
+            <p>Now, enter your interests (separated by commas) to run the analyzer</p>
+            <form id="interests-form">
+                <div class="form-group">
+                    <input type="text" id="interests-input" placeholder="Enter 4 interests separated by commas..." autocomplete="off">
+                    <button type="submit">Analyze</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Admin section (hidden initially) -->
+        <div id="admin-section" style="display: none;">
+            <h3>Admin Controls</h3>
+            <div class="admin-buttons">
+                <button id="cache-articles-btn" type="button">Cache Articles Only</button>
+                <button id="generate-questions-btn" type="button">Generate Questions & Answers</button>
+            </div>
+        </div>
+        
+        <!-- Command form (hidden for dev purposes) -->
+        <div id="command-section" style="display: none;">
+            <form id="command-form">
+                <div class="form-group">
+                    <input type="text" id="command-input" placeholder="Enter command..." autocomplete="off">
+                    <button type="submit">Send</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Output section -->
+        <div class="output-container">
+            <h2>Output</h2>
+            <div id="command-output"></div>
+        </div>
+    </div>
+
+    <script src="/bundle.js"></script>
+    
+    <!-- Admin toggle button (fixed at bottom right) -->
+    <button id="admin-toggle-btn" class="admin-toggle-btn" title="Admin Panel (Shift+Option+A on Mac)">⚙️ Admin</button>
+</body>
+</html> 
