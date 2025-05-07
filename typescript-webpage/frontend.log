@@ -1,0 +1,28 @@
+
+> typescript-webpage@1.0.0 start
+> webpack serve --open
+
+<i> [webpack-dev-server] Project is running at:
+<i> [webpack-dev-server] Loopback: http://localhost:9000/
+<i> [webpack-dev-server] On Your Network (IPv4): http://192.168.68.84:9000/
+<i> [webpack-dev-server] On Your Network (IPv6): http://[fe80::1]:9000/
+<i> [webpack-dev-server] Content not from webpack is served from '/Users/avneh/Code/HackSFProject/typescript-webpage/public' directory
+<i> [webpack-dev-middleware] wait until bundle finished: /
+asset bundle.js 829 KiB [emitted] (name: main)
+runtime modules 27.4 KiB 12 modules
+orphan modules 681 bytes [orphan] 1 module
+modules by path ./node_modules/axios/lib/ 100 KiB 49 modules
+modules by path ./node_modules/webpack-dev-server/client/ 71.8 KiB 16 modules
+modules by path ./node_modules/webpack/hot/*.js 5.17 KiB
+  ./node_modules/webpack/hot/dev-server.js 1.94 KiB [built] [code generated]
+  ./node_modules/webpack/hot/log.js 1.73 KiB [built] [code generated]
+  + 2 modules
+modules by path ./node_modules/html-entities/dist/esm/*.js 33.5 KiB
+  ./node_modules/html-entities/dist/esm/index.js 4.98 KiB [built] [code generated]
+  ./node_modules/html-entities/dist/esm/named-references.js 27.3 KiB [built] [code generated]
+  + 2 modules
+./src/index.ts 15.6 KiB [built] [code generated]
+./node_modules/ansi-html-community/index.js 4.16 KiB [built] [code generated]
+./node_modules/events/events.js 14.5 KiB [built] [code generated]
+webpack 5.99.8 compiled successfully in 666 ms
+<i> [webpack-dev-server] Gracefully shutting down. To force exit, press ^C again. Please wait...
