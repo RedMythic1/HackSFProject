@@ -1,111 +1,71 @@
-# HackSF Project - Personalized Tech Newsletter
+# Tech Deep Dive
 
-A web application that analyzes Hacker News articles, identifies content matching user interests, and generates personalized tech deep dives based on user preferences.
+Tech Deep Dive is a tool that analyzes technology articles, generates insightful questions and deep dive content about the subjects covered in these articles.
 
-## Project Overview
+## Project Structure
 
-This project fetches articles from Hacker News, caches them, analyzes their content, and ranks them based on user interests. It then generates detailed summaries and research about the most relevant articles for the user.
+The project is organized into these main components:
 
-## File Structure and Purpose
+- `ansys.py` - Core analysis engine for article processing and question generation
+- `hackernews_summarizer.py` - Module for summarizing Hacker News articles
+- `tw/` - Web application for interacting with the analysis engine
+  - `server.py` - Flask server providing APIs for article management
+  - `src/` - Frontend source code
+  - `manage.sh` - All-in-one management script for the web application
 
-### Core Components
+## Quick Start
 
-- **ansys.py**: Main analysis script that handles article fetching, caching, processing, and ranking based on user interests. Generates questions and summaries for articles.
-- **hackernews_summarizer.py**: Specialized module for summarizing Hacker News content, extracting relevant information, and cleaning text.
-- **emailsender.py**: Utility for sending email notifications with personalized tech deep dives.
+The easiest way to get started is through the web application:
 
-### Web Interface
-
-- **typescript-webpage/**: Directory containing the web interface
-  - **server.py**: Flask backend server that provides API endpoints for the frontend.
-  - **src/index.ts**: Main TypeScript file controlling the frontend behavior.
-  - **public/index.html**: HTML structure for the web interface.
-  - **public/styles.css**: CSS styling for the web interface.
-
-### Scripts and Utilities
-
-- **typescript-webpage/init.sh**: Script to start both the frontend and backend servers.
-- **typescript-webpage/setup-ansys.sh**: Script to set up ansys.py in the correct location.
-- **typescript-webpage/test-cache.sh**: Script to test the article caching functionality.
-
-### Configuration Files
-
-- **typescript-webpage/package.json**: Frontend dependencies and scripts.
-- **typescript-webpage/tsconfig.json**: TypeScript configuration.
-- **typescript-webpage/webpack.config.js**: Webpack build configuration.
-- **typescript-webpage/requirements.txt**: Python dependencies for the backend.
-
-### Data Storage
-
-- **.cache/**: Directory for storing cached articles and generated content.
-- **typescript-webpage/user_data/**: Directory for storing user preference data.
-
-## Workflow
-
-### Setup Process
-
-1. **Initial Setup**:
-   ```bash
-   cd typescript-webpage
-   npm install
-   pip install -r requirements.txt
-   ./setup-ansys.sh
+1. Navigate to the `tw` directory:
+   ```
+   cd tw
    ```
 
-2. **Start the Application**:
-   ```bash
-   ./init.sh
+2. Use the management script to set up and start the application:
+   ```
+   ./manage.sh setup  # Set up dependencies and environment
+   ./manage.sh start  # Start the server and frontend
    ```
 
-### User Flow
+3. Open the application in your browser:
+   ```
+   http://localhost:9000
+   ```
 
-1. **Article Caching**:
-   - Access the admin panel by pressing `Shift+Alt+A`
-   - Click "Cache Articles & Generate Questions"
-   - Wait for the process to complete
+4. Cache articles and generate deep dive content:
+   ```
+   ./manage.sh cache      # Cache articles from Hacker News
+   ./manage.sh questions  # Generate questions and deep dive content
+   ```
 
-2. **User Input**:
-   - Enter email address
-   - Specify interests (comma-separated)
-   - Submit for analysis
+## Using the Core Analysis Engine Directly
 
-3. **Backend Processing**:
-   - Server receives user interests
-   - ansys.py ranks cached articles based on interests
-   - Generates questions about top articles
-   - Researches answers from the web
-   - Creates a detailed summary/deep dive
+If you want to use the core analysis engine directly:
 
-4. **Result Delivery**:
-   - Results are displayed on the webpage
-   - Optionally sent to the user's email
+```python
+python ansys.py
+```
 
-### Development Workflow
-
-1. **Frontend Changes**:
-   - Modify files in typescript-webpage/src/ or typescript-webpage/public/
-   - Webpack automatically rebuilds when using init.sh
-
-2. **Backend Changes**:
-   - Modify server.py or ansys.py
-   - Restart the server to apply changes
-
-3. **Testing**:
-   - Use test-cache.sh to verify article caching
-   - Check server.log and frontend.log for errors
-
-## Key Features
-
-- Semantic article analysis and ranking
-- Web content extraction and summarization
-- Question generation for deeper research
-- Responsive web interface
-- Admin controls for article caching
-- Email delivery system
+This will:
+1. Prompt you for your interests
+2. Fetch articles from Hacker News
+3. Score them based on your interests
+4. Process and analyze the most relevant articles
+5. Generate deep dive content with questions and answers
 
 ## Requirements
 
-- Node.js v14+
 - Python 3.8+
-- Flask and related dependencies
-- Modern web browser 
+- Node.js 14+
+- Required Python packages are listed in `requirements.txt`
+
+## Development
+
+For development, the most important files are:
+
+- `ansys.py` - Core functionality and algorithms
+- `tw/server.py` - Backend API server
+- `tw/src/index.ts` - Frontend interface
+
+See the README in the `tw/` directory for more details on the web application development. 

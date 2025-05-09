@@ -2,27 +2,26 @@
 > typescript-webpage@1.0.0 start
 > webpack serve --open
 
-<i> [webpack-dev-server] Project is running at:
-<i> [webpack-dev-server] Loopback: http://localhost:9000/
-<i> [webpack-dev-server] On Your Network (IPv4): http://192.168.68.84:9000/
-<i> [webpack-dev-server] On Your Network (IPv6): http://[fe80::1]:9000/
-<i> [webpack-dev-server] Content not from webpack is served from '/Users/avneh/Code/HackSFProject/tw/public' directory
-<i> [webpack-dev-middleware] wait until bundle finished: /
-<i> [webpack-dev-middleware] wait until bundle finished: /
-asset bundle.js 884 KiB [emitted] (name: main)
-runtime modules 27.4 KiB 12 modules
-orphan modules 681 bytes [orphan] 1 module
-modules by path ./node_modules/axios/lib/ 100 KiB 49 modules
-modules by path ./node_modules/webpack-dev-server/client/ 71.8 KiB 16 modules
-modules by path ./node_modules/webpack/hot/*.js 5.17 KiB
-  ./node_modules/webpack/hot/dev-server.js 1.94 KiB [built] [code generated]
-  ./node_modules/webpack/hot/log.js 1.73 KiB [built] [code generated]
-  + 2 modules
-modules by path ./node_modules/html-entities/dist/esm/*.js 33.5 KiB
-  ./node_modules/html-entities/dist/esm/index.js 4.98 KiB [built] [code generated]
-  ./node_modules/html-entities/dist/esm/named-references.js 27.3 KiB [built] [code generated]
-  + 2 modules
-./src/index.ts 35.6 KiB [built] [code generated]
-./node_modules/ansi-html-community/index.js 4.16 KiB [built] [code generated]
-./node_modules/events/events.js 14.5 KiB [built] [code generated]
-webpack 5.99.8 compiled successfully in 714 ms
+/Users/avneh/Code/HackSFProject/tw/node_modules/webpack-dev-server/lib/Server.js:2557
+        throw error;
+        ^
+
+Error: listen EADDRINUSE: address already in use :::9000
+    at Server.setupListenHandle [as _listen2] (node:net:1939:16)
+    at listenInCluster (node:net:1996:12)
+    at Server.listen (node:net:2101:7)
+    at READ_WRITE (/Users/avneh/Code/HackSFProject/tw/node_modules/webpack-dev-server/lib/Server.js:3367:23)
+    at new Promise (<anonymous>)
+    at Server.start (/Users/avneh/Code/HackSFProject/tw/node_modules/webpack-dev-server/lib/Server.js:3365:7)
+    at async Command.<anonymous> (/Users/avneh/Code/HackSFProject/tw/node_modules/@webpack-cli/serve/lib/index.js:158:21)
+    at async Command.parseAsync (/Users/avneh/Code/HackSFProject/tw/node_modules/webpack-cli/node_modules/commander/lib/command.js:935:5)
+    at async Command.<anonymous> (/Users/avneh/Code/HackSFProject/tw/node_modules/webpack-cli/lib/webpack-cli.js:1356:13)
+    at async Command.parseAsync (/Users/avneh/Code/HackSFProject/tw/node_modules/webpack-cli/node_modules/commander/lib/command.js:935:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 9000
+}
+
+Node.js v23.11.0

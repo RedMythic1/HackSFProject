@@ -12,6 +12,7 @@ class CommandApp {
     private cacheArticlesButton: HTMLButtonElement | null = null;
     private generateQuestionsButton: HTMLButtonElement | null = null;
     private adminToggleButton: HTMLButtonElement | null = null;
+    private cacheCheckInterval: number | null = null;
     
     // Store the user email
     private userEmail: string = '';
@@ -96,6 +97,14 @@ class CommandApp {
         
         // Add keyboard shortcut for admin panel
         document.addEventListener('keydown', this.handleKeyDown.bind(this));
+        
+        // Start cache polling
+        this.startCachePolling();
+        
+        // Stop polling when the window is closed
+        window.addEventListener('beforeunload', () => {
+            this.stopCachePolling();
+        });
     }
     
     private handleKeyDown(event: KeyboardEvent): void {
@@ -172,12 +181,21 @@ class CommandApp {
             const response = await axios.get('http://localhost:5001/check-cache');
             
             if (response.data.cached) {
-                this.updateLoadingMessage(`Found ${response.data.article_count} cached articles and ${response.data.final_article_count || 0} final articles. Preparing interface...`);
+                const validCount = response.data.valid_article_count || 0;
+                const uniqueCount = response.data.final_article_count || 0;
+                
+                this.updateLoadingMessage(`Found ${response.data.article_count} cached articles and ${uniqueCount} final articles. Preparing interface...`);
+                
+                // Add a status element for live cache updates
+                const cacheStatusDiv = document.createElement('div');
+                cacheStatusDiv.classList.add('cache-info');
+                cacheStatusDiv.textContent = `Cached articles: ${response.data.article_count}, Final articles: ${uniqueCount}`;
+                this.outputElement?.appendChild(cacheStatusDiv);
                 
                 // Don't show any final articles automatically - hide until user requests them
-                if (response.data.final_article_count > 0) {
+                if (uniqueCount > 0) {
                     setTimeout(() => {
-                        this.addMessageToOutput(`${response.data.final_article_count} final articles with questions & answers are available.`, 'info');
+                        this.addMessageToOutput(`${uniqueCount} final articles with questions & answers are available.`, 'info');
                         
                         // Add a button to view articles if we have any
                         const viewArticlesButton = document.createElement('button');
@@ -198,6 +216,12 @@ class CommandApp {
                 }
             } else {
                 this.updateLoadingMessage('No cached articles found. You may want to cache articles first.');
+                
+                // Add an empty status element that will be updated by polling
+                const cacheStatusDiv = document.createElement('div');
+                cacheStatusDiv.classList.add('cache-info');
+                cacheStatusDiv.textContent = 'Cached articles: 0, Final articles: 0';
+                this.outputElement?.appendChild(cacheStatusDiv);
             }
             
             // Artificial delay to ensure everything is ready
@@ -323,73 +347,180 @@ class CommandApp {
                 interests: interests
             });
             
-            // Handle the response
-            if (response.data.status === 'success') {
-                const article = response.data.article;
-                
-                // Create a message with the article info
-                const matchMessage = `Found the best article match for your interests (${article.match_score}/100):`;
-                this.addMessageToOutput(matchMessage, 'success');
-                
-                // Create a div for the article recommendation
-                const articleDiv = document.createElement('div');
-                articleDiv.className = 'article-recommendation';
-                
-                // Create a header for the article
-                const articleTitle = document.createElement('h3');
-                articleTitle.textContent = article.title;
-                articleDiv.appendChild(articleTitle);
-                
-                // If we have an HTML version, add a link to it
-                if (article.has_html) {
-                    // Extract just the filename from the path
-                    const pathParts = article.html_path.split('/');
-                    const htmlFilename = pathParts[pathParts.length - 1];
-                    
-                    // Create a button to view the full article
-                    const viewButton = document.createElement('button');
-                    viewButton.className = 'view-article-btn';
-                    viewButton.textContent = 'View Full Article';
-                    viewButton.addEventListener('click', () => {
-                        // Open the HTML article in a new tab/window
-                        window.open(`/final_articles/html/${htmlFilename}`, '_blank');
-                    });
-                    
-                    articleDiv.appendChild(viewButton);
-                } else {
-                    // No HTML version available
-                    const noHtml = document.createElement('p');
-                    noHtml.textContent = 'HTML version not available. You can view the article in the admin panel.';
-                    articleDiv.appendChild(noHtml);
+            // Check URL hash to see if we should use a specific article task
+            if (window.location.hash) {
+                const hashParams = new URLSearchParams(window.location.hash.substring(1));
+                const taskId = hashParams.get('task');
+                if (taskId) {
+                    // If we have a task_id in the URL, poll for its status
+                    this.addMessageToOutput('Loading article from link...', 'info');
+                    this.pollArticleMatchTask(taskId);
+                    return;
                 }
+            }
+            
+            // Handle the response - check for 202 status (Accepted) which means task was started
+            if (response.status === 202 && response.data.task_id) {
+                // Store task_id in URL hash
+                window.location.hash = `task=${response.data.task_id}`;
                 
-                // Create a simple message that explains what the user can do
-                const explainText = document.createElement('p');
-                explainText.className = 'article-explanation';
-                explainText.textContent = 'This article closely matches your interests. Click the button above to view the full article with deep dive questions and further exploration sections.';
-                articleDiv.appendChild(explainText);
+                this.addMessageToOutput('Article matching process initiated...', 'info');
                 
-                // Add the article div to the output
-                this.outputElement.appendChild(articleDiv);
+                // Start polling for the result
+                this.pollArticleMatchTask(response.data.task_id);
                 
-                // After 5 seconds, get all available articles
-                // setTimeout(() => {
-                //     this.addMessageToOutput('Other articles you might be interested in:', 'info');
-                //     this.handleViewArticles(false); // Don't show loading message
-                // }, 5000);
-                
-                // Suggest other interests to try if they want to see more articles
-                // this.addMessageToOutput('Want to explore more? Try entering different interests!', 'info');
-                
+            } else if (response.data.status === 'success') {
+                // Direct success response (unlikely with the new task-based approach)
+                const article = response.data.article;
+                this.displayArticleMatch(article);
             } else {
                 // Error message from the server
-                this.addMessageToOutput(`Error: ${response.data.message}`, 'error');
+                this.addMessageToOutput(`Processing error: ${response.data.message}`, 'error');
             }
         } catch (error: any) {
             console.error('Error:', error);
             const errorMessage = error.response?.data?.message || 'Error processing your interests. Is the server running?';
             this.addMessageToOutput(errorMessage, 'error');
         }
+    }
+    
+    private pollArticleMatchTask(taskId: string, attempts: number = 0): void {
+        const maxAttempts = 60; // Poll for up to 2 minutes (5 * 30 seconds)
+        const pollInterval = 2000; // 2 seconds
+        
+        if (attempts >= maxAttempts) {
+            this.addMessageToOutput('Article matching process timed out. Please try again.', 'error');
+            return;
+        }
+        
+        setTimeout(async () => {
+            try {
+                const response = await axios.get(`http://localhost:5001/get-match-progress/${taskId}`);
+                
+                // Update progress display
+                const progress = response.data.percentage || 0;
+                const status = response.data.status || 'Processing...';
+                
+                // Update or create a progress bar
+                this.updateProgressBar(progress, status);
+                
+                // Check if task is completed
+                if (response.data.completed) {
+                    // Remove progress bar
+                    const progressBar = document.querySelector('.task-progress-container');
+                    if (progressBar) {
+                        progressBar.remove();
+                    }
+                    
+                    if (response.data.final_result && response.data.final_result.status === 'success') {
+                        // Display the article match
+                        const article = response.data.final_result.article;
+                        this.displayArticleMatch(article);
+                        
+                        // Add direct article link
+                        if (article.article_url) {
+                            window.open(article.article_url, '_blank');
+                        }
+                    } else {
+                        // Error in task result
+                        const errorMsg = response.data.final_result?.message || 'Error finding article match';
+                        this.addMessageToOutput(`Processing error: ${errorMsg}`, 'error');
+                    }
+                } else {
+                    // Continue polling
+                    this.pollArticleMatchTask(taskId, attempts + 1);
+                }
+            } catch (error) {
+                console.error('Error polling for task status:', error);
+                this.addMessageToOutput('Error checking article match status. Will retry...', 'info');
+                // Continue polling even on error
+                this.pollArticleMatchTask(taskId, attempts + 1);
+            }
+        }, pollInterval);
+    }
+    
+    private updateProgressBar(progress: number, status: string): void {
+        // Find or create progress bar container
+        let progressContainer = document.querySelector('.task-progress-container') as HTMLDivElement;
+        
+        if (!progressContainer) {
+            progressContainer = document.createElement('div');
+            progressContainer.className = 'task-progress-container';
+            
+            const progressBarOuter = document.createElement('div');
+            progressBarOuter.className = 'progress-bar-outer';
+            
+            const progressBarInner = document.createElement('div');
+            progressBarInner.className = 'progress-bar-inner';
+            
+            const statusText = document.createElement('p');
+            statusText.className = 'progress-status';
+            
+            progressBarOuter.appendChild(progressBarInner);
+            progressContainer.appendChild(progressBarOuter);
+            progressContainer.appendChild(statusText);
+            
+            // Add to the beginning of the output
+            if (this.outputElement) {
+                this.outputElement.insertBefore(progressContainer, this.outputElement.firstChild);
+            }
+        }
+        
+        // Update progress bar
+        const progressBar = progressContainer.querySelector('.progress-bar-inner') as HTMLDivElement;
+        if (progressBar) {
+            progressBar.style.width = `${progress}%`;
+        }
+        
+        // Update status text
+        const statusElement = progressContainer.querySelector('.progress-status') as HTMLParagraphElement;
+        if (statusElement) {
+            statusElement.textContent = `${status} (${progress}%)`;
+        }
+    }
+    
+    private displayArticleMatch(article: any): void {
+        if (!this.outputElement) return;
+        
+        // Create a message with the article info
+        const matchMessage = `Found the best article match for your interests (${article.match_score}/100):`;
+        this.addMessageToOutput(matchMessage, 'success');
+        
+        // Create a div for the article recommendation
+        const articleDiv = document.createElement('div');
+        articleDiv.className = 'article-recommendation';
+        
+        // Create a header for the article
+        const articleTitle = document.createElement('h3');
+        articleTitle.textContent = article.title;
+        articleDiv.appendChild(articleTitle);
+        
+        // Create a button to view the article
+        const viewButton = document.createElement('button');
+        viewButton.className = 'view-article-btn';
+        viewButton.textContent = 'View Full Article';
+        
+        // Set up the button click event
+        viewButton.addEventListener('click', () => {
+            // Check for direct article URL from the server
+            if (article.article_url) {
+                window.open(article.article_url, '_blank');
+            } else if (article.id) {
+                // Fallback to local URL construction
+                window.open(`http://localhost:5001/article-html/${article.id}`, '_blank');
+            }
+        });
+        
+        articleDiv.appendChild(viewButton);
+        
+        // Create a simple message that explains what the user can do
+        const explainText = document.createElement('p');
+        explainText.className = 'article-explanation';
+        explainText.textContent = 'This article closely matches your interests. Click the button above to view the full article.';
+        articleDiv.appendChild(explainText);
+        
+        // Add the article div to the output
+        this.outputElement.appendChild(articleDiv);
     }
 
     private addMessageToOutput(message: string, type: 'info' | 'success' | 'error'): void {
@@ -473,69 +604,77 @@ class CommandApp {
         if (!this.outputElement) {
             return;
         }
-        
+
         try {
-            // Display loading status if requested
             if (showLoadingMessage) {
-                this.addMessageToOutput('Loading final articles...', 'info');
+                this.addMessageToOutput('Loading article list...', 'info');
             }
             
+            // Remove any existing article containers
+            const existingContainers = document.querySelectorAll('.articles-container');
+            existingContainers.forEach(container => container.remove());
+
             // Get the list of final articles
             const response = await axios.get('http://localhost:5001/get-final-articles');
             
-            if (response.data.articles && response.data.articles.length > 0) {
-                // Display articles
-                if (showLoadingMessage) {
-                    this.addMessageToOutput(`Found ${response.data.articles.length} final articles:`, 'success');
-                }
-                
+            if (response.data.status === 'success' && response.data.articles && response.data.articles.length > 0) {
                 // Create a container for the articles
                 const articlesContainer = document.createElement('div');
-                articlesContainer.classList.add('articles-container');
+                articlesContainer.className = 'articles-container';
+                
+                // Add a heading
+                const heading = document.createElement('h3');
+                heading.textContent = `Available Articles (${response.data.articles.length})`;
+                articlesContainer.appendChild(heading);
+                
+                // Create the list
+                const articleList = document.createElement('ul');
+                articleList.className = 'article-list';
                 
                 // Add each article
                 response.data.articles.forEach((article: any) => {
-                    const articleElement = document.createElement('div');
-                    articleElement.classList.add('article-item');
+                    const listItem = document.createElement('li');
                     
-                    // Format date
-                    const date = new Date(article.timestamp * 1000);
-                    const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                    // Create link
+                    const articleLink = document.createElement('a');
+                    articleLink.href = '#';
+                    articleLink.textContent = article.title;
+                    articleLink.dataset.articleId = article.id;
+                    articleLink.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.handleViewArticleContent(article.id);
+                    });
                     
-                    // Add article title and timestamp
-                    articleElement.innerHTML = `
-                        <h3>${article.title}</h3>
-                        <p>Generated: ${dateStr}</p>
-                        <button class="view-article-btn" data-id="${article.id}">View Article</button>
-                    `;
+                    // Add the link to the list item
+                    listItem.appendChild(articleLink);
                     
-                    // Add to container
-                    articlesContainer.appendChild(articleElement);
+                    // Add the list item to the list
+                    articleList.appendChild(listItem);
                 });
                 
-                // Add to output
+                // Add the list to the container
+                articlesContainer.appendChild(articleList);
+                
+                // Add the container to the output
                 this.outputElement.appendChild(articlesContainer);
                 
-                // Add event listeners to view buttons
-                const viewButtons = document.querySelectorAll('.view-article-btn');
-                viewButtons.forEach(button => {
-                    button.addEventListener('click', (event) => {
-                        const id = (event.target as HTMLElement).getAttribute('data-id');
-                        if (id) {
-                            this.handleViewArticleContent(id);
-                        }
-                    });
-                });
+                // Scroll to the articles container
+                articlesContainer.scrollIntoView({ behavior: 'smooth' });
+                
+                // Add a note about the count
+                if (response.data.invalid_count > 0) {
+                    this.addMessageToOutput(`Note: ${response.data.invalid_count} invalid article files were cleaned up during this process.`, 'info');
+                }
             } else {
                 if (showLoadingMessage) {
-                    this.addMessageToOutput('No final articles found.', 'info');
+                    this.addMessageToOutput('No final articles found. You may need to generate them first.', 'error');
                 }
             }
-        } catch (error: any) {
-            // Display error message
-            const errorMessage = error.response?.data?.message || 'Error loading articles. Is the server running?';
-            this.addMessageToOutput(errorMessage, 'error');
-            console.error('Error:', error);
+        } catch (error) {
+            console.error('Error viewing articles:', error);
+            if (showLoadingMessage) {
+                this.addMessageToOutput('Error retrieving articles. Please try again.', 'error');
+            }
         }
     }
     
@@ -543,68 +682,127 @@ class CommandApp {
         if (!this.outputElement) {
             return;
         }
-        
+
         try {
-            // Display loading status
-            this.addMessageToOutput(`Loading article content...`, 'info');
+            this.addMessageToOutput('Loading article content...', 'info');
             
+            // Remove any existing article content display
+            const existingContent = document.querySelectorAll('.article-content');
+            existingContent.forEach(content => content.remove());
+
             // Get the article content
             const response = await axios.get(`http://localhost:5001/get-final-article/${articleId}`);
             
-            if (response.data.article) {
+            if (response.data.status === 'success' && response.data.article) {
                 const article = response.data.article;
                 
                 // Create a container for the article content
                 const contentContainer = document.createElement('div');
-                contentContainer.classList.add('article-content');
+                contentContainer.className = 'article-content';
                 
-                // Add article content
-                const contentElement = document.createElement('div');
-                contentElement.classList.add('markdown-content');
-                
-                // Convert Markdown content to HTML
-                const markdownContent = article.content;
-                
-                // Simple Markdown to HTML conversion for headers and paragraphs
-                let htmlContent = markdownContent
-                    .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-                    .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-                    .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-                    .replace(/^#### (.*$)/gm, '<h4>$1</h4>')
-                    .replace(/^##### (.*$)/gm, '<h5>$1</h5>')
-                    .replace(/\n\n/gm, '</p><p>')
-                    .replace(/\*\*(.*?)\*\*/gm, '<strong>$1</strong>')
-                    .replace(/\*(.*?)\*/gm, '<em>$1</em>');
-                
-                // Wrap in paragraphs
-                htmlContent = '<p>' + htmlContent + '</p>';
-                
-                contentElement.innerHTML = htmlContent;
-                contentContainer.appendChild(contentElement);
+                // Add article title
+                const title = document.createElement('h2');
+                title.textContent = article.title;
+                contentContainer.appendChild(title);
                 
                 // Add a close button
                 const closeButton = document.createElement('button');
                 closeButton.textContent = 'Close Article';
-                closeButton.classList.add('close-article-btn');
+                closeButton.className = 'close-article-btn';
                 closeButton.addEventListener('click', () => {
-                    // Remove the content container
                     contentContainer.remove();
                 });
                 contentContainer.appendChild(closeButton);
                 
-                // Add to output
+                // Add the markdown content
+                const markdownContent = document.createElement('div');
+                markdownContent.className = 'markdown-content';
+                
+                // Simple markdown parsing (very basic)
+                const formattedContent = article.content
+                    .replace(/^# (.*?)$/gm, '<h1>$1</h1>')
+                    .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
+                    .replace(/^### (.*?)$/gm, '<h3>$1</h3>')
+                    .replace(/^#### (.*?)$/gm, '<h4>$1</h4>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/\n\n/g, '</p><p>')
+                    .replace(/\n/g, '<br>');
+                    
+                markdownContent.innerHTML = `<p>${formattedContent}</p>`;
+                contentContainer.appendChild(markdownContent);
+                
+                // Add the container to the output
                 this.outputElement.appendChild(contentContainer);
                 
                 // Scroll to the content
                 contentContainer.scrollIntoView({ behavior: 'smooth' });
             } else {
-                this.addMessageToOutput('Article content not found.', 'error');
+                this.addMessageToOutput('Error: Could not load article content.', 'error');
             }
-        } catch (error: any) {
-            // Display error message
-            const errorMessage = error.response?.data?.message || 'Error loading article content. Is the server running?';
-            this.addMessageToOutput(errorMessage, 'error');
-            console.error('Error:', error);
+        } catch (error) {
+            console.error('Error loading article content:', error);
+            this.addMessageToOutput('Error loading article content. Please try again.', 'error');
+        }
+    }
+
+    private startCachePolling(): void {
+        // Poll every 5 seconds
+        this.cacheCheckInterval = window.setInterval(async () => {
+            try {
+                const response = await axios.get('http://localhost:5001/check-cache');
+                
+                // Update the UI with the new cache info
+                const cachedCount = response.data.article_count;
+                const finalCount = response.data.final_article_count || 0;
+                const previousFinalCount = document.querySelectorAll('.cache-info').length > 0 ? 
+                    parseInt(document.querySelector('.cache-info')?.textContent?.split(':')[2]?.trim() || '0') : 0;
+                
+                // Check if the count changed
+                const countChanged = finalCount !== previousFinalCount;
+                
+                // Update any UI elements that show cache counts
+                const cacheInfoElements = document.querySelectorAll('.cache-info');
+                cacheInfoElements.forEach(element => {
+                    element.textContent = `Cached articles: ${cachedCount}, Final articles: ${finalCount}`;
+                });
+                
+                // If there are now articles available but weren't before, add the button
+                if (finalCount > 0 && !document.querySelector('.view-articles-btn')) {
+                    this.addMessageToOutput(`${finalCount} final articles with questions & answers are available.`, 'info');
+                    
+                    // Add a button to view articles
+                    const viewArticlesButton = document.createElement('button');
+                    viewArticlesButton.textContent = 'View Final Articles';
+                    viewArticlesButton.classList.add('view-articles-btn');
+                    viewArticlesButton.addEventListener('click', () => {
+                        this.handleViewArticles(true);
+                    });
+                    
+                    // Create a container for the button
+                    const buttonContainer = document.createElement('div');
+                    buttonContainer.classList.add('button-container');
+                    buttonContainer.appendChild(viewArticlesButton);
+                    
+                    // Add to output
+                    this.outputElement?.appendChild(buttonContainer);
+                }
+                
+                // If the count changed and we have an articles container displayed, refresh it
+                if (countChanged && document.querySelector('.articles-container')) {
+                    this.handleViewArticles(false); // Refresh without showing loading message
+                }
+            } catch (error) {
+                console.error('Error checking cache during polling:', error);
+                // Don't display errors during automatic polling
+            }
+        }, 5000);
+    }
+
+    private stopCachePolling(): void {
+        if (this.cacheCheckInterval !== null) {
+            window.clearInterval(this.cacheCheckInterval);
+            this.cacheCheckInterval = null;
         }
     }
 
