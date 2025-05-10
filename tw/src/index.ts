@@ -1,5 +1,8 @@
 import axios from 'axios';
 
+// Update the API_URL constant to point to the new Node.js backend
+const API_URL = 'http://localhost:5001';
+
 class CommandApp {
     private inputElement: HTMLInputElement | null = null;
     private formElement: HTMLFormElement | null = null;
@@ -9,8 +12,7 @@ class CommandApp {
     private emailFormElement: HTMLFormElement | null = null;
     private outputElement: HTMLDivElement | null = null;
     private loadingMessageElement: HTMLElement | null = null;
-    private cacheArticlesButton: HTMLButtonElement | null = null;
-    private generateQuestionsButton: HTMLButtonElement | null = null;
+    private viewArticlesButton: HTMLButtonElement | null = null;
     private adminToggleButton: HTMLButtonElement | null = null;
     private cacheCheckInterval: number | null = null;
     
@@ -21,6 +23,7 @@ class CommandApp {
         this.initializeElements();
         this.setupEventListeners();
         this.checkCache();
+        this.checkEmailVerification();
         
         // Log platform information to help with debugging
         const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
@@ -44,8 +47,7 @@ class CommandApp {
         this.interestsInputElement = document.getElementById('interests-input') as HTMLInputElement;
         
         // Get admin elements
-        this.cacheArticlesButton = document.getElementById('cache-articles-btn') as HTMLButtonElement;
-        this.generateQuestionsButton = document.getElementById('generate-questions-btn') as HTMLButtonElement;
+        this.viewArticlesButton = document.getElementById('view-articles-btn') as HTMLButtonElement;
         this.adminToggleButton = document.getElementById('admin-toggle-btn') as HTMLButtonElement;
         
         // Get output element
@@ -74,18 +76,13 @@ class CommandApp {
             console.error('Interests form not found');
         }
         
-        // Add cache articles button event listener
-        if (this.cacheArticlesButton) {
-            this.cacheArticlesButton.addEventListener('click', this.handleCacheArticles.bind(this));
+        // Add view articles button event listener
+        if (this.viewArticlesButton) {
+            this.viewArticlesButton.addEventListener('click', (event) => {
+                this.handleViewArticles(true);
+            });
         } else {
-            console.error('Cache articles button not found');
-        }
-        
-        // Add generate questions button event listener
-        if (this.generateQuestionsButton) {
-            this.generateQuestionsButton.addEventListener('click', this.handleGenerateQuestions.bind(this));
-        } else {
-            console.error('Generate questions button not found');
+            console.error('View articles button not found');
         }
         
         // Add admin toggle button event listener
@@ -129,47 +126,10 @@ class CommandApp {
             // If showing admin panel, add a message to the output
             if (adminSection.style.display === 'block') {
                 this.addMessageToOutput('Admin panel activated', 'info');
+                this.addMessageToOutput('Article processing is now handled via shell commands', 'info');
             }
         } else {
             console.error('Admin section not found in DOM');
-        }
-    }
-    
-    private async handleCacheArticles(): Promise<void> {
-        if (!this.cacheArticlesButton || !this.outputElement) {
-            return;
-        }
-        
-        try {
-            // Disable the button while processing
-            this.cacheArticlesButton.disabled = true;
-            this.cacheArticlesButton.textContent = 'Processing...';
-            
-            // Display processing status
-            this.addMessageToOutput('Starting article caching process...', 'info');
-            
-            // Call the cache-articles endpoint
-            const response = await axios.get('http://localhost:5001/cache-articles');
-            
-            // Display success message
-            this.addMessageToOutput(`${response.data.message}`, 'success');
-            
-            // Add a note about the terminal window if on Mac
-            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-            if (isMac) {
-                this.addMessageToOutput('A new Terminal window has been opened to show the caching process.', 'info');
-                this.addMessageToOutput('You can monitor the progress in that window.', 'info');
-            }
-            
-        } catch (error: any) {
-            // Display error message
-            const errorMessage = error.response?.data?.message || 'Error caching articles. Is the server running?';
-            this.addMessageToOutput(errorMessage, 'error');
-            console.error('Error:', error);
-        } finally {
-            // Re-enable the button
-            this.cacheArticlesButton.disabled = false;
-            this.cacheArticlesButton.textContent = 'Cache Articles Only';
         }
     }
     
@@ -177,19 +137,20 @@ class CommandApp {
         try {
             this.updateLoadingMessage('Checking article cache...');
             
-            // Check if articles are cached
-            const response = await axios.get('http://localhost:5001/check-cache');
+            // Call the backend endpoint
+            const response = await fetch(`${API_URL}/check-cache`);
+            const data = await response.json();
             
-            if (response.data.cached) {
-                const validCount = response.data.valid_article_count || 0;
-                const uniqueCount = response.data.final_article_count || 0;
+            if (data.cached) {
+                const validCount = data.valid_article_count || 0;
+                const uniqueCount = data.final_article_count || 0;
                 
-                this.updateLoadingMessage(`Found ${response.data.article_count} cached articles and ${uniqueCount} final articles. Preparing interface...`);
+                this.updateLoadingMessage(`Found ${data.article_count} cached articles and ${uniqueCount} final articles. Preparing interface...`);
                 
                 // Add a status element for live cache updates
                 const cacheStatusDiv = document.createElement('div');
                 cacheStatusDiv.classList.add('cache-info');
-                cacheStatusDiv.textContent = `Cached articles: ${response.data.article_count}, Final articles: ${uniqueCount}`;
+                cacheStatusDiv.textContent = `Cached articles: ${data.article_count}, Final articles: ${uniqueCount}`;
                 this.outputElement?.appendChild(cacheStatusDiv);
                 
                 // Don't show any final articles automatically - hide until user requests them
@@ -215,7 +176,7 @@ class CommandApp {
                     }, 3000);
                 }
             } else {
-                this.updateLoadingMessage('No cached articles found. You may want to cache articles first.');
+                this.updateLoadingMessage('No cached articles found. Use shell commands to process articles first.');
                 
                 // Add an empty status element that will be updated by polling
                 const cacheStatusDiv = document.createElement('div');
@@ -232,7 +193,7 @@ class CommandApp {
             
         } catch (error) {
             console.error('Error checking cache:', error);
-            this.updateLoadingMessage('Error checking cache. Proceeding anyway...');
+            this.addMessageToOutput(`Error checking cache: ${error}`, 'error');
             
             // Continue to the app interface even on error
             setTimeout(() => {
@@ -247,6 +208,23 @@ class CommandApp {
         }
     }
     
+    private async checkEmailVerification(): Promise<void> {
+        try {
+            // Call the new Node.js backend endpoint
+            const response = await fetch(`${API_URL}/check-email-verification`);
+            const data = await response.json();
+            
+            if (data.status === 'success' && data.verified) {
+                // Email is already verified, store it and show interests section
+                this.userEmail = data.email;
+                this.toggleSections('email-section', 'interests-section');
+                this.addMessageToOutput(`Welcome back! Using email: ${data.email}`, 'success');
+            }
+        } catch (error) {
+            console.error('Error checking email verification:', error);
+        }
+    }
+
     private async handleEmailSubmit(event: Event): Promise<void> {
         event.preventDefault();
         
@@ -269,19 +247,32 @@ class CommandApp {
         }
 
         try {
-            // Store the email
-            this.userEmail = email;
+            // Call the backend endpoint
+            const response = await fetch(`${API_URL}/verify-email`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email })
+            });
             
-            // Display success message
-            this.addMessageToOutput(`Email registered: ${email}`, 'success');
+            const data = await response.json();
             
-            // Hide email section and show interests section
-            this.toggleSections('email-section', 'interests-section');
-            
+            if (data.status === 'success') {
+                // Store the email
+                this.userEmail = email;
+                
+                // Display success message
+                this.addMessageToOutput(`Email registered: ${email}`, 'success');
+                
+                // Hide email section and show interests section
+                this.toggleSections('email-section', 'interests-section');
+            } else {
+                this.addMessageToOutput(data.message || 'Error processing email', 'error');
+            }
         } catch (error) {
-            // Display error message
-            this.addMessageToOutput('Error processing email', 'error');
-            console.error('Error:', error);
+            console.error('Error verifying email:', error);
+            this.addMessageToOutput(`Error verifying email: ${error}`, 'error');
         }
     }
 
@@ -338,189 +329,160 @@ class CommandApp {
         const previousArticles = document.querySelectorAll('.articles-container, .article-recommendation, .article-content');
         previousArticles.forEach(element => element.remove());
 
-        // Display a nice message about what we're doing
-        this.addMessageToOutput(`Analyzing your interests: ${interests}`, 'info');
+        // Display a helpful message about shell commands
+        this.addMessageToOutput(`You entered interests: ${interests}`, 'info');
+        this.addMessageToOutput('Article processing is now handled via shell commands. Please use the terminal.', 'info');
+        this.addMessageToOutput('Command example:', 'info');
+        this.addMessageToOutput(`cd /path/to/project && ./fetch_articles.sh process "${interests}"`, 'info');
         
-        try {
-            // Send the interests to the server along with the email
-            const response = await axios.post('http://localhost:5001/get-best-article-match', {
-                interests: interests
-            });
-            
-            // Check URL hash to see if we should use a specific article task
-            if (window.location.hash) {
-                const hashParams = new URLSearchParams(window.location.hash.substring(1));
-                const taskId = hashParams.get('task');
-                if (taskId) {
-                    // If we have a task_id in the URL, poll for its status
-                    this.addMessageToOutput('Loading article from link...', 'info');
-                    this.pollArticleMatchTask(taskId);
-                    return;
-                }
-            }
-            
-            // Handle the response - check for 202 status (Accepted) which means task was started
-            if (response.status === 202 && response.data.task_id) {
-                // Store task_id in URL hash
-                window.location.hash = `task=${response.data.task_id}`;
-                
-                this.addMessageToOutput('Article matching process initiated...', 'info');
-                
-                // Start polling for the result
-                this.pollArticleMatchTask(response.data.task_id);
-                
-            } else if (response.data.status === 'success') {
-                // Direct success response (unlikely with the new task-based approach)
-                const article = response.data.article;
-                this.displayArticleMatch(article);
-            } else {
-                // Error message from the server
-                this.addMessageToOutput(`Processing error: ${response.data.message}`, 'error');
-            }
-        } catch (error: any) {
-            console.error('Error:', error);
-            const errorMessage = error.response?.data?.message || 'Error processing your interests. Is the server running?';
-            this.addMessageToOutput(errorMessage, 'error');
-        }
+        // Suggest viewing articles
+        this.addMessageToOutput('After processing articles via shell commands, you can view them using the "View Articles" button.', 'info');
     }
     
-    private pollArticleMatchTask(taskId: string, attempts: number = 0): void {
-        const maxAttempts = 60; // Poll for up to 2 minutes (5 * 30 seconds)
-        const pollInterval = 2000; // 2 seconds
+    private async pollTaskProgress(taskId: string, loadingElement: HTMLElement): Promise<void> {
+        const maxAttempts = 60; // 2 minutes maximum (2s intervals)
+        let attempts = 0;
+        let progressBarDiv: HTMLDivElement | null = null;
         
-        if (attempts >= maxAttempts) {
-            this.addMessageToOutput('Article matching process timed out. Please try again.', 'error');
-            return;
-        }
+        // Create progress bar
+        progressBarDiv = document.createElement('div');
+        progressBarDiv.className = 'progress-container';
+        progressBarDiv.innerHTML = `
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: 0%"></div>
+            </div>
+            <p class="progress-text">0%</p>
+        `;
+        loadingElement.appendChild(progressBarDiv);
         
-        setTimeout(async () => {
+        const pollInterval = setInterval(async () => {
             try {
+                attempts++;
+                // Check task progress
                 const response = await axios.get(`http://localhost:5001/get-match-progress/${taskId}`);
                 
-                // Update progress display
-                const progress = response.data.percentage || 0;
-                const status = response.data.status || 'Processing...';
+                // Update progress bar if available
+                if (progressBarDiv && response.data.percentage) {
+                    const progressFill = progressBarDiv.querySelector('.progress-fill');
+                    const progressText = progressBarDiv.querySelector('.progress-text');
+                    if (progressFill && progressText) {
+                        progressFill.setAttribute('style', `width: ${response.data.percentage}%`);
+                        progressText.textContent = `${response.data.percentage}% - ${response.data.status || 'Processing...'}`;
+                    }
+                }
                 
-                // Update or create a progress bar
-                this.updateProgressBar(progress, status);
-                
-                // Check if task is completed
+                // Task is complete
                 if (response.data.completed) {
-                    // Remove progress bar
-                    const progressBar = document.querySelector('.task-progress-container');
-                    if (progressBar) {
-                        progressBar.remove();
-                    }
+                    clearInterval(pollInterval);
+                    loadingElement.remove();
                     
-                    if (response.data.final_result && response.data.final_result.status === 'success') {
-                        // Display the article match
+                    if (response.data.final_result?.status === 'success') {
                         const article = response.data.final_result.article;
-                        this.displayArticleMatch(article);
                         
-                        // Add direct article link
-                        if (article.article_url) {
-                            window.open(article.article_url, '_blank');
+                        // Create a message with the article info
+                        const matchMessage = `Found the best article match for your interests (${article.match_score}/100):`;
+                        this.addMessageToOutput(matchMessage, 'success');
+                        
+                        // Create a div for the article recommendation
+                        const articleDiv = document.createElement('div');
+                        articleDiv.className = 'article-recommendation best-article-match';
+                        
+                        // Create a header container with score indicator
+                        const headerContainer = document.createElement('div');
+                        headerContainer.className = 'best-match-header';
+                        
+                        // Add a "Best Match" badge
+                        const matchBadge = document.createElement('div');
+                        matchBadge.className = 'match-badge';
+                        matchBadge.innerHTML = `<span class="match-score">${article.match_score}</span><span class="match-label">MATCH SCORE</span>`;
+                        headerContainer.appendChild(matchBadge);
+                        
+                        // Create a header for the article
+                        const articleTitle = document.createElement('h3');
+                        articleTitle.textContent = article.title;
+                        headerContainer.appendChild(articleTitle);
+                        
+                        // Add the header container to the article div
+                        articleDiv.appendChild(headerContainer);
+                        
+                        // Add article summary
+                        const summary = this.extractArticleSummary(article.content);
+                        const summaryContainer = document.createElement('div');
+                        summaryContainer.className = 'article-summary';
+                        summaryContainer.textContent = summary;
+                        articleDiv.appendChild(summaryContainer);
+                        
+                        // Add match explanation if available
+                        if (article.match_explanation) {
+                            const matchExplanation = document.createElement('div');
+                            matchExplanation.className = 'match-explanation';
+                            matchExplanation.textContent = article.match_explanation;
+                            articleDiv.appendChild(matchExplanation);
+                        } else {
+                            // Add a generic explanation
+                            const matchExplanation = document.createElement('div');
+                            matchExplanation.className = 'match-explanation';
+                            matchExplanation.textContent = `This article scored ${article.match_score}/100 based on your stated interests. Articles are scored based on relevant content, topic overlap, and depth of coverage.`;
+                            articleDiv.appendChild(matchExplanation);
                         }
+                        
+                        // If we have an HTML version, add a link to it
+                        if (article.has_html) {
+                            // Extract just the filename from the path
+                            const pathParts = article.html_path.split('/');
+                            const htmlFilename = pathParts[pathParts.length - 1];
+                            
+                            // Create a button container for actions
+                            const buttonContainer = document.createElement('div');
+                            buttonContainer.className = 'article-actions';
+                            
+                            // Create a button to view the full article
+                            const viewButton = document.createElement('button');
+                            viewButton.className = 'view-article-btn';
+                            viewButton.textContent = 'View Full Article';
+                            viewButton.addEventListener('click', () => {
+                                // Instead of opening in new tab, display content directly in UI
+                                this.handleViewArticleContent(article.id);
+                            });
+                            
+                            buttonContainer.appendChild(viewButton);
+                            articleDiv.appendChild(buttonContainer);
+                        } else {
+                            // No HTML version available
+                            const noHtml = document.createElement('p');
+                            noHtml.textContent = 'HTML version not available. You can view the article in the admin panel.';
+                            articleDiv.appendChild(noHtml);
+                        }
+                        
+                        // Create a simple message that explains what the user can do
+                        const explainText = document.createElement('p');
+                        explainText.className = 'article-explanation';
+                        explainText.textContent = 'This article closely matches your interests. Click the button above to view the full article with deep dive questions and further exploration sections.';
+                        articleDiv.appendChild(explainText);
+                        
+                        // Add the article div to the output
+                        this.outputElement?.appendChild(articleDiv);
                     } else {
-                        // Error in task result
-                        const errorMsg = response.data.final_result?.message || 'Error finding article match';
-                        this.addMessageToOutput(`Processing error: ${errorMsg}`, 'error');
+                        // Error in the final result
+                        this.addMessageToOutput(`Error: ${response.data.final_result?.message || 'Could not find matching article'}`, 'error');
                     }
-                } else {
-                    // Continue polling
-                    this.pollArticleMatchTask(taskId, attempts + 1);
+                } else if (attempts >= maxAttempts) {
+                    // Timeout after max attempts
+                    clearInterval(pollInterval);
+                    loadingElement.remove();
+                    this.addMessageToOutput('Request timed out. The article matching is taking longer than expected.', 'error');
                 }
             } catch (error) {
-                console.error('Error polling for task status:', error);
-                this.addMessageToOutput('Error checking article match status. Will retry...', 'info');
-                // Continue polling even on error
-                this.pollArticleMatchTask(taskId, attempts + 1);
+                console.error('Error polling task progress:', error);
+                attempts++;
+                
+                if (attempts >= maxAttempts) {
+                    clearInterval(pollInterval);
+                    loadingElement.remove();
+                    this.addMessageToOutput('Error tracking progress of article matching. Please try again.', 'error');
+                }
             }
-        }, pollInterval);
-    }
-    
-    private updateProgressBar(progress: number, status: string): void {
-        // Find or create progress bar container
-        let progressContainer = document.querySelector('.task-progress-container') as HTMLDivElement;
-        
-        if (!progressContainer) {
-            progressContainer = document.createElement('div');
-            progressContainer.className = 'task-progress-container';
-            
-            const progressBarOuter = document.createElement('div');
-            progressBarOuter.className = 'progress-bar-outer';
-            
-            const progressBarInner = document.createElement('div');
-            progressBarInner.className = 'progress-bar-inner';
-            
-            const statusText = document.createElement('p');
-            statusText.className = 'progress-status';
-            
-            progressBarOuter.appendChild(progressBarInner);
-            progressContainer.appendChild(progressBarOuter);
-            progressContainer.appendChild(statusText);
-            
-            // Add to the beginning of the output
-            if (this.outputElement) {
-                this.outputElement.insertBefore(progressContainer, this.outputElement.firstChild);
-            }
-        }
-        
-        // Update progress bar
-        const progressBar = progressContainer.querySelector('.progress-bar-inner') as HTMLDivElement;
-        if (progressBar) {
-            progressBar.style.width = `${progress}%`;
-        }
-        
-        // Update status text
-        const statusElement = progressContainer.querySelector('.progress-status') as HTMLParagraphElement;
-        if (statusElement) {
-            statusElement.textContent = `${status} (${progress}%)`;
-        }
-    }
-    
-    private displayArticleMatch(article: any): void {
-        if (!this.outputElement) return;
-        
-        // Create a message with the article info
-        const matchMessage = `Found the best article match for your interests (${article.match_score}/100):`;
-        this.addMessageToOutput(matchMessage, 'success');
-        
-        // Create a div for the article recommendation
-        const articleDiv = document.createElement('div');
-        articleDiv.className = 'article-recommendation';
-        
-        // Create a header for the article
-        const articleTitle = document.createElement('h3');
-        articleTitle.textContent = article.title;
-        articleDiv.appendChild(articleTitle);
-        
-        // Create a button to view the article
-        const viewButton = document.createElement('button');
-        viewButton.className = 'view-article-btn';
-        viewButton.textContent = 'View Full Article';
-        
-        // Set up the button click event
-        viewButton.addEventListener('click', () => {
-            // Check for direct article URL from the server
-            if (article.article_url) {
-                window.open(article.article_url, '_blank');
-            } else if (article.id) {
-                // Fallback to local URL construction
-                window.open(`http://localhost:5001/article-html/${article.id}`, '_blank');
-            }
-        });
-        
-        articleDiv.appendChild(viewButton);
-        
-        // Create a simple message that explains what the user can do
-        const explainText = document.createElement('p');
-        explainText.className = 'article-explanation';
-        explainText.textContent = 'This article closely matches your interests. Click the button above to view the full article.';
-        articleDiv.appendChild(explainText);
-        
-        // Add the article div to the output
-        this.outputElement.appendChild(articleDiv);
+        }, 2000); // Poll every 2 seconds
     }
 
     private addMessageToOutput(message: string, type: 'info' | 'success' | 'error'): void {
@@ -562,69 +524,29 @@ class CommandApp {
         }
     }
 
-    private async handleGenerateQuestions(): Promise<void> {
-        if (!this.generateQuestionsButton || !this.outputElement) {
-            return;
-        }
-        
-        try {
-            // Disable the button while processing
-            this.generateQuestionsButton.disabled = true;
-            this.generateQuestionsButton.textContent = 'Processing...';
-            
-            // Display processing status
-            this.addMessageToOutput('Starting full question and answer generation...', 'info');
-            
-            // Call the generate-questions endpoint
-            const response = await axios.get('http://localhost:5001/generate-questions');
-            
-            // Display success message
-            this.addMessageToOutput(`${response.data.message}`, 'success');
-            
-            // Add a note about the terminal window if on Mac
-            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-            if (isMac) {
-                this.addMessageToOutput('A new Terminal window has been opened to show the generation process.', 'info');
-                this.addMessageToOutput('This process will take several minutes. You can monitor the progress in that window.', 'info');
-            }
-            
-        } catch (error: any) {
-            // Display error message
-            const errorMessage = error.response?.data?.message || 'Error generating questions. Is the server running?';
-            this.addMessageToOutput(errorMessage, 'error');
-            console.error('Error:', error);
-        } finally {
-            // Re-enable the button
-            this.generateQuestionsButton.disabled = false;
-            this.generateQuestionsButton.textContent = 'Generate Questions & Answers';
-        }
-    }
-
     private async handleViewArticles(showLoadingMessage: boolean = true): Promise<void> {
-        if (!this.outputElement) {
-            return;
-        }
-
         try {
-            if (showLoadingMessage) {
-                this.addMessageToOutput('Loading article list...', 'info');
+            if (!this.outputElement) {
+                console.error('Output element not initialized');
+                return;
             }
             
-            // Remove any existing article containers
-            const existingContainers = document.querySelectorAll('.articles-container');
-            existingContainers.forEach(container => container.remove());
-
-            // Get the list of final articles
-            const response = await axios.get('http://localhost:5001/get-final-articles');
+            if (showLoadingMessage) {
+                this.updateLoadingMessage('Loading articles...');
+            }
             
-            if (response.data.status === 'success' && response.data.articles && response.data.articles.length > 0) {
+            // Call the backend endpoint
+            const response = await fetch(`${API_URL}/get-final-articles`);
+            const data = await response.json();
+            
+            if (data.status === 'success' && data.articles && data.articles.length > 0) {
                 // Create a container for the articles
                 const articlesContainer = document.createElement('div');
                 articlesContainer.className = 'articles-container';
                 
                 // Add a heading
                 const heading = document.createElement('h3');
-                heading.textContent = `Available Articles (${response.data.articles.length})`;
+                heading.textContent = `Available Articles (${data.articles.length})`;
                 articlesContainer.appendChild(heading);
                 
                 // Create the list
@@ -632,7 +554,7 @@ class CommandApp {
                 articleList.className = 'article-list';
                 
                 // Add each article
-                response.data.articles.forEach((article: any) => {
+                data.articles.forEach((article: any) => {
                     const listItem = document.createElement('li');
                     
                     // Create link
@@ -662,39 +584,36 @@ class CommandApp {
                 articlesContainer.scrollIntoView({ behavior: 'smooth' });
                 
                 // Add a note about the count
-                if (response.data.invalid_count > 0) {
-                    this.addMessageToOutput(`Note: ${response.data.invalid_count} invalid article files were cleaned up during this process.`, 'info');
+                if (data.invalid_count > 0) {
+                    this.addMessageToOutput(`Note: ${data.invalid_count} invalid article files were cleaned up during this process.`, 'info');
                 }
             } else {
                 if (showLoadingMessage) {
-                    this.addMessageToOutput('No final articles found. You may need to generate them first.', 'error');
+                    this.addMessageToOutput('No final articles found. Please process articles using shell commands first.', 'info');
+                    this.addMessageToOutput('Example: ./fetch_articles.sh process "technology, science"', 'info');
                 }
             }
         } catch (error) {
-            console.error('Error viewing articles:', error);
-            if (showLoadingMessage) {
-                this.addMessageToOutput('Error retrieving articles. Please try again.', 'error');
-            }
+            console.error('Error loading articles:', error);
+            this.addMessageToOutput(`Error loading articles: ${error}`, 'error');
         }
     }
     
     private async handleViewArticleContent(articleId: string): Promise<void> {
-        if (!this.outputElement) {
-            return;
-        }
-
         try {
-            this.addMessageToOutput('Loading article content...', 'info');
+            if (!this.outputElement) {
+                console.error('Output element not initialized');
+                return;
+            }
             
-            // Remove any existing article content display
-            const existingContent = document.querySelectorAll('.article-content');
-            existingContent.forEach(content => content.remove());
-
-            // Get the article content
-            const response = await axios.get(`http://localhost:5001/get-final-article/${articleId}`);
+            this.updateLoadingMessage('Loading article content...');
             
-            if (response.data.status === 'success' && response.data.article) {
-                const article = response.data.article;
+            // Call the backend endpoint
+            const response = await fetch(`${API_URL}/get-final-article/${articleId}`);
+            const data = await response.json();
+            
+            if (data.status === 'success' && data.article) {
+                const article = data.article;
                 
                 // Create a container for the article content
                 const contentContainer = document.createElement('div');
@@ -713,6 +632,20 @@ class CommandApp {
                     contentContainer.remove();
                 });
                 contentContainer.appendChild(closeButton);
+                
+                // Add article summary
+                const summary = this.extractArticleSummary(article.content);
+                const summaryContainer = document.createElement('div');
+                summaryContainer.className = 'article-summary';
+                
+                const summaryTitle = document.createElement('h3');
+                summaryTitle.textContent = 'Summary';
+                summaryContainer.appendChild(summaryTitle);
+                
+                const summaryText = document.createElement('p');
+                summaryText.textContent = summary;
+                summaryContainer.appendChild(summaryText);
+                contentContainer.appendChild(summaryContainer);
                 
                 // Add the markdown content
                 const markdownContent = document.createElement('div');
@@ -742,8 +675,46 @@ class CommandApp {
             }
         } catch (error) {
             console.error('Error loading article content:', error);
-            this.addMessageToOutput('Error loading article content. Please try again.', 'error');
+            this.addMessageToOutput(`Error loading article content: ${error}`, 'error');
         }
+    }
+
+    private extractArticleSummary(content: string): string {
+        // Logic to extract a summary from the article content
+        // This is a simple implementation - first look for a section called "Summary"
+        const summaryRegex = /## Summary\s+([\s\S]+?)(?=##|$)/;
+        const match = content.match(summaryRegex);
+        
+        if (match && match[1]) {
+            return match[1].trim();
+        }
+        
+        // If no Summary section, generate one from the first few paragraphs
+        const paragraphs = content.split(/\n\n+/);
+        let summary = '';
+        
+        // Skip the title (first paragraph) and use the next 2-3 paragraphs
+        for (let i = 1; i < Math.min(4, paragraphs.length); i++) {
+            // Clean up markdown formatting for the summary
+            const cleaned = paragraphs[i]
+                .replace(/^#+ /gm, '') // Remove headings
+                .replace(/\*\*/g, '') // Remove bold
+                .replace(/\*/g, '') // Remove italic
+                .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Replace links with just the text
+                .trim();
+                
+            if (cleaned) {
+                summary += cleaned + ' ';
+            }
+            
+            // Limit summary length
+            if (summary.length > 300) {
+                summary = summary.substring(0, 300) + '...';
+                break;
+            }
+        }
+        
+        return summary.trim() || 'No summary available for this article.';
     }
 
     private startCachePolling(): void {

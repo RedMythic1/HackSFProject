@@ -1,58 +1,92 @@
-# Tech Deep Dive Web Application
+# Tech Interests Analyzer
 
-This directory contains the web application for Tech Deep Dive, which provides an interface for exploring technology articles with AI-generated questions and answers.
+This application has been restructured to clearly separate the article processing from the web interface. Now the system uses:
 
-## Project Structure
+1. Shell commands for all article processing
+2. A shared cache for storing article data (in `/Users/avneh/Code/HackSFProject/tw/.cache`)
+3. Web interface for viewing and accessing processed articles
 
-- `server.py` - Backend Flask server that handles article caching, question generation, and serving content
-- `src/` - Frontend TypeScript source code
-- `public/` - Static frontend assets
-- `dist/` - Compiled frontend code
-- `.cache/` - Directory for cached articles and generated content
-- `manage.sh` - Main management script for all operations
+## Architecture
 
-## Getting Started
+The system is composed of two separate components:
 
-All operations have been consolidated into a single management script: `manage.sh`
+1. **Article Processing** - Uses `ansys.py` (located in parent directory) to:
+   - Cache articles from tech sources (subjectizing only)
+   - Generate questions and answers
+   - Process content for final articles
+   - Store all results in the cache directory
 
-To use the script:
+2. **Web Interface** - Uses Node.js/Flask backend to:
+   - Read from the shared cache
+   - Display processed articles
+   - Handle interest-based article scoring/matching
+   - Provide a user interface for viewing content
+
+## Usage
+
+### Article Processing (Command Line)
+
+All article processing is now done through the command line using the `process_articles.sh` script:
 
 ```bash
-./manage.sh [command]
+# Cache and subjectize articles only (first step) - does NOT generate questions/answers
+./process_articles.sh cache
+
+# Process articles with specific interests
+./process_articles.sh process "technology, AI, programming, science"
+
+# List all cached articles
+./process_articles.sh list
+
+# Show help
+./process_articles.sh help
 ```
 
-Available commands:
+The process will:
+1. Store cached articles in the `tw/.cache` directory
+2. Generate processed articles
+3. Create HTML files for the website
 
-- `setup` - Set up the environment (copy ansys.py, create cache directories)
-- `start` - Start both the server and frontend
-- `stop` - Stop running server and frontend processes
-- `cache` - Cache articles from Hacker News
-- `questions` - Generate questions for cached articles
-- `status` - Check the status of the cache and server
-- `help` - Show help message
+**Important note**: The `cache` command only subjectizes articles and caches the subject lines. It does NOT generate questions or final articles.
 
-## Typical Workflow
+### Web Interface
 
-1. **Setup**: `./manage.sh setup`
-2. **Start services**: `./manage.sh start`
-3. **Cache articles**: `./manage.sh cache`
-4. **Generate questions**: `./manage.sh questions`
-5. **Check status**: `./manage.sh status`
-6. **Stop services**: `./manage.sh stop`
+The web interface reads from the cache and displays the content. It also handles interest-based scoring and matching.
 
-## Development
+To start the web server:
 
-The frontend is built with TypeScript and compiled with Webpack. The backend is a Flask server that handles API requests.
+```bash
+# Start the server
+./start.sh
+```
 
-To start development:
+Then navigate to http://localhost:5001 in your browser.
 
-1. Run `./manage.sh start` to start both services
-2. Make changes to the source code
-3. For frontend changes, webpack will automatically recompile
-4. For backend changes, restart the server: `./manage.sh stop` then `./manage.sh start`
+## Workflow
 
-## Troubleshooting
+The recommended workflow is:
 
-- Check log files: `server.log` and `frontend.log`
-- Run `./manage.sh status` to check system status
-- Make sure `ansys.py` is properly set up (use `./manage.sh setup` to verify) 
+1. Run `./process_articles.sh cache` to subjectize and cache articles
+2. Start the web server with `./start.sh`
+3. Access the web interface to view articles and enter your interests
+4. The web interface will score and match articles based on your interests
+
+## Directory Structure
+
+- `tw/.cache/` - Shared cache directory containing all processed data
+- `public/articles/` - HTML versions of final articles for web viewing
+- `process_articles.sh` - CLI tool for article processing
+- `server.py` - Backend server for web interface
+- `src/` - Frontend source code
+
+## Requirements
+
+- Python 3.6+
+- Node.js 14+
+- Web browser
+
+## Notes
+
+- The article processing may take several minutes depending on the number of articles
+- The web interface automatically refreshes when new articles are added to the cache
+- All files are stored in the `tw/.cache` directory, not in the parent directory's cache 

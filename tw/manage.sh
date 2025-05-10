@@ -53,9 +53,7 @@ setup_env() {
     
     # Check if ansys.py exists in the parent directory
     if [ -f "$PROJECT_ROOT/ansys.py" ]; then
-        print_status "Found ansys.py in parent directory. Copying to current directory..."
-        cp "$PROJECT_ROOT/ansys.py" "$SCRIPT_DIR/"
-        print_success "Copied ansys.py to $SCRIPT_DIR"
+        print_success "Found ansys.py in parent directory"
     else
         print_error "ansys.py not found in $PROJECT_ROOT"
         
@@ -63,12 +61,10 @@ setup_env() {
         print_status "Looking for ansys.py in other locations..."
         
         if [ -f "$HOME/Code/HackSFProject/ansys.py" ]; then
-            print_status "Found ansys.py in $HOME/Code/HackSFProject. Copying..."
-            cp "$HOME/Code/HackSFProject/ansys.py" "$SCRIPT_DIR/"
-            print_success "Copied ansys.py to $SCRIPT_DIR"
+            print_success "Found ansys.py in $HOME/Code/HackSFProject"
         else
             print_error "Could not find ansys.py in common locations."
-            print_status "Please copy ansys.py to $SCRIPT_DIR manually."
+            print_status "Please ensure ansys.py is available in the parent directory."
             return 1
         fi
     fi

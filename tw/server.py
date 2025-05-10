@@ -3,7 +3,7 @@ import os
 import sys
 import json
 import traceback
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import subprocess
 import glob
@@ -17,18 +17,20 @@ import hashlib
 import re
 import shutil
 import uuid
+import datetime
+import concurrent.futures
 
 # Add this line to import ansys module - handle cases where it might be in different locations
 try:
-    # Try directly importing from parent directory
+    # Try importing from parent directory
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     import ansys
     logger = logging.getLogger(__name__)
-    logger.info("Successfully imported ansys module")
+    logger.info("Successfully imported ansys module from parent directory")
 except ImportError:
-    # If that fails, try to find ansys.py and import it
+    # If that fails, log an error
     logger = logging.getLogger(__name__)
-    logger.warning("Could not import ansys directly, will attempt dynamic import when needed")
+    logger.error("Could not import ansys module from parent directory")
     ansys = None
 
 # Set up logging to file only (avoid console output which causes I/O errors)
@@ -42,9 +44,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-CACHE_DIR = "/Users/avneh/Code/HackSFProject/.cache"
+CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.cache')
 FINAL_ARTICLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'final_articles')
-MARKDOWN_DIR = os.path.join(FINAL_ARTICLES_DIR, 'markdown')
 HTML_DIR = os.path.join(FINAL_ARTICLES_DIR, 'html')
 # Add constant for the processed articles tracking file
 PROCESSED_ARTICLES_FILE = os.path.join(CACHE_DIR, 'processed_articles.json')
@@ -52,29 +53,49 @@ PROCESSED_ARTICLES_FILE = os.path.join(CACHE_DIR, 'processed_articles.json')
 # Ensure directories exist
 try:
     os.makedirs(CACHE_DIR, exist_ok=True)
-    os.makedirs(MARKDOWN_DIR, exist_ok=True)
     os.makedirs(HTML_DIR, exist_ok=True)
     logger.info(f"Cache directory set to: {CACHE_DIR}")
-    logger.info(f"Final articles directories created: {MARKDOWN_DIR} and {HTML_DIR}")
+    logger.info(f"Final articles directory created: {HTML_DIR}")
 except Exception as e:
     logger.error(f"Error creating directories: {e}")
 
-app = Flask(__name__, static_folder='static', static_url_path='/static')
+app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+app.secret_key = os.urandom(24)  # Add secret key for cookie signing
 
 # --- Progress Tracking Globals ---
 PROGRESS_STORE = {}
 PROGRESS_LOCK = threading.Lock()
 # --- End Progress Tracking Globals ---
 
+def get_ansys_path():
+    """Get the path to ansys.py in the parent directory"""
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ansys_path = os.path.join(parent_dir, 'ansys.py')
+    if not os.path.exists(ansys_path):
+        raise FileNotFoundError(f"ansys.py not found in parent directory: {parent_dir}")
+    return ansys_path
+
 def _log_scoring_to_new_terminal(log_messages):
-    """Log article scoring messages to the main terminal instead of creating a new terminal window."""
+    """
+    WHAT THIS DOES:
+    Displays all the article scoring log messages in a clear, readable format.
+    
+    Parameters:
+    - log_messages: A list of log message strings to display
+    
+    HOW IT WORKS:
+    Instead of opening a new terminal window (which would be confusing),
+    this just prints all the messages to the current console with nice formatting.
+    """
+    # Skip if there are no messages to log
     if not log_messages:
         return
     
+    # Join all messages into one block of text
     log_content = "\n".join(log_messages)
     
-    # Always log to main terminal
+    # Print with nice formatting
     print("\n\033[1;35m===== DETAILED SCORING LOG =====\033[0m")
     print(log_content)
     print("\033[1;35m================================\033[0m\n")
@@ -124,17 +145,40 @@ def update_processed_article_ids(new_ids):
     except Exception as e:
         logger.error(f"Error updating processed articles file: {e}")
 
+# Add this helper function to clean title format
+def normalize_article_title(title):
+    """Clean and normalize article titles by removing arrow notations and redundant text"""
+    # Remove arrow notation (-> text) from titles
+    if "->" in title:
+        title = title.split("->")[0].strip()
+    return title
+
 @app.route('/check-cache', methods=['GET'])
 def check_cache():
     """Check if articles are cached"""
     try:
         # Look for summary_*.json files in the cache directory
-        summary_files = glob.glob(os.path.join(CACHE_DIR, 'summary_*.json'))
+        cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache')
+        if not os.path.exists(cache_dir):
+            cache_dir = CACHE_DIR  # Use the global cache dir if local not found
+            
+        # Count all summary_*.json files
+        summary_files = glob.glob(os.path.join(cache_dir, 'summary_*.json'))
         article_count = len(summary_files)
         
+        # Check parent directory if no files found
+        if article_count == 0 and os.path.exists(CACHE_DIR):
+            summary_files = glob.glob(os.path.join(CACHE_DIR, 'summary_*.json'))
+            article_count = len(summary_files)
+        
         # Count all final_article_*.json files
-        final_articles = glob.glob(os.path.join(CACHE_DIR, 'final_article_*.json'))
+        final_articles = glob.glob(os.path.join(cache_dir, 'final_article_*.json'))
         final_article_count = len(final_articles)
+        
+        # Check parent directory if no files found
+        if final_article_count == 0 and os.path.exists(CACHE_DIR):
+            final_articles = glob.glob(os.path.join(CACHE_DIR, 'final_article_*.json'))
+            final_article_count = len(final_articles)
         
         # Count unique articles based on title
         unique_titles = set()
@@ -151,6 +195,9 @@ def check_cache():
                         title = content.splitlines()[0] if content else 'Unknown Title'
                         if title.startswith('# '):
                             title = title[2:]  # Remove Markdown heading marker
+                        
+                        # Normalize title to remove arrow notation
+                        title = normalize_article_title(title)
                         unique_titles.add(title)
                         valid_article_count += 1
                         
@@ -158,31 +205,68 @@ def check_cache():
                         filename = os.path.basename(article_path)
                         article_id = filename.replace('final_article_', '').replace('.json', '')
                         
-                        # Generate missing markdown and HTML files
-                        markdown_path = os.path.join(MARKDOWN_DIR, f"tech_deep_dive_{article_id}.md")
+                        # Generate missing HTML files
                         html_path = os.path.join(HTML_DIR, f"tech_deep_dive_{article_id}.html")
                         
-                        # Only create files if they don't exist
-                        if not os.path.exists(markdown_path):
-                            try:
-                                # Save markdown version
-                                with open(markdown_path, 'w', encoding='utf-8') as md_file:
-                                    md_file.write(content)
-                                logger.info(f"Generated missing markdown file: {markdown_path}")
-                            except Exception as e:
-                                logger.error(f"Error creating markdown file {markdown_path}: {e}")
-                        
-                        # Create HTML version if it doesn't exist
+                        # Only create HTML file if it doesn't exist
                         if not os.path.exists(html_path):
                             try:
-                                # Convert markdown to HTML
+                                # Convert to HTML
                                 html_content = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{title}</title>
-    <link rel="stylesheet" href="/static/article.css">
+    <style>
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }}
+        h1 {{
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            font-size: 2.5em;
+        }}
+        h2 {{
+            color: #2980b9;
+            margin-top: 30px;
+            font-size: 1.8em;
+        }}
+        h3 {{
+            color: #16a085;
+            font-size: 1.4em;
+        }}
+        h4 {{
+            color: #c0392b;
+            font-size: 1.2em;
+        }}
+        a {{
+            color: #3498db;
+            text-decoration: none;
+        }}
+        a:hover {{
+            text-decoration: underline;
+        }}
+        blockquote {{
+            background: #f5f5f5;
+            border-left: 5px solid #3498db;
+            padding: 10px 20px;
+            margin: 20px 0;
+        }}
+        code {{
+            background: #eee;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }}
+    </style>
 </head>
 <body>
     {content.replace("# ", "<h1>").replace("## ", "<h2>").replace("### ", "<h3>").replace("#### ", "<h4>").replace("\n\n", "<br><br>")}
@@ -192,7 +276,7 @@ def check_cache():
                                 # Save HTML version
                                 with open(html_path, 'w', encoding='utf-8') as html_file:
                                     html_file.write(html_content)
-                                logger.info(f"Generated missing HTML file: {html_path}")
+                                logger.info(f"Generated HTML file: {html_path}")
                             except Exception as e:
                                 logger.error(f"Error creating HTML file {html_path}: {e}")
                                 
@@ -229,8 +313,17 @@ def check_cache():
 def get_final_articles():
     """Get the list of cached final articles"""
     try:
+        # Look for final_article_*.json files in the cache directory
+        cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache')
+        if not os.path.exists(cache_dir):
+            cache_dir = CACHE_DIR  # Use the global cache dir if local not found
+            
         # Find all final_article_*.json files
-        final_articles = glob.glob(os.path.join(CACHE_DIR, 'final_article_*.json'))
+        final_articles = glob.glob(os.path.join(cache_dir, 'final_article_*.json'))
+        
+        # Check parent directory if no files found
+        if len(final_articles) == 0 and os.path.exists(CACHE_DIR):
+            final_articles = glob.glob(os.path.join(CACHE_DIR, 'final_article_*.json'))
         
         # Extract and load article data
         article_data = []
@@ -257,6 +350,9 @@ def get_final_articles():
                 title = content.splitlines()[0] if content else 'Unknown Title'
                 if title.startswith('# '):
                     title = title[2:]  # Remove Markdown heading marker
+                
+                # Normalize title
+                title = normalize_article_title(title)
                 
                 article_data.append({
                     'id': timestamp,
@@ -312,19 +408,14 @@ def cache_articles():
     try:
         logger.info("Starting article caching and question generation...")
         
-        # Get the path to ansys.py (it might be in the same directory or parent directory)
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        ansys_path = os.path.join(script_dir, 'ansys.py')
-        
-        # If not found in the current directory, check the parent
-        if not os.path.exists(ansys_path):
-            ansys_path = os.path.join(os.path.dirname(script_dir), 'ansys.py')
-        
-        if not os.path.exists(ansys_path):
-            logger.error(f"ansys.py not found in either {script_dir} or its parent directory")
+        # Get the path to ansys.py in parent directory
+        try:
+            ansys_path = get_ansys_path()
+        except FileNotFoundError as e:
+            logger.error(str(e))
             return jsonify({
                 "status": "error",
-                "message": f"ansys.py not found. Please make sure it's located in the correct directory."
+                "message": f"ansys.py not found in parent directory. Please make sure it's located in the correct directory."
             }), 404
         
         logger.info(f"Found ansys.py at: {ansys_path}")
@@ -452,53 +543,33 @@ def cache_articles():
 
 @app.route('/generate-questions', methods=['GET'])
 def generate_questions():
-    """Run ansys.py with pre-defined interests to force full processing including question generation"""
+    """Run ansys.py with --questions-only flag to generate questions for all articles"""
     try:
-        logger.info("Starting full question and answer generation for all articles...")
+        logger.info("Starting question generation...")
         
-        # Get the path to ansys.py (it might be in the same directory or parent directory)
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        ansys_path = os.path.join(script_dir, 'ansys.py')
-        
-        # If not found in the current directory, check the parent
-        if not os.path.exists(ansys_path):
-            ansys_path = os.path.join(os.path.dirname(script_dir), 'ansys.py')
-        
-        if not os.path.exists(ansys_path):
-            logger.error(f"ansys.py not found in either {script_dir} or its parent directory")
+        # Get the path to ansys.py in parent directory
+        try:
+            ansys_path = get_ansys_path()
+        except FileNotFoundError as e:
+            logger.error(str(e))
             return jsonify({
                 "status": "error",
-                "message": f"ansys.py not found. Please make sure it's located in the correct directory."
+                "message": f"ansys.py not found in parent directory. Please make sure it's located in the correct directory."
             }), 404
         
         logger.info(f"Found ansys.py at: {ansys_path}")
         
-        # Get already processed article IDs
-        processed_ids = get_processed_article_ids()
-        # Create a processed IDs file that ansys.py can use
-        processed_ids_file = os.path.join(tempfile.gettempdir(), 'processed_article_ids.json')
-        with open(processed_ids_file, 'w', encoding='utf-8') as f:
-            json.dump({'processed_ids': list(processed_ids)}, f)
-        logger.info(f"Created temporary processed IDs file with {len(processed_ids)} IDs at {processed_ids_file}")
-        
-        # Create a temporary file with predefined inputs to feed to ansys.py
-        input_file = os.path.join(tempfile.gettempdir(), 'ansys_input.txt')
-        with open(input_file, 'w') as f:
-            # Add a broad range of interests to ensure most articles are processed
-            f.write("technology, programming, science, AI, finance, health, politics, education\n")
-        
         # On macOS, open a new terminal window to run the command
         if sys.platform == 'darwin':
-            # Construct the command to run in Terminal - use environment variable
-            # Always ensure ANSYS_NO_SCORE=1 is set to skip scoring
-            terminal_cmd = f"ANSYS_NO_SCORE=1 ANSYS_PROCESSED_IDS_FILE={processed_ids_file} cat {input_file} | {sys.executable} {ansys_path}"
+            # Construct the command to run in Terminal
+            terminal_cmd = f"{sys.executable} {ansys_path} --questions-only"
             
             # Create AppleScript to open new Terminal window
             apple_script = f'''
             tell application "Terminal"
-                do script "cd {script_dir} && echo 'Running: {terminal_cmd}' && {terminal_cmd}"
+                do script "cd {os.path.dirname(ansys_path)} && echo 'Running: {terminal_cmd}' && {terminal_cmd} || echo '\\nERROR: Command failed with exit code $?'"
                 set position of front window to {{100, 100}}
-                set custom title of front window to "ANSYS Full Processing"
+                set custom title of front window to "ANSYS Question Generation"
             end tell
             '''
             
@@ -508,8 +579,8 @@ def generate_questions():
             
             return jsonify({
                 "status": "success",
-                "message": f"Started full article processing in a new terminal window. Skipping {len(processed_ids)} already processed articles. Please check the terminal for progress.",
-                "skipped_articles": len(processed_ids)
+                "message": f"Started question generation in a new terminal window. Please check the terminal for progress.",
+                "skipped_articles": 0
             })
         else:
             # For non-macOS platforms, run in the background as before
@@ -548,54 +619,56 @@ def generate_questions():
                         
                         # Cache the generated final articles
                         try:
-                            # Look for generated markdown files
-                            article_files = glob.glob('tech_deep_dive_*.md')
+                            # Look for generated HTML files
+                            html_files = glob.glob('tech_deep_dive_*.html')
                             
                             # Track new articles processed
                             new_ids = set()
                             
-                            for article_file in article_files:
-                                # Read the content
-                                with open(article_file, 'r', encoding='utf-8') as f:
-                                    content = f.read()
-                                    
-                                # Extract the timestamp from the filename
-                                timestamp = article_file.replace('tech_deep_dive_', '').replace('.md', '')
-                                
-                                # Create a cache path for this final article
-                                cache_path = os.path.join(CACHE_DIR, f"final_article_{timestamp}.json")
-                                
-                                # Copy the markdown file to the markdown directory
-                                markdown_path = os.path.join(MARKDOWN_DIR, f"tech_deep_dive_{timestamp}.md")
+                            for html_file in html_files:
                                 try:
-                                    shutil.copy2(article_file, markdown_path)
-                                    logger.info(f"Copied markdown file to {markdown_path}")
-                                except Exception as e:
-                                    logger.error(f"Error copying markdown file to {markdown_path}: {e}")
-                                
-                                # Look for corresponding HTML file
-                                html_file = f"tech_deep_dive_{timestamp}.html"
-                                if os.path.exists(html_file):
-                                    # Copy the HTML file to the html directory
-                                    html_path = os.path.join(HTML_DIR, html_file)
+                                    # Extract the timestamp from the filename
+                                    timestamp = html_file.replace('tech_deep_dive_', '').replace('.html', '')
+                                    timestamp = timestamp.split('_')[0]  # Get just the timestamp part
+                                    
+                                    # Extract content by reading the HTML file
+                                    with open(html_file, 'r', encoding='utf-8') as f:
+                                        html_content = f.read()
+                                    
+                                    # Extract the content by parsing the HTML 
+                                    soup = BeautifulSoup(html_content, 'html.parser')
+                                    title = soup.title.string if soup.title else "Untitled Article"
+                                    body_content = soup.body.get_text('\n\n') if soup.body else ""
+                                    
+                                    # Create markdown-style content from HTML
+                                    content = f"# {title}\n\n{body_content}"
+                                    
+                                    # Create a cache path for this final article
+                                    cache_path = os.path.join(CACHE_DIR, f"final_article_{timestamp}.json")
+                                    
+                                    # Copy the HTML file to the HTML directory
+                                    html_path = os.path.join(HTML_DIR, f"tech_deep_dive_{timestamp}.html")
                                     try:
                                         shutil.copy2(html_file, html_path)
                                         logger.info(f"Copied HTML file to {html_path}")
                                     except Exception as e:
                                         logger.error(f"Error copying HTML file to {html_path}: {e}")
-                                
-                                # Cache the content
-                                try:
-                                    with open(cache_path, 'w', encoding='utf-8') as f:
-                                        json.dump({
-                                            'content': content,
-                                            'timestamp': int(time.time())
-                                        }, f)
-                                    logger.info(f"Cached final article {article_file} to {cache_path}")
-                                    new_ids.add(timestamp)
-                                except Exception as e:
-                                    logger.error(f"Error caching final article {article_file}: {e}")
                                     
+                                    # Cache the content
+                                    try:
+                                        with open(cache_path, 'w', encoding='utf-8') as f:
+                                            json.dump({
+                                                'content': content,
+                                                'timestamp': int(time.time())
+                                            }, f)
+                                        logger.info(f"Cached final article to {cache_path}")
+                                        new_ids.add(timestamp)
+                                    except Exception as e:
+                                        logger.error(f"Error caching final article: {e}")
+                                    
+                                except Exception as e:
+                                    logger.error(f"Error processing HTML file {html_file}: {e}")
+                            
                             # Update the processed articles tracking file
                             update_processed_article_ids(new_ids)
                             logger.info(f"Added {len(new_ids)} new article IDs to processed tracking file")
@@ -628,97 +701,179 @@ def generate_questions():
 
 @app.route('/run-ansys', methods=['POST'])
 def run_ansys():
-    """Process interests and run analysis"""
+    """Run ansys.py with user interests to generate questions and answers"""
     try:
-        data = request.json
-        email = data.get('email', '')
-        interests = data.get('interests', '')
-        
-        if not interests:
-            return jsonify({"status": "error", "message": "No interests provided"}), 400
-            
-        if not email:
-            return jsonify({"status": "error", "message": "No email provided"}), 400
-        
-        logger.info(f"Received email: {email}")
-        logger.info(f"Received interests: {interests}")
-        
-        # Save the email to a file for future use
-        user_data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'user_data')
-        os.makedirs(user_data_dir, exist_ok=True)
-        user_file = os.path.join(user_data_dir, f'{email}.txt')
-        
-        # Save the user's interests
-        with open(user_file, 'w') as f:
-            f.write(f"Email: {email}\n")
-            f.write(f"Interests: {interests}\n")
-        
-        # Get the path to ansys.py
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        ansys_path = os.path.join(script_dir, 'ansys.py')
-        
-        # If not found in the current directory, check the parent
-        if not os.path.exists(ansys_path):
-            ansys_path = os.path.join(os.path.dirname(script_dir), 'ansys.py')
-        
-        if not os.path.exists(ansys_path):
-            logger.error(f"ansys.py not found in either {script_dir} or its parent directory")
+        # Get user interests from request
+        data = request.get_json()
+        if not data or 'interests' not in data:
             return jsonify({
                 "status": "error",
-                "message": f"ansys.py not found. Please make sure it's located in the correct directory."
-            }), 404
+                "message": "No interests provided in request"
+            }), 400
             
+        interests = data['interests']
+        logger.info(f"Received interests: {interests}")
+        
+        # Save user data
+        save_user_data(interests)
+        
+        # Get the path to ansys.py in parent directory
+        try:
+            ansys_path = get_ansys_path()
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            return jsonify({
+                "status": "error",
+                "message": f"ansys.py not found in parent directory. Please make sure it's located in the correct directory."
+            }), 404
+        
+        logger.info(f"Found ansys.py at: {ansys_path}")
+        
         # Get already processed article IDs
         processed_ids = get_processed_article_ids()
         # Create a processed IDs file that ansys.py can use
-        processed_ids_file = os.path.join(tempfile.gettempdir(), f'processed_article_ids_{email.replace("@", "_at_")}.json')
+        processed_ids_file = os.path.join(tempfile.gettempdir(), 'processed_article_ids.json')
         with open(processed_ids_file, 'w', encoding='utf-8') as f:
             json.dump({'processed_ids': list(processed_ids)}, f)
-        logger.info(f"Created temporary processed IDs file with {len(processed_ids)} IDs for {email} at {processed_ids_file}")
-            
-        # Create a temporary file with the user's interests
-        input_file = os.path.join(tempfile.gettempdir(), f'ansys_input_{email.replace("@", "_at_")}.txt')
+        logger.info(f"Created temporary processed IDs file with {len(processed_ids)} IDs at {processed_ids_file}")
+        
+        # Create a temporary file with user interests
+        input_file = os.path.join(tempfile.gettempdir(), 'ansys_input.txt')
         with open(input_file, 'w') as f:
-            f.write(f"{interests}\n")
-            
+            f.write(interests + '\n')
+        
         # On macOS, open a new terminal window to run the command
         if sys.platform == 'darwin':
-            # Construct the command to run in Terminal - use environment variable WITHOUT ANSYS_NO_SCORE
-            # to ensure scoring happens when user submits interests
+            # Construct the command to run in Terminal
             terminal_cmd = f"ANSYS_PROCESSED_IDS_FILE={processed_ids_file} cat {input_file} | {sys.executable} {ansys_path}"
-            
-            # Create a unique title with the user's email
-            terminal_title = f"ANSYS Analysis for {email}"
             
             # Create AppleScript to open new Terminal window
             apple_script = f'''
             tell application "Terminal"
-                do script "cd {script_dir} && echo 'Running analysis for: {email}' && echo 'Interests: {interests}' && {terminal_cmd} && echo 'Copying generated files to final_articles directories...' && find . -name 'tech_deep_dive_*.md' -exec cp {{}} {MARKDOWN_DIR}/ \\; && find . -name 'tech_deep_dive_*.html' -exec cp {{}} {HTML_DIR}/ \\;"
+                do script "cd {os.path.dirname(ansys_path)} && echo 'Running: {terminal_cmd}' && {terminal_cmd} || echo '\\nERROR: Command failed with exit code $?'"
                 set position of front window to {{100, 100}}
-                set custom title of front window to "{terminal_title}"
+                set custom title of front window to "ANSYS Processing"
             end tell
             '''
             
             # Run the AppleScript
             subprocess.run(['osascript', '-e', apple_script])
-            logger.info(f"Opened new Terminal window to run analysis for {email}")
+            logger.info("Opened new Terminal window to run the command")
             
             return jsonify({
                 "status": "success",
-                "message": f"Started analysis in a new terminal window. Skipping {len(processed_ids)} already processed articles. Please check the terminal for progress.",
-                "user_email": email,
-                "skipped_articles": len(processed_ids)
+                "message": "Started processing in a new terminal window. Please check the terminal for progress.",
+                "skipped_articles": 0
             })
         else:
-            # For non-macOS platforms, just acknowledge the request
-            # The actual processing would be done separately
+            # For non-macOS platforms, run in the background as before
+            # Run ansys.py with full processing in a separate thread
+            def run_ansys_full_processing():
+                try:
+                    logger.info(f"Running ansys.py with predefined interests for full processing, skipping {len(processed_ids)} articles")
+                    
+                    # Create a command that feeds the interests to ansys.py and uses environment variable
+                    env = os.environ.copy()
+                    env["ANSYS_PROCESSED_IDS_FILE"] = processed_ids_file
+                    env["ANSYS_NO_SCORE"] = "1"  # Always ensure scoring is skipped
+                    
+                    # Use shell=True to allow piping
+                    cmd = f'cat {input_file} | {sys.executable} {ansys_path}'
+                    logger.info(f"Executing: {cmd} with ANSYS_PROCESSED_IDS_FILE={processed_ids_file}")
+                    
+                    # Use shell=True to allow piping
+                    process = subprocess.Popen(
+                        cmd,
+                        shell=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        env=env  # Pass the environment variables, including skip-scoring
+                    )
+                    stdout, stderr = process.communicate()
+                    
+                    # Log results
+                    if process.returncode != 0:
+                        logger.error(f"ansys.py failed with return code {process.returncode}")
+                        logger.error(f"stderr: {stderr}")
+                    else:
+                        logger.info("ansys.py full processing completed successfully")
+                        logger.info(f"stdout: {stdout}")
+                        
+                        # Cache the generated final articles
+                        try:
+                            # Look for generated HTML files
+                            html_files = glob.glob('tech_deep_dive_*.html')
+                            
+                            # Track new articles processed
+                            new_ids = set()
+                            
+                            for html_file in html_files:
+                                try:
+                                    # Extract the timestamp from the filename
+                                    timestamp = html_file.replace('tech_deep_dive_', '').replace('.html', '')
+                                    timestamp = timestamp.split('_')[0]  # Get just the timestamp part
+                                    
+                                    # Extract content by reading the HTML file
+                                    with open(html_file, 'r', encoding='utf-8') as f:
+                                        html_content = f.read()
+                                    
+                                    # Extract the content by parsing the HTML 
+                                    soup = BeautifulSoup(html_content, 'html.parser')
+                                    title = soup.title.string if soup.title else "Untitled Article"
+                                    body_content = soup.body.get_text('\n\n') if soup.body else ""
+                                    
+                                    # Create markdown-style content from HTML
+                                    content = f"# {title}\n\n{body_content}"
+                                    
+                                    # Create a cache path for this final article
+                                    cache_path = os.path.join(CACHE_DIR, f"final_article_{timestamp}.json")
+                                    
+                                    # Copy the HTML file to the HTML directory
+                                    html_path = os.path.join(HTML_DIR, f"tech_deep_dive_{timestamp}.html")
+                                    try:
+                                        shutil.copy2(html_file, html_path)
+                                        logger.info(f"Copied HTML file to {html_path}")
+                                    except Exception as e:
+                                        logger.error(f"Error copying HTML file to {html_path}: {e}")
+                                    
+                                    # Cache the content
+                                    try:
+                                        with open(cache_path, 'w', encoding='utf-8') as f:
+                                            json.dump({
+                                                'content': content,
+                                                'timestamp': int(time.time())
+                                            }, f)
+                                        logger.info(f"Cached final article to {cache_path}")
+                                        new_ids.add(timestamp)
+                                    except Exception as e:
+                                        logger.error(f"Error caching final article: {e}")
+                                    
+                                except Exception as e:
+                                    logger.error(f"Error processing HTML file {html_file}: {e}")
+                            
+                            # Update the processed articles tracking file
+                            update_processed_article_ids(new_ids)
+                            logger.info(f"Added {len(new_ids)} new article IDs to processed tracking file")
+                            
+                        except Exception as e:
+                            logger.error(f"Error processing generated articles: {e}")
+                        
+                except Exception as e:
+                    logger.error(f"Exception running ansys.py with full processing: {e}")
+                    logger.error(traceback.format_exc())
+            
+            # Start the thread
+            thread = threading.Thread(target=run_ansys_full_processing)
+            thread.daemon = True
+            thread.start()
+            
             return jsonify({
                 "status": "success",
-                "message": f"Request received and saved. Analysis will be performed in the background. Skipping {len(processed_ids)} already processed articles.",
-                "user_email": email,
+                "message": f"Started full article processing with question and answer generation in the background. Skipping {len(processed_ids)} already processed articles.",
                 "skipped_articles": len(processed_ids)
             })
-            
+        
     except Exception as e:
         logger.error(f"Exception in run_ansys: {e}")
         logger.error(traceback.format_exc())
@@ -728,9 +883,18 @@ def run_ansys():
 def get_final_article(article_id):
     """Get the content of a specific final article by ID"""
     try:
+        # Look for the article in the cache directory
+        cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache')
+        if not os.path.exists(cache_dir):
+            cache_dir = CACHE_DIR  # Use the global cache dir if local not found
+            
         # Create the expected filename
         filename = f"final_article_{article_id}.json"
-        article_path = os.path.join(CACHE_DIR, filename)
+        article_path = os.path.join(cache_dir, filename)
+        
+        # If not found, check parent directory
+        if not os.path.exists(article_path) and os.path.exists(CACHE_DIR):
+            article_path = os.path.join(CACHE_DIR, filename)
             
         if not os.path.exists(article_path):
             logger.error(f"Article with ID {article_id} not found")
@@ -749,6 +913,12 @@ def get_final_article(article_id):
         title = content.splitlines()[0] if content else 'Unknown Title'
         if title.startswith('# '):
             title = title[2:]  # Remove Markdown heading marker
+        
+        # Normalize title
+        title = normalize_article_title(title)
+        
+        # Extract or generate a summary
+        summary = extract_article_summary(content)
             
         logger.info(f"Retrieved article: {title}")
         
@@ -759,6 +929,7 @@ def get_final_article(article_id):
                 "id": article_id,
                 "title": title,
                 "content": content,
+                "summary": summary,
                 "timestamp": data.get('timestamp', 0)
             }
         })
@@ -770,669 +941,312 @@ def get_final_article(article_id):
             "message": f"Exception: {str(e)}"
         }), 500
 
-@app.route('/article-html/<article_id>', methods=['GET'])
-def serve_article_html(article_id):
-    """Serve the HTML version of an article directly"""
+def extract_article_summary(content):
+    """Extract or generate a summary from article content"""
     try:
-        # Construct the HTML file path
-        html_filename = f"tech_deep_dive_{article_id}.html"
-        html_path = os.path.join(HTML_DIR, html_filename)
+        # First try to find a section explicitly labeled as "Summary"
+        summary_pattern = re.compile(r'## Summary\s+([\s\S]+?)(?=##|$)')
+        match = summary_pattern.search(content)
+        if match:
+            return match.group(1).strip()
         
-        logger.info(f"Attempting to serve HTML article from: {html_path}")
+        # If no explicit summary section, generate one from the beginning of the article
+        lines = content.splitlines()
         
-        # Check if HTML file exists
-        if not os.path.exists(html_path):
-            logger.error(f"HTML article with ID {article_id} not found at: {html_path}")
+        # Skip the title if present
+        start_idx = 0
+        if lines and lines[0].startswith('# '):
+            start_idx = 1
             
-            # Try to generate it from the markdown if possible
-            markdown_path = os.path.join(MARKDOWN_DIR, f"tech_deep_dive_{article_id}.md")
-            logger.info(f"Looking for markdown file at: {markdown_path}")
-            
-            if os.path.exists(markdown_path):
-                logger.info(f"Found markdown at {markdown_path}, generating HTML on-demand")
-                try:
-                    # Read markdown content
-                    with open(markdown_path, 'r', encoding='utf-8') as md_file:
-                        content = md_file.read()
-                    logger.info(f"Successfully read markdown file with {len(content)} characters")
-                        
-                    # Extract title from first line
-                    title = content.splitlines()[0] if content else 'Unknown Title'
-                    if title.startswith('# '):
-                        title = title[2:]  # Remove Markdown heading marker
-                    logger.info(f"Extracted title: {title}")
-                    
-                    # Convert markdown to HTML - using a more robust approach
-                    try:
-                        # Try to use python-markdown if available
-                        import markdown
-                        html_body = markdown.markdown(content)
-                        logger.info("Used python-markdown to convert content")
-                    except ImportError:
-                        # Fall back to simple replacement
-                        logger.info("python-markdown not available, using simple replacement")
-                        
-                        # Process markdown links
-                        def convert_links(text):
-                            # Find Markdown links [text](url)
-                            link_pattern = r'\[([^\]]+)\]\(([^)]+)\)'
-                            return re.sub(link_pattern, r'<a href="\2" target="_blank">\1</a>', text)
-                        
-                        # Clean up heading levels
-                        def fix_headings(text):
-                            # Look for standalone ### or ## not at beginning of line
-                            text = re.sub(r'(?<!\n)(\s+)(#{2,3})(\s+)', r'\1<h\2></h\2>\3', text)
-                            return text
-                            
-                        # Improved conversion with paragraph handling and link processing
-                        paragraphs = content.split("\n\n")
-                        html_parts = []
-                        
-                        for p in paragraphs:
-                            # Process different element types
-                            p = convert_links(p)
-                            p = fix_headings(p)
-                            
-                            if p.startswith("# "):
-                                html_parts.append(f'<section class="main-heading"><h1>{p[2:]}</h1></section>')
-                            elif p.startswith("## "):
-                                html_parts.append(f'<section class="section-heading"><h2>{p[3:]}</h2></section>')
-                            elif p.startswith("### "):
-                                html_parts.append(f'<section class="subsection-heading"><h3>{p[4:]}</h3></section>')
-                            elif p.startswith("#### "):
-                                html_parts.append(f'<section class="subsubsection-heading"><h4>{p[5:]}</h4></section>')
-                            elif p.startswith("**Source"):
-                                # Special handling for source boxes
-                                html_parts.append(f'<div class="source-box">{p}</div>')
-                            elif p.startswith("- "):
-                                # Convert to unordered list
-                                items = p.split("\n")
-                                list_items = "".join([f"<li>{convert_links(item[2:])}</li>" for item in items if item.startswith("- ")])
-                                html_parts.append(f'<div class="list-container"><ul>{list_items}</ul></div>')
-                            elif p.startswith("1. "):
-                                # Convert to ordered list
-                                items = p.split("\n")
-                                list_items = ""
-                                for item in items:
-                                    if re.match(r"^\d+\.\s", item):
-                                        item_text = item.split(". ", 1)[1]
-                                        list_items += f"<li>{convert_links(item_text)}</li>"
-                                html_parts.append(f'<div class="list-container"><ol>{list_items}</ol></div>')
-                            elif p.strip():
-                                if "**Source" in p:  # Handle inline source references
-                                    html_parts.append(f'<div class="source-box"><p>{p}</p></div>')
-                                else:
-                                    html_parts.append(f'<div class="paragraph-container"><p>{p}</p></div>')
-                        
-                        html_body = "\n".join(html_parts)
-                    
-                    html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-    <link rel="stylesheet" href="/static/article.css">
-</head>
-<body>
-    {html_body}
-</body>
-</html>"""
-                    
-                    # Save HTML version
-                    try:
-                        os.makedirs(os.path.dirname(html_path), exist_ok=True)
-                        with open(html_path, 'w', encoding='utf-8') as html_file:
-                            html_file.write(html_content)
-                        logger.info(f"Successfully generated and saved HTML file: {html_path}")
-                    except Exception as write_error:
-                        logger.error(f"Error writing HTML file: {write_error}")
-                        return f"<html><body><h1>Error</h1><p>Could not write HTML file: {str(write_error)}</p></body></html>", 500
-                except Exception as e:
-                    logger.error(f"Error generating HTML file on-demand: {e}")
-                    return f"<html><body><h1>Error</h1><p>Could not generate HTML for article ID {article_id}. Error: {str(e)}</p></body></html>", 500
-            else:
-                # Try to find content in the cache
-                cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache')
-                if not os.path.exists(cache_dir):
-                    cache_dir = CACHE_DIR
-                
-                logger.info(f"Markdown not found, looking for content in cache at: {cache_dir}")
-                cache_path = os.path.join(cache_dir, f"final_article_{article_id}.json")
-                
-                if os.path.exists(cache_path):
-                    logger.info(f"Found cache file: {cache_path}")
-                    try:
-                        with open(cache_path, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                        content = data.get('content', '')
-                        
-                        if content:
-                            logger.info(f"Successfully loaded content from cache with {len(content)} characters")
-                            
-                            # Extract title
-                            title = content.splitlines()[0] if content else 'Unknown Title'
-                            if title.startswith('# '):
-                                title = title[2:]
-                            
-                            # Convert markdown to HTML
-                            try:
-                                # Try to use python-markdown if available
-                                import markdown
-                                html_body = markdown.markdown(content)
-                                logger.info("Used python-markdown to convert content")
-                            except ImportError:
-                                # Fall back to simple replacement
-                                logger.info("python-markdown not available, using simple replacement")
-                                html_body = content.replace("# ", "<h1>").replace("## ", "<h2>").replace("### ", "<h3>").replace("#### ", "<h4>").replace("\n\n", "<br><br>")
-                            
-                            html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-    <link rel="stylesheet" href="/static/article.css">
-</head>
-<body>
-    {html_body}
-</body>
-</html>"""
-                            
-                            # Save both markdown and HTML files for future use
-                            try:
-                                # Save markdown first
-                                os.makedirs(os.path.dirname(markdown_path), exist_ok=True)
-                                with open(markdown_path, 'w', encoding='utf-8') as md_file:
-                                    md_file.write(content)
-                                logger.info(f"Generated markdown file from cache: {markdown_path}")
-                                
-                                # Then save HTML
-                                os.makedirs(os.path.dirname(html_path), exist_ok=True)
-                                with open(html_path, 'w', encoding='utf-8') as html_file:
-                                    html_file.write(html_content)
-                                logger.info(f"Generated HTML file from cache content: {html_path}")
-                                
-                                # Serve the HTML content
-                                return html_content
-                            except Exception as write_error:
-                                logger.error(f"Error writing files from cache content: {write_error}")
-                                return f"<html><body><h1>Error</h1><p>Could not write files: {str(write_error)}</p></body></html>", 500
-                        else:
-                            logger.error("Cache file has no content")
-                    except Exception as e:
-                        logger.error(f"Error processing cache file: {e}")
-                else:
-                    logger.error(f"No cache file found at: {cache_path}")
-                
-                return f"<html><body><h1>Article Not Found</h1><p>HTML or markdown not found for article ID {article_id}</p></body></html>", 404
+        # Collect text for summary (up to ~500 characters)
+        summary_text = ""
+        current_length = 0
+        target_length = 500
         
-        # If we get here, either the HTML file exists or we just created it
-        if os.path.exists(html_path):
-            logger.info(f"Serving existing HTML file: {html_path}")
-            with open(html_path, 'r', encoding='utf-8') as f:
-                html_content = f.read()
-            return html_content
-        else:
-            logger.error(f"HTML file still not found: {html_path}")
-            return f"<html><body><h1>Article Not Found</h1><p>HTML file could not be found or created for article ID {article_id}</p></body></html>", 404
+        for i in range(start_idx, len(lines)):
+            line = lines[i].strip()
+            # Skip headings and empty lines
+            if line.startswith('#') or not line:
+                continue
+                
+            # Add this line to the summary
+            summary_text += line + " "
+            current_length += len(line)
             
+            # Stop if we've reached target length
+            if current_length >= target_length:
+                summary_text += "..."
+                break
+                
+        return summary_text.strip() or "No summary available."
     except Exception as e:
-        logger.error(f"Exception serving HTML article {article_id}: {e}")
-        logger.error(traceback.format_exc())
-        return f"<html><body><h1>Error</h1><p>An error occurred: {str(e)}</p></body></html>", 500
+        logger.error(f"Error generating summary: {e}")
+        return "Summary unavailable due to an error."
 
 def _update_progress(task_id, status_message, percentage, current_log_messages=None):
+    """
+    WHAT THIS DOES:
+    Updates the progress information for a running article matching task
+    
+    Parameters:
+    - task_id: The unique ID of the task being updated
+    - status_message: A short message describing the current status (e.g., "Loading articles...")
+    - percentage: A number from 0-100 indicating task completion percentage
+    - current_log_messages: Optional list of log messages to store
+    
+    HOW IT WORKS:
+    This function safely updates a global dictionary (PROGRESS_STORE) that tracks all running tasks.
+    The frontend checks this progress information to show status updates to the user.
+    """
+    # Use a lock to safely update the shared progress data
     with PROGRESS_LOCK:
+        # Initialize progress tracking for this task if it doesn't exist yet
         if task_id not in PROGRESS_STORE:
             PROGRESS_STORE[task_id] = {} # Should be initialized before worker starts
         
+        # Update the status information
         PROGRESS_STORE[task_id]['status'] = status_message
         PROGRESS_STORE[task_id]['percentage'] = percentage
         PROGRESS_STORE[task_id]['timestamp'] = time.time()
+        
+        # Optionally store recent log messages
         if current_log_messages is not None: # Optional: update full log if needed for polling
              PROGRESS_STORE[task_id]['log_snippet'] = current_log_messages[-3:] # Store last 3 messages as snippet
 
 def _execute_best_article_match_task(task_id, user_interests):
-    global ansys # Make sure we're using the global ansys, potentially imported dynamically
-    scoring_log_messages = []
-    current_time = lambda: time.strftime('%Y-%m-%d %H:%M:%S')
-    
-    _update_progress(task_id, "Task started: Initializing...", 5, scoring_log_messages)
-
-    # Print directly to terminal
-    print("\n\033[1;36m===== ARTICLE MATCHING PROCESS =====\033[0m")
-    print(f"\033[1;33mAnalyzing your interests: {user_interests}\033[0m\n")
-    
-    def print_progress_bar(percentage, status_message):
-        bar_length = 50
-        filled_length = int(bar_length * percentage / 100)
-        bar = '█' * filled_length + '░' * (bar_length - filled_length)
-        print(f"\r\033[1;32m[{bar}] {percentage}%\033[0m \033[1;34m{status_message}\033[0m", end='', flush=True)
-    
-    def log_with_color(message, color_code="1;37"):
-        """Print colored text to the terminal."""
-        print(f"\033[{color_code}m{message}\033[0m")
-    
-    print_progress_bar(5, "Task started: Initializing...")
-
     try:
-        scoring_log_messages.append(f"[{current_time()}] Worker task {task_id} started for interests: '{user_interests}'")
-        
-        if not user_interests:
-            # This case should ideally be caught before starting the thread.
-            # If it happens, update progress and log, then exit thread.
-            msg = "ERROR: No interests provided to worker task."
-            print(f"\n\033[1;31m{msg}\033[0m")
-            scoring_log_messages.append(f"[{current_time()}] {msg}")
-            _update_progress(task_id, msg, 100, scoring_log_messages)
+        # Initialize LLM model with proper error handling
+        llm = None
+        try:
+            llm = ansys.get_llama_model()
+            if llm is None:
+                raise RuntimeError("Failed to initialize LLM model")
+        except Exception as e:
+            error_msg = f"Error initializing LLM model: {str(e)}"
+            logger.error(error_msg)
             with PROGRESS_LOCK:
-                PROGRESS_STORE[task_id]['final_result'] = {"status": "error", "message": "No interests provided"}
+                PROGRESS_STORE[task_id]['final_result'] = {
+                    "status": "error",
+                    "message": "Failed to initialize LLM model",
+                    "details": str(e)
+                }
                 PROGRESS_STORE[task_id]['completed'] = True
-            _log_scoring_to_new_terminal(scoring_log_messages)
             return
 
-        _update_progress(task_id, "Loading articles from cache...", 10, scoring_log_messages)
-        print_progress_bar(10, "Loading articles from cache...")
-        
-        cache_dir_worker = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache')
-        if not os.path.exists(cache_dir_worker):
-            cache_dir_worker = CACHE_DIR
-            
-        final_articles_paths = glob.glob(os.path.join(cache_dir_worker, 'final_article_*.json'))
-        if len(final_articles_paths) == 0 and os.path.exists(CACHE_DIR):
-            final_articles_paths = glob.glob(os.path.join(CACHE_DIR, 'final_article_*.json'))
-        
-        scoring_log_messages.append(f"[{current_time()}] Found {len(final_articles_paths)} potential final_article_*.json files.")
-        print(f"\n\033[1;36mFound {len(final_articles_paths)} articles in cache\033[0m")
-            
-        if not final_articles_paths:
-            msg = "ERROR: No articles found in cache for worker task."
-            print(f"\n\033[1;31m{msg}\033[0m")
-            scoring_log_messages.append(f"[{current_time()}] {msg}")
-            _update_progress(task_id, msg, 100, scoring_log_messages)
-            with PROGRESS_LOCK:
-                PROGRESS_STORE[task_id]['final_result'] = {"status": "error", "message": "No articles found in cache."}
-                PROGRESS_STORE[task_id]['completed'] = True
-            _log_scoring_to_new_terminal(scoring_log_messages)
-            return
-            
+        # Load articles from cache
         articles_content_list = []
-        for article_path in final_articles_paths:
+        cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache')
+        if not os.path.exists(cache_dir):
+            cache_dir = CACHE_DIR
+
+        final_articles = glob.glob(os.path.join(cache_dir, 'final_article_*.json'))
+        if len(final_articles) == 0 and os.path.exists(CACHE_DIR):
+            final_articles = glob.glob(os.path.join(CACHE_DIR, 'final_article_*.json'))
+
+        for article_path in final_articles:
             try:
                 with open(article_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                filename = os.path.basename(article_path)
-                article_id = filename.replace('final_article_', '').replace('.json', '')
                 content = data.get('content', '')
-                title = content.splitlines()[0] if content else 'Unknown Title'
-                if title.startswith('# '): title = title[2:]
-                html_filename = f"tech_deep_dive_{article_id}.html"
-                html_path_full = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'final_articles', 'html', html_filename)
-                has_html = os.path.exists(html_path_full)
-                articles_content_list.append({
-                    'id': article_id, 'title': title, 'content': content,
-                    'html_path': html_path_full if has_html else None, 'has_html': has_html
-                })
+                if content:
+                    title = content.splitlines()[0] if content else 'Unknown Title'
+                    if title.startswith('# '):
+                        title = title[2:]
+                    articles_content_list.append({
+                        'id': os.path.basename(article_path).replace('final_article_', '').replace('.json', ''),
+                        'title': title,
+                        'content': content
+                    })
             except Exception as e:
-                logger.error(f"Task {task_id}: Error loading article {article_path}: {e}")
-                print(f"\033[1;31mError loading article {os.path.basename(article_path)}: {e}\033[0m")
-                scoring_log_messages.append(f"[{current_time()}] WARNING: Error loading article {article_path}: {e}")
-        
-        _update_progress(task_id, f"Loaded {len(articles_content_list)} articles.", 20, scoring_log_messages)
-        print_progress_bar(20, f"Loaded {len(articles_content_list)} articles.")
-        scoring_log_messages.append(f"[{current_time()}] Successfully loaded {len(articles_content_list)} articles for scoring.")
+                logger.error(f"Error loading article {article_path}: {e}")
 
         if not articles_content_list:
-            msg = "ERROR: Could not load any article content after attempting to read files for worker task."
-            print(f"\n\033[1;31m{msg}\033[0m")
-            scoring_log_messages.append(f"[{current_time()}] {msg}")
-            _update_progress(task_id, msg, 100, scoring_log_messages)
-            with PROGRESS_LOCK:
-                PROGRESS_STORE[task_id]['final_result'] = {"status": "error", "message": "Could not load any article content."}
-                PROGRESS_STORE[task_id]['completed'] = True
-            _log_scoring_to_new_terminal(scoring_log_messages)
-            return
-        
-        top_matches_list = []
-        
-        if ansys is None:
-            scoring_log_messages.append(f"[{current_time()}] ansys module is None, attempting dynamic import in worker.")
-            _update_progress(task_id, "Importing AI module...", 25, scoring_log_messages)
-            print_progress_bar(25, "Importing AI module...")
-            try:
-                script_dir = os.path.dirname(os.path.abspath(__file__))
-                ansys_path_worker = os.path.join(script_dir, 'ansys.py')
-                if not os.path.exists(ansys_path_worker): ansys_path_worker = os.path.join(os.path.dirname(script_dir), 'ansys.py')
-                
-                if os.path.exists(ansys_path_worker):
-                    scoring_log_messages.append(f"[{current_time()}] Found ansys.py at: {ansys_path_worker}, importing dynamically.")
-                    import importlib.util
-                    spec = importlib.util.spec_from_file_location("ansys", ansys_path_worker)
-                    ansys_module_local = importlib.util.module_from_spec(spec) # Use a local name for the module in thread
-                    spec.loader.exec_module(ansys_module_local)
-                    ansys = ansys_module_local # Assign to global if successful, though direct use of ansys_module_local is safer in thread
-                    scoring_log_messages.append(f"[{current_time()}] ansys module imported successfully in worker.")
-                    _update_progress(task_id, "AI module imported.", 30, scoring_log_messages)
-                    print_progress_bar(30, "AI module imported.")
-                else:
-                    msg = "ERROR: ansys.py not found in worker. LLM matching unavailable."
-                    print(f"\n\033[1;31m{msg}\033[0m")
-                    scoring_log_messages.append(f"[{current_time()}] {msg}")
-                    _update_progress(task_id, msg, 100, scoring_log_messages)
-                    with PROGRESS_LOCK:
-                        PROGRESS_STORE[task_id]['final_result'] = {"status": "error", "message": "Cannot score articles: ansys.py script not found."}
-                        PROGRESS_STORE[task_id]['completed'] = True
-                    _log_scoring_to_new_terminal(scoring_log_messages)
-                    return
-            except Exception as e:
-                msg = f"ERROR: Error importing ansys module in worker: {e}"
-                print(f"\n\033[1;31m{msg}\033[0m")
-                scoring_log_messages.append(f"[{current_time()}] {msg}")
-                logger.error(f"Task {task_id}: {msg}")
-                logger.error(traceback.format_exc())
-                _update_progress(task_id, msg, 100, scoring_log_messages)
-                with PROGRESS_LOCK:
-                    PROGRESS_STORE[task_id]['final_result'] = {"status": "error", "message": "Cannot score articles: Error importing ansys module."}
-                    PROGRESS_STORE[task_id]['completed'] = True
-                _log_scoring_to_new_terminal(scoring_log_messages)
-                return
-        
-        if ansys is None:
-            msg = "ERROR: ansys module is still None after import attempt in worker."
-            print(f"\n\033[1;31m{msg}\033[0m")
-            scoring_log_messages.append(f"[{current_time()}] {msg}")
-            _update_progress(task_id, msg, 100, scoring_log_messages)
-            with PROGRESS_LOCK:
-                PROGRESS_STORE[task_id]['final_result'] = {"status": "error", "message": "Cannot score articles: ansys module is not available."}
-                PROGRESS_STORE[task_id]['completed'] = True
-            _log_scoring_to_new_terminal(scoring_log_messages)
-            return
-            
-        # LLM scoring block
-        try:
-            scoring_log_messages.append(f"[{current_time()}] Attempting to initialize LLM model via ansys.get_llama_model() in worker.")
-            _update_progress(task_id, "Initializing LLM model...", 35, scoring_log_messages)
-            print_progress_bar(35, "Initializing LLM model...")
-            print("\n\033[1;36mLoading LLM model...\033[0m")
-            llm = ansys.get_llama_model() 
-            
-            if llm is None:
-                msg = "CRITICAL ERROR: LLM model is None after ansys.get_llama_model() in worker."
-                print(f"\n\033[1;31m{msg}\033[0m")
-                scoring_log_messages.append(f"[{current_time()}] {msg}")
-                _update_progress(task_id, msg, 100, scoring_log_messages)
-                logger.error(f"Task {task_id}: {msg}")
-                with PROGRESS_LOCK:
-                    PROGRESS_STORE[task_id]['final_result'] = {"status": "error", "message": "Cannot score articles: LLM model initialization failed (model is None)."}
-                    PROGRESS_STORE[task_id]['completed'] = True
-                _log_scoring_to_new_terminal(scoring_log_messages)
-                return
-
-            _update_progress(task_id, "LLM model initialized. Preparing prompt...", 40, scoring_log_messages)
-            print_progress_bar(40, "LLM model initialized. Preparing prompt...")
-            scoring_log_messages.append(f"[{current_time()}] LLM model initialized successfully in worker.")
-            
-            articles_detail_parts = []
-            for i, article_data_item in enumerate(articles_content_list):
-                title = article_data_item['title']
-                individual_article_content_limit = 7500 
-                summary_for_prompt = article_data_item['content']
-                if len(summary_for_prompt) > individual_article_content_limit:
-                    summary_for_prompt = summary_for_prompt[:individual_article_content_limit] + "... [truncated]"
-                articles_detail_parts.append(f"Article {i+1}:\\nTitle: {title}\\nSummary:\\n{summary_for_prompt}\\n")
-            
-            articles_detail_text = "\\n\\n".join(articles_detail_parts)
-            scoring_log_messages.append(f"[{current_time()}] Prepared details for {len(articles_content_list)} articles for the prompt.")
-            _update_progress(task_id, "Prompt prepared. Sending to LLM...", 50, scoring_log_messages)
-            print_progress_bar(50, "Prompt prepared. Sending to LLM...")
-            
-            prompt_text = "[INST] I need to find which article best matches the user's interests. "
-            prompt_text += "Please review the following articles carefully. For each article, provide an alignment score from 0 to 100, "
-            prompt_text += "where 100 means a perfect alignment with the user's stated interests, and 0 means no alignment.\\n\\n"
-            prompt_text += f"User interests: {interests}\\n\\n"
-            prompt_text += f"Available articles:\\n{articles_detail_text}\\n\\n"
-            prompt_text += "Based on the user's interests and the provided titles and summaries, evaluate each article.\\n"
-            prompt_text += "Format your response as a list of numbers only, one per article, corresponding to the order above.\\n"
-            prompt_text += "Example:\\n"
-            prompt_text += "1. [score for Article 1]\\n"
-            prompt_text += "2. [score for Article 2]\\n...\\n\\n"
-            prompt_text += "Provide only the scores. No other text or explanation is needed. [/INST]"
-            
-            log_with_color("Sending request to LLM for article scoring...", "1;36")
-            
-            print_progress_bar(60, "LLM processing articles...")
-            response = llm(prompt_text, max_tokens=1024, temperature=0.5) 
-            _update_progress(task_id, "LLM processing complete. Parsing scores...", 70, scoring_log_messages)
-            print_progress_bar(70, "LLM processing complete. Parsing scores...")
-            
-            response_text_content = response["choices"][0]["text"].strip()
-            scoring_log_messages.append(f"[{current_time()}] LLM response received (first 200 chars): {response_text_content[:200]}...")
-            
-            score_lines_list = response_text_content.split("\\n")
-            print("\n\033[1;36mArticle scores:\033[0m")
-            for i, line in enumerate(score_lines_list):
-                if i < len(articles_content_list):
-                    score_match = re.search(r'(\\d+)', line)
-                    if score_match:
-                        score = int(score_match.group(1))
-                        articles_content_list[i]['match_score'] = score 
-                        top_matches_list.append(articles_content_list[i])
-                        scoring_log_messages.append(f"[{current_time()}] Article '{articles_content_list[i]['title']}': Assigned score {score} from line '{line}'.")
-                        print(f"\033[1;37m{i+1}. '{articles_content_list[i]['title']}': \033[1;33m{score}/100\033[0m")
-                    else:
-                        articles_content_list[i]['match_score'] = 0 
-                        top_matches_list.append(articles_content_list[i])
-                        scoring_log_messages.append(f"[{current_time()}] WARNING: Couldn't extract score for '{articles_content_list[i]['title']}' from LLM line: '{line}'. Assigning score 0.")
-                        print(f"\033[1;37m{i+1}. '{articles_content_list[i]['title']}': \033[1;31m0/100 (couldn't extract score)\033[0m")
-                else:
-                    scoring_log_messages.append(f"[{current_time()}] WARNING: More score lines from LLM ({len(score_lines_list)}) than articles ({len(articles_content_list)}). Ignoring extra line: '{line}'")
-
-            _update_progress(task_id, "Scores parsed. Sorting articles...", 85, scoring_log_messages)
-            print_progress_bar(85, "Scores parsed. Sorting articles...")
-            scoring_log_messages.append(f"[{current_time()}] Scoring complete. Total articles processed with scores: {len(top_matches_list)}.")
-            top_matches_list.sort(key=lambda x: x['match_score'], reverse=True)
-            scoring_log_messages.append(f"[{current_time()}] Sorted articles by match_score.")
-        
-        except FileNotFoundError as model_error:
-            error_message = f"LLM model file not found: {str(model_error)}"
-            print(f"\n\033[1;31m{error_message}\033[0m")
-            scoring_log_messages.append(f"[{current_time()}] ERROR: {error_message}")
-            logger.error(f"Task {task_id}: {error_message}")
-            logger.error(traceback.format_exc())
-            _update_progress(task_id, f"Error: {error_message}", 100, scoring_log_messages)
+            error_msg = "No articles found to match"
+            logger.error(error_msg)
             with PROGRESS_LOCK:
                 PROGRESS_STORE[task_id]['final_result'] = {
-                    "status": "error", "message": "Cannot score articles: LLM model file not found.",
-                    "details": str(model_error),
-                    "solution": "Please set the LLAMA_MODEL_PATH environment variable or place the model in a known location."}
+                    "status": "error",
+                    "message": error_msg
+                }
                 PROGRESS_STORE[task_id]['completed'] = True
-            _log_scoring_to_new_terminal(scoring_log_messages)
             return
-        
-        except RuntimeError as rt_error:
-            error_message = f"LLM runtime error: {str(rt_error)}"
-            print(f"\n\033[1;31m{error_message}\033[0m")
-            scoring_log_messages.append(f"[{current_time()}] ERROR: {error_message}")
-            logger.error(f"Task {task_id}: {error_message}")
-            logger.error(traceback.format_exc())
-            _update_progress(task_id, f"Error: {error_message}", 100, scoring_log_messages)
-            with PROGRESS_LOCK:
-                PROGRESS_STORE[task_id]['final_result'] = {"status": "error", "message": "Cannot score articles: LLM runtime error.", "details": str(rt_error)}
-                PROGRESS_STORE[task_id]['completed'] = True
-            _log_scoring_to_new_terminal(scoring_log_messages)
-            return
-            
-        except Exception as e:
-            error_message = f"An unexpected error occurred during LLM article scoring: {e}"
-            print(f"\n\033[1;31m{error_message}\033[0m")
-            scoring_log_messages.append(f"[{current_time()}] ERROR: {error_message}")
-            logger.error(f"Task {task_id}: Error using LLM for article matching: {e}")
-            logger.error(traceback.format_exc())
-            _update_progress(task_id, f"Error: {error_message}", 100, scoring_log_messages)
-            with PROGRESS_LOCK:
-                PROGRESS_STORE[task_id]['final_result'] = {"status": "error", "message": "An unexpected error occurred during LLM article scoring.", "details": str(e)}
-                PROGRESS_STORE[task_id]['completed'] = True
-            _log_scoring_to_new_terminal(scoring_log_messages)
-            return
-        
-        best_match_result = top_matches_list[0] if top_matches_list else None
-        
-        if not best_match_result:
-            msg = "No best match found after scoring and sorting."
-            print(f"\n\033[1;31m{msg}\033[0m")
-            scoring_log_messages.append(f"[{current_time()}] {msg}")
-            _update_progress(task_id, msg, 100, scoring_log_messages)
-            with PROGRESS_LOCK:
-                PROGRESS_STORE[task_id]['final_result'] = {"status": "error", "message": "Could not find a suitable article match after LLM scoring."}
-                PROGRESS_STORE[task_id]['completed'] = True
-            _log_scoring_to_new_terminal(scoring_log_messages)
-            return
-        
-        print_progress_bar(100, "Match found. Process complete.")
-        scoring_log_messages.append(f"[{current_time()}] Top match selected: '{best_match_result['title']}' (Score: {best_match_result.get('match_score', 'N/A')}).")
-        _update_progress(task_id, "Match found. Process complete.", 100, scoring_log_messages)
-        
-        print(f"\n\n\033[1;32m✓ BEST MATCH: '{best_match_result['title']}' (Score: {best_match_result.get('match_score', 'N/A')})\033[0m\n")
-        
-        # Get server URL for article HTML link
+
+        # Format articles for the prompt
+        articles_detail_parts = []
+        for i, article in enumerate(articles_content_list):
+            title = article['title']
+            content = article['content']
+            # Limit content length to avoid context overflow
+            if len(content) > 5000:
+                content = content[:5000] + "... [truncated]"
+            articles_detail_parts.append(f"Article {i+1}:\nTitle: {title}\nSummary:\n{content}\n")
+
+        articles_detail_text = "\n\n".join(articles_detail_parts)
+
+        # Prepare the prompt
+        prompt_text = "[INST] I need to find which article best matches the user's interests. "
+        prompt_text += "Please review the following articles carefully. For each article, provide an alignment score from 0 to 100, "
+        prompt_text += "where 100 means a perfect alignment with the user's stated interests, and 0 means no alignment.\n\n"
+        prompt_text += f"User interests: {user_interests}\n\n"
+        prompt_text += f"Available articles:\n{articles_detail_text}\n\n"
+        prompt_text += "Based on the user's interests and the provided titles and summaries, evaluate each article.\n"
+        prompt_text += "Format your response as a list of numbers only, one per article, corresponding to the order above.\n"
+        prompt_text += "Example:\n"
+        prompt_text += "1. [score for Article 1]\n"
+        prompt_text += "2. [score for Article 2]\n...\n\n"
+        prompt_text += "Provide only the scores. No other text or explanation is needed. [/INST]"
+
+        # Send prompt to LLM with proper error handling
         try:
-            # Get hostname and port from the environment or use default values
-            # First try to detect actual server hostname and port
-            from flask import request
-            try:
-                # Try to access the current request context to get actual server URL
-                # This may fail if we're running in a background thread
-                server_url = request.host_url.rstrip('/')
-                logger.info(f"Got server URL from request context: {server_url}")
-            except Exception:
-                # Fall back to environment variables or defaults
-                host = os.environ.get('SERVER_HOST', 'localhost')
-                port = os.environ.get('SERVER_PORT', '5001')
-                server_url = f"http://{host}:{port}"
-                logger.info(f"Using fallback server URL: {server_url}")
-            
-            # Now create article URLs using the server URL
-            article_url = f"{server_url}/article-html/{best_match_result['id']}"
-            view_article_url = f"{server_url}/view-article/{task_id}"
-            open_article_url = f"{server_url}/open-best-article-html/{task_id}"
-            
-            scoring_log_messages.append(f"[{current_time()}] Article URLs: article_url={article_url}, view_article_url={view_article_url}")
-            log_with_color(f"View article directly at: {article_url}", "1;34")
-            log_with_color(f"View article page at: {view_article_url}", "1;34")
-            
-            # Ensure HTML file exists
-            html_filename = f"tech_deep_dive_{best_match_result['id']}.html"
-            html_path = os.path.join(HTML_DIR, html_filename)
-            logger.info(f"HTML file path: {html_path}, exists: {os.path.exists(html_path)}")
-            
-            if not os.path.exists(html_path):
-                # Generate HTML content and save it
-                markdown_path = os.path.join(MARKDOWN_DIR, f"tech_deep_dive_{best_match_result['id']}.md")
-                os.makedirs(os.path.dirname(markdown_path), exist_ok=True)
-                os.makedirs(os.path.dirname(html_path), exist_ok=True)
-                
-                # Save markdown content
-                with open(markdown_path, 'w', encoding='utf-8') as md_file:
-                    md_file.write(best_match_result['content'])
-                logger.info(f"Saved markdown file: {markdown_path}")
-                
-                # Convert to HTML
-                try:
-                    # Try to use python-markdown if available
-                    import markdown
-                    html_body = markdown.markdown(best_match_result['content'])
-                    logger.info("Used python-markdown to convert content")
-                except ImportError:
-                    # Fall back to simple replacement
-                    logger.info("python-markdown not available, using simple replacement")
-                    html_body = best_match_result['content'].replace("# ", "<h1>").replace("## ", "<h2>").replace("### ", "<h3>").replace("#### ", "<h4>").replace("\n\n", "<br><br>")
-                
-                # Extract title
-                title = best_match_result['title']
-                
-                # Generate HTML content
-                html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-    <link rel="stylesheet" href="/static/article.css">
-</head>
-<body>
-    {html_body}
-</body>
-</html>"""
-                
-                # Save HTML file
-                with open(html_path, 'w', encoding='utf-8') as html_file:
-                    html_file.write(html_content)
-                logger.info(f"Generated HTML file: {html_path}")
-                
-                # Also try to access the article-html endpoint to ensure it's cached in the server
-                try:
-                    from urllib.request import urlopen
-                    logger.info(f"Accessing {article_url} to trigger HTML generation")
-                    response = urlopen(article_url)
-                    html_content = response.read()
-                    logger.info(f"Successfully triggered HTML generation, got {len(html_content)} bytes")
-                except Exception as html_error:
-                    logger.error(f"Error triggering HTML generation: {html_error}")
+            response = llm(prompt_text, max_tokens=1024, temperature=0.5)
+            response_text = response["choices"][0]["text"].strip()
         except Exception as e:
-            logger.error(f"Error generating article URL: {e}")
-            article_url = None
-            view_article_url = None
-            open_article_url = None
+            error_msg = f"Error getting LLM response: {str(e)}"
+            logger.error(error_msg)
+            with PROGRESS_LOCK:
+                PROGRESS_STORE[task_id]['final_result'] = {
+                    "status": "error",
+                    "message": "Failed to get LLM response",
+                    "details": str(e)
+                }
+                PROGRESS_STORE[task_id]['completed'] = True
+            return
+
+        # Process the response
+        try:
+            score_lines = response_text.split("\n")
+            for i, line in enumerate(score_lines):
+                if i < len(articles_content_list):
+                    score_match = re.search(r'(\d+)', line)
+                    if score_match:
+                        score = int(score_match.group(1))
+                        articles_content_list[i]['match_score'] = score
+                    else:
+                        articles_content_list[i]['match_score'] = 0
+        except Exception as e:
+            error_msg = f"Error processing LLM response: {str(e)}"
+            logger.error(error_msg)
+            with PROGRESS_LOCK:
+                PROGRESS_STORE[task_id]['final_result'] = {
+                    "status": "error",
+                    "message": "Failed to process LLM response",
+                    "details": str(e)
+                }
+                PROGRESS_STORE[task_id]['completed'] = True
+            return
+
+        # Sort articles by score
+        articles_content_list.sort(key=lambda x: x.get('match_score', 0), reverse=True)
         
-        final_json_response = {
-            "status": "success",
-            "message": "Found best matching article",
-            "article": {
-                "id": best_match_result['id'], 
-                "title": best_match_result['title'],
-                "match_score": best_match_result.get('match_score', 0),
-                "has_html": best_match_result['has_html'] or os.path.exists(html_path), 
-                "html_path": best_match_result['html_path'] or html_path,
-                "article_url": article_url,
-                "view_url": view_article_url,
-                "open_url": open_article_url
-            }
-        }
+        # Get best match
+        best_match = articles_content_list[0] if articles_content_list else None
+        if not best_match:
+            error_msg = "No articles found to match"
+            logger.error(error_msg)
+            with PROGRESS_LOCK:
+                PROGRESS_STORE[task_id]['final_result'] = {
+                    "status": "error",
+                    "message": error_msg
+                }
+                PROGRESS_STORE[task_id]['completed'] = True
+            return
+
+        # Return success result
         with PROGRESS_LOCK:
-            PROGRESS_STORE[task_id]['final_result'] = final_json_response
+            PROGRESS_STORE[task_id]['final_result'] = {
+                "status": "success",
+                "message": "Found best matching article",
+                "article": best_match
+            }
             PROGRESS_STORE[task_id]['completed'] = True
-        _log_scoring_to_new_terminal(scoring_log_messages)
 
     except Exception as e:
-        # General exception for the whole worker task
-        critical_error_msg = f"CRITICAL ERROR in worker task {task_id}: {e}"
-        print(f"\n\033[1;31m{critical_error_msg}\033[0m")
-        scoring_log_messages.append(f"[{current_time()}] {critical_error_msg}")
-        logger.error(critical_error_msg)
-        logger.error(traceback.format_exc())
-        _update_progress(task_id, f"Critical Error: {e}", 100, scoring_log_messages)
+        error_msg = f"Unexpected error in article matching: {str(e)}"
+        logger.error(error_msg)
         with PROGRESS_LOCK:
-            PROGRESS_STORE[task_id]['final_result'] = {"status": "error", "message": f"Critical error in worker: {str(e)}"}
+            PROGRESS_STORE[task_id]['final_result'] = {
+                "status": "error",
+                "message": "Unexpected error occurred",
+                "details": str(e)
+            }
             PROGRESS_STORE[task_id]['completed'] = True
-        _log_scoring_to_new_terminal(scoring_log_messages)
 
+def generate_match_explanation(article, user_interests):
+    """Generate an explanation of why an article matched the user's interests"""
+    try:
+        # Extract article title
+        title = article['title']
+        
+        # Extract user interests as a list
+        interests = [interest.strip().lower() for interest in user_interests.split(',')]
+        
+        # Generate explanation based on match score
+        score = article.get('match_score', 0)
+        
+        if score >= 85:
+            strength = "excellent"
+        elif score >= 70:
+            strength = "strong"
+        elif score >= 50:
+            strength = "good"
+        else:
+            strength = "moderate"
+            
+        # Check for keyword matches in title and content
+        content_lower = article.get('content', '').lower()
+        matching_interests = []
+        
+        for interest in interests:
+            if interest in title.lower() or interest in content_lower:
+                matching_interests.append(interest)
+                
+        # Generate the explanation
+        if matching_interests:
+            interests_text = ", ".join(matching_interests)
+            explanation = f"This article has a {strength} match with your interests in {interests_text}. "
+            
+            if score >= 70:
+                explanation += "The content provides in-depth coverage of these topics."
+            elif score >= 50:
+                explanation += "The article covers these topics in reasonable detail."
+            else:
+                explanation += "The article touches on these topics."
+        else:
+            explanation = f"This article has a {strength} conceptual alignment with your stated interests. "
+            explanation += "While not explicitly mentioning your exact terms, the content covers related concepts and ideas."
+            
+        return explanation
+        
+    except Exception as e:
+        logger.error(f"Error generating match explanation: {e}")
+        return f"This article received a match score of {article.get('match_score', 0)}/100 based on your interests."
 
 @app.route('/get-best-article-match', methods=['POST'])
-def get_best_article_match_start(): # Renamed to indicate it starts the task
+def get_best_article_match_start():
     """
-    Starts the background task for finding the best article match based on user interests.
-    Returns a task_id for polling progress.
+    WHAT THIS DOES:
+    1. Takes the user's interests (e.g., "math", "technology")
+    2. Starts a background process to find the best matching article
+    3. Returns a task ID that the frontend can use to check progress
+    
+    HOW TO USE:
+    - Send a POST request with {"interests": "your interests here"}
+    - You'll get back a task_id to track progress
+    - Use the /get-match-progress/<task_id> endpoint to check if it's done
     """
     try:
+        # Step 1: Get the user's interests from the request
         data = request.json
         user_interests = data.get('interests', '')
 
+        # Make sure interests were provided
         if not user_interests:
             return jsonify({"status": "error", "message": "No interests provided"}), 400
         
+        # Step 2: Create a unique ID for this task
         task_id = uuid.uuid4().hex
         
+        # Step 3: Initialize progress tracking for this task
         with PROGRESS_LOCK:
             PROGRESS_STORE[task_id] = {
                 'status': 'Task initiated. Waiting for worker to start.',
@@ -1443,20 +1257,19 @@ def get_best_article_match_start(): # Renamed to indicate it starts the task
                 'timestamp': time.time()
             }
         
-        # For macOS, open a new terminal window to run the article matching process
-        if sys.platform == 'darwin':
-            # Create a temporary file with the user's interests
+        # Step 4: Run the article matching process in a new terminal or background thread
+        if sys.platform == 'darwin':  # If on Mac
+            # Create temp files needed for the process
             input_file = os.path.join(tempfile.gettempdir(), f'article_match_interests_{task_id}.txt')
             with open(input_file, 'w') as f:
                 f.write(f"{user_interests}\n")
                 
-            # Get the path to the script
             script_dir = os.path.dirname(os.path.abspath(__file__))
             
-            # Create a Python script to run the article matching in a terminal
+            # Create a Python script that will run in the terminal
             terminal_script = os.path.join(tempfile.gettempdir(), f'run_article_match_{task_id}.py')
             with open(terminal_script, 'w') as f:
-                f.write('''
+                script_content = '''
 import sys
 import os
 import json
@@ -1465,13 +1278,12 @@ import traceback
 import glob
 import re
 
-# Define task_id at the global scope to avoid reference errors
-task_id = ''' + f'"{task_id}"' + '''
-input_file = ''' + f'"{input_file}"' + '''
+# Define task_id at the beginning of the script
+task_id = "''' + task_id + '''"
 
 try:
     # Get the script directory
-    script_dir = ''' + f'"{script_dir}"' + '''
+    script_dir = "''' + script_dir + '''"
     sys.path.append(script_dir)
     sys.path.append(os.path.dirname(script_dir))
 
@@ -1480,16 +1292,17 @@ try:
     
     def log_with_color(message, color_code="1;37"):
         """Print colored text to the terminal."""
-        print(f"\\033[{color_code}m{message}\\033[0m")
+        print("\\033[" + color_code + "m" + message + "\\033[0m")
     
     # Print header
     log_with_color("===== ARTICLE RATING PROCESS =====", "1;36")
     
     # Load interests
+    input_file = "''' + input_file + '''"
     with open(input_file, "r") as f:
         interests = f.read().strip()
     
-    log_with_color(f"Analyzing your interests: {interests}", "1;33")
+    log_with_color("Analyzing your interests: " + interests, "1;33")
     
     # Initialize LLM model with 32K context window
     log_with_color("Loading LLM model with 32K context window...", "1;36")
@@ -1604,12 +1417,6 @@ try:
     if not final_articles:
         log_with_color("No articles found to rate. Make sure to cache articles first.", "1;31")
         log_with_color("Use the 'Cache Articles' button in the application before rating.", "1;33")
-        
-        # Return an error response
-        result_file = os.path.join(os.path.dirname(input_file), f"article_match_result_{task_id}.json")
-        with open(result_file, "w") as f:
-            json.dump({"status": "error", "message": "No articles found to rate. Please cache articles first."}, f)
-            
         log_with_color("\\nPress Enter to close this window...", "1;37")
         input()
         sys.exit(1)
@@ -1630,53 +1437,35 @@ try:
     
     log_with_color(f"Processing {len(final_articles)} articles with ~{tokens_per_article} tokens (~{chars_per_article} chars) per article", "1;36")
     
-    # Prepare articles with titles for the prompt
-    article_details = []
+    # Prepare prompt - use a simplified approach for better results
+    articles_detail_parts = []
     for i, article in enumerate(final_articles):
         title = article["title"]
-        # Clean the title to remove "Deep Dive:" prefixes and be more readable
-        clean_title = title
-        if "Deep Dive:" in clean_title:
-            clean_title = clean_title.replace("Deep Dive:", "").strip()
-        
-        # Handle the arrow format some titles have
-        if "->" in clean_title:
-            parts = clean_title.split("->")
-            clean_title = parts[-1].strip()
+        content = article["content"]
+        if len(content) > chars_per_article:
+            # Get first 30% and last 70% of allowed length to capture beginning and important parts
+            first_part_len = int(chars_per_article * 0.3)
+            second_part_len = chars_per_article - first_part_len
+            content = content[:first_part_len] + "... [middle content truncated] ..." + content[-second_part_len:]
+            log_with_color(f"Truncated article {i+1} from {len(article['content'])} to {len(content)} chars", "1;35")
             
-        article_details.append({
-            "number": i+1,
-            "title": clean_title,
-            "original_title": title,
-            "original_index": i
-        })
+        articles_detail_parts.append(f"Article {i+1}:\\nTitle: {title}\\nSummary:\\n{content}\\n")
     
-    # Create a clear and simple prompt
-    prompt_text = f"""[INST]
-I need you to score how well each article matches these interests:
-
-USER INTERESTS: {interests}
-
-For each article below, rate its relevance to the interests on a scale of 0-100.
-Higher scores should indicate better matches to the user's interests.
-
-ARTICLES TO SCORE:
-"""
-
-    # Add each article title
-    for article in article_details:
-        prompt_text += f"Article {article['number']}: {article['title']}\\n"
+    articles_detail_text = "\\n\\n".join(articles_detail_parts)
     
-    prompt_text += """
-Please score each article based on how relevant it would be to someone with the interests above.
-Reply with ONLY scores in this exact format:
-Article 1: [score]
-Article 2: [score]
-... and so on.
-
-Use numbers between 10 and 95 for meaningful differentiation. Do not return all zeros.
-[/INST]"""
-
+    # Create the simplest possible prompt to get better results
+    prompt_text = f"[INST]\\nUser interests: {interests}\\n\\n"
+    prompt_text += "For each article below, rate how well it matches these interests on a scale of 0-100.\\n"
+    prompt_text += "Output format MUST be: Article X: Y where X is article number and Y is score.\\n\\n"
+    
+    # Add each article with minimal formatting
+    for i, article in enumerate(final_articles):
+        title = article["title"]
+        # Only include titles to make it simpler
+        prompt_text += f"Article {i+1}: {title}\\n"
+    
+    prompt_text += "\\nRate each article in order from 1 to {len(final_articles)} using ONLY this format: Article X: Y\\n[/INST]"
+    
     log_with_color(f"Prompt prepared with approximately {len(prompt_text) // 4} tokens", "1;36")
     log_with_color("Sending request to LLM for article scoring...", "1;36")
     
@@ -1684,96 +1473,52 @@ Use numbers between 10 and 95 for meaningful differentiation. Do not return all 
     max_attempts = 3
     success = False
     response_text = ""
-    article_scores = {}
     
     for attempt in range(1, max_attempts + 1):
         if attempt > 1:
             log_with_color(f"Retry attempt {attempt}/{max_attempts}...", "1;33")
-            # For retries, simplify the prompt further
-            prompt_text = f"""[INST]
-Rate these articles for a user interested in: {interests}
-Score each from 10-95 (not all zeros).
-
-{', '.join([art['title'] for art in article_details])}
-
-Reply ONLY with:
-Article 1: [score]
-Article 2: [score]
-...and so on.
-[/INST]"""
             
         try:
             # Score articles
-            response = llm(prompt_text, max_tokens=1024, temperature=0.7)
+            response = llm(prompt_text, max_tokens=1024, temperature=0.5)
             response_text = response["choices"][0]["text"].strip()
             
             # Log the raw response for debugging
-            log_with_color(f"\\nRaw LLM response (attempt {attempt}):", "1;35")
+            log_with_color("\\nRaw LLM response (attempt " + str(attempt) + "):", "1;35")
             log_with_color(response_text, "1;37")
             
-            # Parse scores using a simple pattern
-            lines = response_text.split('\\n')
-            article_scores = {}
-            
-            # Try to extract scores from each line
-            for line in lines:
-                match = re.search(r'Article (\d+): (\d+)', line)
-                if match:
-                    try:
-                        article_num = int(match.group(1))
-                        score = int(match.group(2))
-                        if 1 <= article_num <= len(final_articles) and score > 0:
-                            article_scores[article_num] = score
-                    except:
-                        pass
-            
-            # Check if we got any non-zero scores
-            valid_scores = [score for score in article_scores.values() if score > 0]
-            if valid_scores:
+            # Check if we got something usable
+            if re.search(r'Article \d+: \d+', response_text):
                 success = True
                 break
             else:
-                log_with_color("All scores are zero or invalid. Retrying with a simplified prompt...", "1;33")
+                log_with_color("Response doesn't match expected format. Retrying...", "1;33")
         except Exception as e:
             log_with_color(f"Error during LLM scoring (attempt {attempt}): {e}", "1;31")
     
     log_with_color("\\nParsing scores...", "1;36")
     
+    # Parse scores using a simple pattern
+    lines = response_text.split('\\n')
+    article_scores = {}
     issue_reasons = {}
+    
+    # Try to extract scores from each line
+    for line in lines:
+        match = re.search(r'Article (\d+): (\d+)', line)
+        if match:
+            try:
+                article_num = int(match.group(1))
+                score = int(match.group(2))
+                if 1 <= article_num <= len(final_articles) and 0 <= score <= 100:
+                    article_scores[article_num] = score
+            except:
+                pass
+    
     # Check for missing articles and note why they're missing
     for i in range(1, len(final_articles) + 1):
         if i not in article_scores:
             issue_reasons[i] = "No valid score found in LLM response"
-            # Assign a default score so we have something rather than nothing
-            article_scores[i] = 10  # Default low score
-    
-    # If we still don't have any scores, assign random differentiated scores
-    # This is a fallback to avoid returning all zeros
-    if not success or all(score == 0 for score in article_scores.values()):
-        log_with_color("LLM failed to provide usable scores. Using fallback scoring method.", "1;33")
-        # Assign scores based on keyword matching with user interests
-        interest_keywords = [kw.strip().lower() for kw in interests.split(',')]
-        
-        for i, article in enumerate(final_articles):
-            title = article["title"].lower()
-            content_preview = article["content"][:1000].lower() if article["content"] else ""
-            
-            # Start with a base score
-            score = 30
-            
-            # Add points for keyword matches in title (more heavily weighted)
-            for keyword in interest_keywords:
-                if keyword and len(keyword) > 2:  # Skip empty or very short keywords
-                    if keyword in title:
-                        score += 30
-                    if keyword in content_preview:
-                        score += 10
-            
-            # Cap at 95
-            score = min(score, 95)
-            
-            # Ensure some minimum differentiation
-            article_scores[i+1] = max(score, 15)
     
     # Apply scores to articles
     log_with_color("Article scores:", "1;36")
@@ -1796,174 +1541,97 @@ Article 2: [score]
     
     if valid_scores:
         best_match = valid_scores[0]
-        log_with_color(f"\\n✓ BEST MATCH: '{best_match['title']}' (Score: {best_match.get('match_score', 'N/A')})", "1;32")
+        log_with_color("\\n✓ BEST MATCH: '{best_match['title']}' (Score: {best_match.get('match_score', 'N/A')})", "1;32")
         
-        # Calculate server URL details for links
-        try:
-            host = os.environ.get('SERVER_HOST', 'localhost')
-            port = os.environ.get('SERVER_PORT', '5001')
-            server_url = f"http://{host}:{port}"
-            article_url = f"{server_url}/article-html/{best_match['id']}"
-            view_article_url = f"{server_url}/view-article/{task_id}"
-            
-            log_with_color(f"\\nView article at: {article_url}", "1;34")
-            log_with_color(f"View article page at: {view_article_url}", "1;34")
-        except Exception as url_error:
-            log_with_color(f"Error creating URLs: {url_error}", "1;31")
-            article_url = None
-            view_article_url = None
-        
-        # Save the result file
-        result_file = os.path.join(os.path.dirname(input_file), f"article_match_result_{task_id}.json")
-        with open(result_file, "w") as f:
-            json.dump({
-                "status": "success", 
-                "message": "Found best matching article", 
-                "article": {
-                    "id": best_match["id"], 
-                    "title": best_match["title"], 
-                    "match_score": best_match.get("match_score", 0),
-                    "article_url": article_url,
-                    "view_url": view_article_url
-                }
-            }, f)
-        log_with_color("\\nResults saved. Generating HTML file...", "1;36")
-        
-        # Generate HTML file directly
-        try:
-            # Calculate paths
-            project_dir = os.path.dirname(script_dir)
-            markdown_dir = os.path.join(project_dir, "final_articles", "markdown")
-            html_dir = os.path.join(project_dir, "final_articles", "html")
-            
-            # Ensure the directories exist
-            os.makedirs(markdown_dir, exist_ok=True)
-            os.makedirs(html_dir, exist_ok=True)
-            
-            markdown_path = os.path.join(markdown_dir, f"tech_deep_dive_{best_match['id']}.md")
-            html_path = os.path.join(html_dir, f"tech_deep_dive_{best_match['id']}.html")
-            
-            # Write markdown file
-            with open(markdown_path, "w", encoding="utf-8") as md_file:
-                md_file.write(best_match["content"])
-            log_with_color(f"Saved markdown file: {markdown_path}", "1;32")
-            
-            # Generate HTML content
-            title = best_match["title"]
-            content = best_match["content"]
-            
-            # Convert markdown to HTML
-            try:
-                # Try to use python-markdown if available
-                import markdown
-                html_body = markdown.markdown(content)
-                log_with_color("Used python-markdown to convert content", "1;32")
-            except ImportError:
-                # Fall back to simple replacement
-                log_with_color("python-markdown not available, using simple replacement", "1;33")
-                # Improved conversion with paragraph handling
-                paragraphs = content.split("\\n\\n")
-                html_parts = []
-                for p in paragraphs:
-                    if p.startswith("# "):
-                        html_parts.append(f"<h1>{p[2:]}</h1>")
-                    elif p.startswith("## "):
-                        html_parts.append(f"<h2>{p[3:]}</h2>")
-                    elif p.startswith("### "):
-                        html_parts.append(f"<h3>{p[4:]}</h3>")
-                    elif p.startswith("#### "):
-                        html_parts.append(f"<h4>{p[5:]}</h4>")
-                    elif p.startswith("- "):
-                        # Convert to unordered list
-                        items = p.split("\\n")
-                        list_items = "".join([f"<li>{item[2:]}</li>" for item in items if item.startswith("- ")])
-                        html_parts.append(f"<ul>{list_items}</ul>")
-                    elif p.strip():
-                        html_parts.append(f"<p>{p}</p>")
-                
-                html_body = "\\n".join(html_parts)
-            
-            html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-    <link rel="stylesheet" href="/static/article.css">
-</head>
-<body>
-    {html_body}
-</body>
-</html>"""
-            
-            # Save HTML file
-            with open(html_path, "w", encoding="utf-8") as html_file:
-                html_file.write(html_content)
-            log_with_color(f"Saved HTML file: {html_path}", "1;32")
-            
-            # Try to open the article in browser
-            try:
-                import subprocess
-                subprocess.run(['open', article_url])
-                log_with_color("Opened article in browser", "1;32")
-            except Exception as open_error:
-                log_with_color(f"Could not open article in browser: {open_error}", "1;33")
-                log_with_color(f"Please visit {article_url} to view the article", "1;34")
-            
-        except Exception as write_error:
-            log_with_color(f"Error writing article files: {write_error}", "1;31")
-        
-        log_with_color("\\nYou can close this window and return to the app.", "1;36")
+        # Update task progress in PROGRESS_STORE
+        progress_file = os.path.join(os.path.dirname(input_file), f"article_match_result_{task_id}.json")
+        with open(progress_file, "w") as f:
+            json.dump({"status": "success", "message": "Found best matching article", 
+                      "article": {"id": best_match["id"], "title": best_match["title"], 
+                                 "match_score": best_match.get("match_score", 0),
+                                 "content": best_match.get("content", "")}}, f)
+        log_with_color("\\nResults saved. You can close this window and return to the app.", "1;36")
     else:
-        # If we have no valid scores, report the issue
-        log_with_color("\\nNO VALID SCORES FOUND. The LLM did not provide any usable article scores.", "1;31")
-        log_with_color("This could be due to the complexity of the prompt or limitations of the model.", "1;33")
-        log_with_color("Raw LLM response was:", "1;35")
-        log_with_color(response_text, "1;37")
+        # If we have no valid scores, use a simple keyword matching fallback
+        log_with_color("\\nNO VALID SCORES FOUND. Falling back to keyword-based matching.", "1;33")
         
-        # Return an error response
-        result_file = os.path.join(os.path.dirname(input_file), f"article_match_result_{task_id}.json")
-        with open(result_file, "w") as f:
-            json.dump({"status": "error", "message": "Could not get valid scores from LLM."}, f)
+        # Extract keywords from interests
+        interest_keywords = [k.strip().lower() for k in interests.split(",")]
+        log_with_color(f"Using keywords: {interest_keywords}", "1;35")
+        
+        # Score articles based on keyword frequency
+        for article in final_articles:
+            score = 0
+            content = article["content"].lower()
+            title = article["title"].lower()
+            
+            # Check each keyword
+            for keyword in interest_keywords:
+                if keyword in title:
+                    # Keywords in title are more valuable
+                    score += 20
+                # Count occurrences in content (with cap per keyword)
+                occurrences = content.count(keyword) 
+                score += min(occurrences * 5, 30)  # Cap at 30 points per keyword
+            
+            # Normalize score to 0-100
+            article["match_score"] = min(score, 100)
+            log_with_color(f"'{article['title']}': Assigned fallback score {article['match_score']}/100", "1;37")
+        
+        # Sort again with new scores
+        final_articles.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+        
+        # Check if we now have valid scores
+        if final_articles and final_articles[0].get("match_score", 0) > 0:
+            best_match = final_articles[0]
+            log_with_color("\\n✓ BEST MATCH (FALLBACK): '{best_match['title']}' (Score: {best_match.get('match_score', 'N/A')})", "1;32")
+            
+            # Update task progress in PROGRESS_STORE
+            progress_file = os.path.join(os.path.dirname(input_file), f"article_match_result_{task_id}.json")
+            with open(progress_file, "w") as f:
+                json.dump({"status": "success", "message": "Found best matching article (using fallback scoring)", 
+                          "article": {"id": best_match["id"], "title": best_match["title"], 
+                                     "match_score": best_match.get("match_score", 0),
+                                     "content": best_match.get("content", "")}}, f)
+            log_with_color("\\nResults saved using fallback scoring method. You can close this window and return to the app.", "1;36")
+        else:
+            # If we still have no valid scores, report the issue
+            log_with_color("\\nUnable to match articles with interests, even with fallback method.", "1;31")
+            log_with_color("Raw LLM response was:", "1;35")
+            log_with_color(response_text, "1;37")
+            
+            # Return an error response - task_id is now defined at the top of script
+            progress_file = os.path.join(os.path.dirname(input_file), f"article_match_result_{task_id}.json")
+            with open(progress_file, "w") as f:
+                json.dump({"status": "error", "message": "Could not match articles with your interests."}, f)
             
     # Keep terminal open for user to read
     log_with_color("\\nPress Enter to close this window...", "1;37")
     input()
     
 except Exception as e:
-    print(f"\\033[1;31mCritical error: {e}\\033[0m")
+    print("\\033[1;31mCritical error: " + str(e) + "\\033[0m")
     print(traceback.format_exc())
-    
-    # Try to write failure result
-    try:
-        result_file = os.path.join(os.path.dirname(input_file), f"article_match_result_{task_id}.json")
-        with open(result_file, "w") as f:
-            json.dump({"status": "error", "message": f"Critical error: {str(e)}"}, f)
-    except:
-        pass
-        
     print("\\nPress Enter to close this window...")
     input()
-''')
+'''
+                f.write(script_content)
             
-            # Construct the command to run in Terminal
+            # Step 5A: Open a new terminal window and run the script (Mac-specific)
             terminal_cmd = f"{sys.executable} {terminal_script}"
-            
-            # Create AppleScript to open new Terminal window
             apple_script = f'''
             tell application "Terminal"
+                activate
                 do script "{terminal_cmd}"
                 set position of front window to {{100, 100}}
-                set custom title of front window to "Article Rating for Task {task_id}"
+                set bounds of front window to {{100, 100, 800, 600}}
             end tell
             '''
-            
-            # Run the AppleScript
             process = subprocess.run(['osascript', '-e', apple_script], capture_output=True, text=True)
+            
+            # If opening terminal fails, fall back to background thread
             if process.returncode != 0:
                 logger.error(f"Failed to open Terminal: {process.stderr}")
-                
-                # Fall back to background thread if terminal fails
                 logger.info(f"Falling back to background task for {task_id}")
                 thread = threading.Thread(target=_execute_best_article_match_task, args=(task_id, user_interests))
                 thread.daemon = True
@@ -1973,12 +1641,10 @@ except Exception as e:
                 
                 # Start a monitoring thread to check for results
                 def monitor_terminal_results():
+                    """Check for results from the terminal process"""
                     result_file = os.path.join(tempfile.gettempdir(), f"article_match_result_{task_id}.json")
-                    max_wait_time = 600  # 10 minutes max wait
+                    max_wait_time = 300  # 5 minutes max wait
                     start_time = time.time()
-                    check_interval = 2  # Check every 2 seconds
-                    
-                    logger.info(f"Started monitoring thread for task {task_id} results at {result_file}")
                     
                     while time.time() - start_time < max_wait_time:
                         if os.path.exists(result_file):
@@ -1986,37 +1652,13 @@ except Exception as e:
                                 with open(result_file, 'r') as f:
                                     result = json.load(f)
                                 
-                                logger.info(f"Terminal process for task {task_id} completed with result: {result}")
-                                
                                 with PROGRESS_LOCK:
                                     PROGRESS_STORE[task_id]['final_result'] = result
                                     PROGRESS_STORE[task_id]['completed'] = True
-                                    PROGRESS_STORE[task_id]['status'] = result.get('message', "Match found")
+                                    PROGRESS_STORE[task_id]['status'] = "Match found. Process complete."
                                     PROGRESS_STORE[task_id]['percentage'] = 100
                                 
-                                # If result is successful, try to make sure the article's HTML is available
-                                if result.get('status') == 'success' and result.get('article'):
-                                    article = result.get('article')
-                                    article_id = article.get('id')
-                                    
-                                    if article_id:
-                                        html_filename = f"tech_deep_dive_{article_id}.html"
-                                        html_path = os.path.join(HTML_DIR, html_filename)
-                                        
-                                        # If the HTML doesn't exist, try to load it from cache
-                                        if not os.path.exists(html_path):
-                                            logger.info(f"HTML file doesn't exist at {html_path}, attempting to generate it")
-                                            
-                                            # Try to access the article-html endpoint to generate it
-                                            try:
-                                                from urllib.request import urlopen
-                                                article_url = f"http://localhost:5001/article-html/{article_id}"
-                                                logger.info(f"Accessing {article_url} to trigger HTML generation")
-                                                response = urlopen(article_url)
-                                                html_content = response.read()
-                                                logger.info(f"Successfully triggered HTML generation, got {len(html_content)} bytes")
-                                            except Exception as html_error:
-                                                logger.error(f"Error triggering HTML generation: {html_error}")
+                                logger.info(f"Terminal process completed with result: {result}")
                                 
                                 # Clean up
                                 try:
@@ -2028,9 +1670,9 @@ except Exception as e:
                                 
                                 return
                             except Exception as e:
-                                logger.error(f"Error reading terminal results for task {task_id}: {e}")
+                                logger.error(f"Error reading terminal results: {e}")
                         
-                        time.sleep(check_interval)
+                        time.sleep(2)
                     
                     # If we get here, the terminal process didn't complete in time
                     with PROGRESS_LOCK:
@@ -2042,831 +1684,405 @@ except Exception as e:
                             PROGRESS_STORE[task_id]['completed'] = True
                             PROGRESS_STORE[task_id]['status'] = "Timeout waiting for terminal process"
                             PROGRESS_STORE[task_id]['percentage'] = 100
-                    
-                    logger.warning(f"Monitoring thread for task {task_id} timed out after {max_wait_time} seconds")
                 
+                # Start the monitoring thread
                 monitoring_thread = threading.Thread(target=monitor_terminal_results)
                 monitoring_thread.daemon = True
                 monitoring_thread.start()
         else:
-            # For non-macOS platforms, run in the background thread as before
+            # Step 5B: For non-Mac systems, run in background thread
             logger.info(f"Starting background task {task_id} for interests: {user_interests}")
             thread = threading.Thread(target=_execute_best_article_match_task, args=(task_id, user_interests))
             thread.daemon = True
             thread.start()
         
-        # Return a 202 Accepted response with a task_id for polling
-        # Note: returning a message indicating this is a "process initiated" status rather than an "error"
+        # Step 6: Return task ID to client so they can check progress
         return jsonify({
             "task_id": task_id, 
-            "message": "Article matching process initiated. Polling is required.",
-            "status": "processing"
-        }), 202 # 202 Accepted
+            "status": "pending", 
+            "message": "Article matching process initiated."
+        }), 202  # 202 = Accepted (processing started)
         
     except Exception as e:
-        logger.error(f"Error starting get-best-article-match task: {e}")
+        # Log any errors that occur
+        logger.error(f"Error starting article matching task: {e}")
         logger.error(traceback.format_exc())
-        return jsonify({"status": "error", "message": f"Exception starting task: {str(e)}"}), 500
+        return jsonify({
+            "status": "error", 
+            "message": f"Exception starting task: {str(e)}"
+        }), 500  # 500 = Internal Server Error
 
 @app.route('/get-match-progress/<task_id>', methods=['GET'])
 def get_match_progress(task_id):
-    """Gets the progress or result of a previously started article matching task."""
+    """
+    WHAT THIS DOES:
+    Checks the progress of an article matching task that was started earlier
+    
+    HOW TO USE:
+    - Call this endpoint with the task_id you received from get-best-article-match
+    - Keep calling it until 'completed' is true
+    - When completed, the 'final_result' will contain the best article match
+    """
+    # Look up the task in our progress store
     with PROGRESS_LOCK:
         task_info = PROGRESS_STORE.get(task_id)
 
+    # Return error if task doesn't exist
     if not task_info:
-        return jsonify({"status": "error", "message": "Task ID not found or expired."}), 404
+        return jsonify({
+            "status": "error", 
+            "message": "Task ID not found or expired."
+        }), 404  # 404 = Not Found
     
-    # Optionally, clean up very old tasks if they are completed
-    # For now, just return the current state.
+    # Return the current progress information
     return jsonify(task_info)
 
-@app.route('/open-best-article-html/<task_id>', methods=['GET'])
-def open_best_article_html(task_id):
-    """Open the best matched article in browser directly based on task_id"""
+def copy_articles_to_public():
+    """
+    WHAT THIS DOES: 
+    Copies all article HTML files from final_articles/html to the public directory
+    so they can be accessed directly by the frontend.
+    """
     try:
-        with PROGRESS_LOCK:
-            task_info = PROGRESS_STORE.get(task_id)
-            
-        if not task_info:
-            return jsonify({"status": "error", "message": "Task ID not found or expired"}), 404
-            
-        if not task_info.get('completed', False):
-            return jsonify({"status": "error", "message": "Task still in progress, please wait"}), 400
-            
-        final_result = task_info.get('final_result')
-        if not final_result or final_result.get('status') != 'success':
-            return jsonify({"status": "error", "message": "No successful result found for this task"}), 400
-            
-        article_data = final_result.get('article')
-        if not article_data:
-            return jsonify({"status": "error", "message": "No article data found in result"}), 400
-            
-        article_id = article_data.get('id')
-        if not article_id:
-            return jsonify({"status": "error", "message": "No article ID found in result"}), 400
-            
-        # Generate HTML file path
-        html_filename = f"tech_deep_dive_{article_id}.html"
-        html_path = os.path.join(HTML_DIR, html_filename)
+        # Define source and destination directories
+        source_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'final_articles', 'html')
+        dest_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public', 'articles')
         
-        # Check if HTML exists, if not try to generate it
-        if not os.path.exists(html_path):
-            markdown_path = os.path.join(MARKDOWN_DIR, f"tech_deep_dive_{article_id}.md")
+        # Create the destination directory if it doesn't exist
+        os.makedirs(dest_dir, exist_ok=True)
+        
+        # Get a list of all HTML files in the source directory
+        html_files = glob.glob(os.path.join(source_dir, '*.html'))
+        
+        # Count files for logging
+        copied_count = 0
+        skipped_count = 0
+        
+        # Copy each file
+        for html_file in html_files:
+            filename = os.path.basename(html_file)
+            dest_file = os.path.join(dest_dir, filename)
             
-            # If no markdown file exists, try to generate it from the cached JSON
-            if not os.path.exists(markdown_path):
-                logger.info(f"No markdown file found at {markdown_path}, checking cache for content")
-                cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache')
-                if not os.path.exists(cache_dir):
-                    cache_dir = CACHE_DIR
+            # Check if destination file exists and is newer than source
+            if os.path.exists(dest_file) and os.path.getmtime(dest_file) >= os.path.getmtime(html_file):
+                skipped_count += 1
+                continue
                 
-                cache_path = os.path.join(cache_dir, f"final_article_{article_id}.json")
-                if os.path.exists(cache_path):
-                    try:
-                        with open(cache_path, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                        content = data.get('content', '')
-                        
-                        # Save markdown file
-                        os.makedirs(os.path.dirname(markdown_path), exist_ok=True)
-                        with open(markdown_path, 'w', encoding='utf-8') as f:
-                            f.write(content)
-                        logger.info(f"Generated markdown file from cache: {markdown_path}")
-                    except Exception as e:
-                        logger.error(f"Error generating markdown file from cache: {e}")
-                        return jsonify({"status": "error", "message": f"Error generating markdown file: {str(e)}"}), 500
+            # Copy the file
+            shutil.copy2(html_file, dest_file)
+            copied_count += 1
             
-            # If markdown file now exists, generate HTML
-            if os.path.exists(markdown_path):
-                try:
-                    # Read markdown content
-                    with open(markdown_path, 'r', encoding='utf-8') as md_file:
-                        content = md_file.read()
-                    
-                    # Extract title
-                    title = content.splitlines()[0] if content else 'Unknown Title'
-                    if title.startswith('# '):
-                        title = title[2:]
-                    
-                    # Generate HTML content
-                    html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-    <link rel="stylesheet" href="/static/article.css">
-</head>
-<body>
-    {content.replace("# ", "<h1>").replace("## ", "<h2>").replace("### ", "<h3>").replace("#### ", "<h4>").replace("\n\n", "<br><br>")}
-</body>
-</html>"""
-                    
-                    # Save HTML file
-                    os.makedirs(os.path.dirname(html_path), exist_ok=True)
-                    with open(html_path, 'w', encoding='utf-8') as html_file:
-                        html_file.write(html_content)
-                    logger.info(f"Generated HTML file for best match: {html_path}")
-                except Exception as e:
-                    logger.error(f"Error generating HTML file: {e}")
-                    return jsonify({"status": "error", "message": f"Error generating HTML file: {str(e)}"}), 500
+        logger.info(f"Copied {copied_count} articles to public directory, skipped {skipped_count} unchanged files")
+        return copied_count, skipped_count
         
-        # Now handle opening in browser (for macOS)
-        if sys.platform == 'darwin':
-            try:
-                import subprocess
-                # Use open command to open in default browser
-                subprocess.run(['open', html_path])
-                logger.info(f"Opened HTML file in browser: {html_path}")
-                return jsonify({"status": "success", "message": "Opened best match article in browser", "html_path": html_path})
-            except Exception as e:
-                logger.error(f"Error opening file in browser: {e}")
-                # Fall back to returning the URL
-                server_url = request.host_url.rstrip('/')
-                article_url = f"{server_url}/article-html/{article_id}"
-                return jsonify({
-                    "status": "warning", 
-                    "message": f"Could not automatically open browser. Please open this URL: {article_url}",
-                    "article_url": article_url
-                })
-        else:
-            # For non-macOS, return the URL to access
-            server_url = request.host_url.rstrip('/')
-            article_url = f"{server_url}/article-html/{article_id}"
-            return jsonify({
-                "status": "success", 
-                "message": "Use this URL to view the best match article",
-                "article_url": article_url
-            })
+    except Exception as e:
+        logger.error(f"Error copying articles to public directory: {e}")
+        logger.error(traceback.format_exc())
+        return 0, 0
+
+@app.route('/copy-articles-to-public', methods=['GET'])
+def copy_articles_endpoint():
+    """
+    WHAT THIS DOES:
+    Endpoint to manually trigger copying of article HTML files to the public directory.
     
-    except Exception as e:
-        logger.error(f"Error opening best article HTML: {e}")
-        logger.error(traceback.format_exc())
-        return jsonify({"status": "error", "message": f"Exception: {str(e)}"}), 500
-
-@app.route('/view-article/<task_id>', methods=['GET'])
-def view_article_page(task_id):
-    """Serve a simple HTML page with a button to view the best match article"""
+    HOW TO USE:
+    Send a GET request to /copy-articles-to-public
+    """
     try:
-        with PROGRESS_LOCK:
-            task_info = PROGRESS_STORE.get(task_id)
-        
-        logger.info(f"Serving view-article page for task_id: {task_id}, task_info: {task_info is not None}")
-            
-        if not task_info:
-            return "<html><body><h1>Error</h1><p>Task ID not found or expired</p></body></html>", 404
-            
-        if not task_info.get('completed', False):
-            progress = task_info.get('percentage', 0)
-            status = task_info.get('status', 'In progress')
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Article Matching in Progress</title>
-                <style>
-                    body {{
-                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                        line-height: 1.6;
-                        color: #333;
-                        max-width: 800px;
-                        margin: 0 auto;
-                        padding: 20px;
-                        background-color: #f7f5f2;
-                    }}
-                    h1 {{
-                        color: #34495e;
-                        text-align: center;
-                    }}
-                    .progress-container {{
-                        width: 100%;
-                        background-color: #e8e8e8;
-                        border-radius: 8px;
-                        margin: 30px 0;
-                        overflow: hidden;
-                        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                        position: relative;
-                    }}
-                    .progress-bar {{
-                        width: {progress}%;
-                        height: 30px;
-                        background: linear-gradient(90deg, #3c6382, #4a69bd);
-                        text-align: center;
-                        line-height: 30px;
-                        color: white;
-                        transition: width 1s ease;
-                        border-radius: 8px;
-                        box-shadow: 0 1px 5px rgba(0,0,0,0.1);
-                        position: relative;
-                        overflow: hidden;
-                    }}
-                    .progress-bar::after {{
-                        content: '';
-                        position: absolute;
-                        top: 0;
-                        left: 0;
-                        right: 0;
-                        bottom: 0;
-                        background: linear-gradient(
-                            45deg,
-                            rgba(255, 255, 255, 0.2) 25%,
-                            transparent 25%,
-                            transparent 50%,
-                            rgba(255, 255, 255, 0.2) 50%,
-                            rgba(255, 255, 255, 0.2) 75%,
-                            transparent 75%,
-                            transparent
-                        );
-                        background-size: 50px 50px;
-                        animation: progressAnimation 2s linear infinite;
-                        border-radius: 8px;
-                    }}
-                    @keyframes progressAnimation {{
-                        0% {{ background-position: 0 0; }}
-                        100% {{ background-position: 50px 0; }}
-                    }}
-                    .status {{
-                        margin: 20px 0;
-                        padding: 15px;
-                        background-color: #f0ece3;
-                        border-left: 5px solid #e67e22;
-                        border-radius: 0 8px 8px 0;
-                        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                    }}
-                    .refresh-btn {{
-                        background-color: #3c6382;
-                        color: white;
-                        border: none;
-                        padding: 12px 24px;
-                        text-align: center;
-                        text-decoration: none;
-                        display: block;
-                        font-size: 16px;
-                        margin: 20px auto;
-                        cursor: pointer;
-                        border-radius: 8px;
-                        transition: all 0.3s ease;
-                        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-                    }}
-                    .refresh-btn:hover {{
-                        background-color: #4a69bd;
-                        transform: translateY(-2px);
-                        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-                    }}
-                </style>
-                <script>
-                    // Auto-refresh every 2 seconds
-                    setTimeout(function() {{
-                        window.location.reload();
-                    }}, 2000);
-                </script>
-            </head>
-            <body>
-                <h1>Article Matching in Progress</h1>
-                <div class="progress-container">
-                    <div class="progress-bar">{progress}%</div>
-                </div>
-                <div class="status">{status}</div>
-                <button class="refresh-btn" onclick="window.location.reload()">Refresh Status</button>
-            </body>
-            </html>
-            """
-        
-        logger.info(f"Task {task_id} is completed, retrieving final result")    
-        final_result = task_info.get('final_result')
-        if not final_result or final_result.get('status') != 'success':
-            error_msg = "An error occurred during article matching."
-            if final_result and final_result.get('message'):
-                error_msg = final_result.get('message')
-                
-            logger.error(f"Task {task_id} has no successful result: {final_result}")
-                
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Article Matching Error</title>
-                <style>
-                    body {{
-                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                        line-height: 1.6;
-                        color: #333;
-                        max-width: 800px;
-                        margin: 0 auto;
-                        padding: 20px;
-                        background-color: #f7f5f2;
-                    }}
-                    h1 {{
-                        color: #e67e22;
-                        text-align: center;
-                    }}
-                    .error-msg {{
-                        margin: 20px 0;
-                        padding: 15px;
-                        background-color: #fde9e0;
-                        border-left: 5px solid #e67e22;
-                        text-align: left;
-                        border-radius: 0 8px 8px 0;
-                    }}
-                    pre {{
-                        background-color: #f0ece3;
-                        padding: 15px;
-                        border-radius: 8px;
-                        overflow-x: auto;
-                        text-align: left;
-                        font-size: 14px;
-                        box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
-                    }}
-                    .back-btn {{
-                        background-color: #3c6382;
-                        color: white;
-                        border: none;
-                        padding: 12px 24px;
-                        text-align: center;
-                        text-decoration: none;
-                        display: block;
-                        font-size: 16px;
-                        margin: 20px auto;
-                        cursor: pointer;
-                        border-radius: 8px;
-                        transition: background-color 0.3s ease;
-                    }}
-                    .back-btn:hover {{
-                        background-color: #4a69bd;
-                    }}
-                </style>
-            </head>
-            <body>
-                <h1>Article Matching Error</h1>
-                <div class="error-msg">{error_msg}</div>
-                <h2>Debugging Information</h2>
-                <pre>{json.dumps(final_result, indent=2) if final_result else "No result data available"}</pre>
-                <button class="back-btn" onclick="window.history.back()">Go Back</button>
-            </body>
-            </html>
-            """
-            
-        article_data = final_result.get('article')
-        if not article_data:
-            logger.error(f"Task {task_id} has no article data in result: {final_result}")
-            return "<html><body><h1>Error</h1><p>No article data found in result</p></body></html>", 400
-            
-        article_id = article_data.get('id')
-        logger.info(f"Article ID from result: {article_id}")
-        
-        article_title = article_data.get('title', 'Unknown Title')
-        article_score = article_data.get('match_score', 0)
-        
-        # Get URLs
-        server_url = request.host_url.rstrip('/')
-        logger.info(f"Server URL: {server_url}")
-        
-        article_url = article_data.get('article_url')
-        if not article_url:
-            article_url = f"{server_url}/article-html/{article_id}"
-        logger.info(f"Article URL: {article_url}")
-            
-        # Check if HTML file exists and attempt to create it if not
-        html_filename = f"tech_deep_dive_{article_id}.html"
-        html_path = os.path.join(HTML_DIR, html_filename)
-        logger.info(f"HTML file path: {html_path}, exists: {os.path.exists(html_path)}")
-        
-        if not os.path.exists(html_path):
-            # Try to create it quickly
-            logger.info(f"HTML file doesn't exist, trying to trigger creation via article-html endpoint")
-            try:
-                import urllib.request
-                generation_url = f"{server_url}/article-html/{article_id}"
-                logger.info(f"Requesting HTML generation from: {generation_url}")
-                with urllib.request.urlopen(generation_url) as response:
-                    html_content = response.read()
-                    logger.info(f"Generated HTML content, {len(html_content)} bytes")
-            except Exception as e:
-                logger.error(f"Failed to trigger HTML generation: {e}")
-        
-        # Generate HTML page with button - add debug info
-        debug_info = f"""
-        <div style="border: 1px solid #ddd; margin-top: 20px; padding: 10px; text-align: left; background-color: #f0ece3; border-radius: 8px;">
-            <h3>Debug Information:</h3>
-            <ul>
-                <li>Article ID: {article_id}</li>
-                <li>HTML File: {html_path}</li>
-                <li>HTML File Exists: {os.path.exists(html_path)}</li>
-                <li>Generated URL: {article_url}</li>
-            </ul>
-        </div>
-        """
-            
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>View Best Match Article</title>
-            <style>
-                body {{
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                    line-height: 1.6;
-                    color: #333;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    background-color: #f7f5f2;
-                }}
-                h1 {{
-                    color: #34495e;
-                    text-align: center;
-                    margin-bottom: 30px;
-                }}
-                .article-card {{
-                    position: sticky;
-                    top: 20px;
-                    border: 1px solid #ddd;
-                    border-radius: 12px;
-                    padding: 25px;
-                    margin: 0 0 30px 0;
-                    background-color: white;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-                    text-align: left;
-                    z-index: 100;
-                    animation: popDown 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-                }}
-                .article-title {{
-                    color: #3c6382;
-                    font-size: 24px;
-                    margin-bottom: 15px;
-                    font-weight: 600;
-                }}
-                .match-score {{
-                    display: inline-block;
-                    background-color: {('#e67e22' if article_score >= 70 else '#f39c12' if article_score >= 40 else '#e74c3c')};
-                    color: white;
-                    padding: 8px 15px;
-                    border-radius: 20px;
-                    font-weight: bold;
-                    margin-bottom: 15px;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-                }}
-                .btn {{
-                    display: inline-block;
-                    padding: 12px 24px;
-                    margin: 10px;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    font-size: 16px;
-                    text-align: center;
-                    text-decoration: none;
-                    border: none;
-                    transition: all 0.3s ease;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-                }}
-                .primary-btn {{
-                    background-color: #3c6382;
-                    color: white;
-                }}
-                .primary-btn:hover {{
-                    background-color: #4a69bd;
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-                }}
-                .secondary-btn {{
-                    background-color: #e67e22;
-                    color: white;
-                }}
-                .secondary-btn:hover {{
-                    background-color: #f39c12;
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-                }}
-                .view-btn {{
-                    margin-top: 20px;
-                    padding: 15px 30px;
-                    font-size: 18px;
-                    display: block;
-                    width: 80%;
-                    margin-left: auto;
-                    margin-right: auto;
-                }}
-                .button-group {{
-                    display: flex;
-                    justify-content: center;
-                    margin-top: 30px;
-                }}
-                @keyframes popDown {{
-                    0% {{ transform: translateY(-50px); opacity: 0; }}
-                    100% {{ transform: translateY(0); opacity: 1; }}
-                }}
-                @keyframes fadeIn {{
-                    from {{ opacity: 0; }}
-                    to {{ opacity: 1; }}
-                }}
-                .content-section {{
-                    animation: fadeIn 0.8s ease-in-out;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="article-card">
-                <div class="article-title">{article_title}</div>
-                <div class="match-score">Match Score: {article_score}%</div>
-                <p>This article best matches your interests based on our AI analysis.</p>
-                <a href="{article_url}" class="btn primary-btn view-btn" target="_blank">View Full Article</a>
-            </div>
-            
-            <div class="content-section">
-                <h1>Best Match Article Found</h1>
-                
-                <div class="button-group">
-                    <a href="{server_url}/open-best-article-html/{task_id}" class="btn secondary-btn">Open in Browser</a>
-                    <a href="javascript:history.back()" class="btn secondary-btn">Go Back</a>
-                </div>
-                
-                {debug_info}
-            </div>
-        </body>
-        </html>
-        """
-            
+        copied, skipped = copy_articles_to_public()
+        return jsonify({
+            "status": "success",
+            "message": f"Article copy operation completed successfully. Copied {copied} files, skipped {skipped} unchanged files.",
+            "copied": copied,
+            "skipped": skipped
+        })
     except Exception as e:
-        logger.error(f"Error generating view article page: {e}")
+        logger.error(f"Exception in copy_articles_endpoint: {e}")
         logger.error(traceback.format_exc())
-        return f"""
-        <html>
-        <body>
-            <h1>Error</h1>
-            <p>An error occurred: {str(e)}</p>
-            <pre>{traceback.format_exc()}</pre>
-        </body>
-        </html>
-        """, 500
+        return jsonify({"status": "error", "message": f"Exception copying articles: {str(e)}"}), 500
 
-@app.route('/direct-article/<task_id>', methods=['GET'])
-def direct_article_redirect(task_id):
-    """Redirects directly to the best matched article HTML without displaying a page with buttons"""
+@app.route('/verify-email', methods=['POST'])
+def verify_email():
+    """Verify email and set cookie"""
     try:
-        with PROGRESS_LOCK:
-            task_info = PROGRESS_STORE.get(task_id)
-            
-        logger.info(f"Direct article redirect for task: {task_id}, task_info exists: {task_info is not None}")
-            
-        if not task_info:
-            return "<html><body><h1>Error</h1><p>Task ID not found or expired</p></body></html>", 404
-            
-        if not task_info.get('completed', False):
-            progress = task_info.get('percentage', 0)
-            status = task_info.get('status', 'In progress')
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Article Matching in Progress</title>
-                <style>
-                    body {{
-                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                        line-height: 1.6;
-                        color: #333;
-                        max-width: 800px;
-                        margin: 0 auto;
-                        padding: 20px;
-                        background-color: #f7f5f2;
-                    }}
-                    h1 {{
-                        color: #34495e;
-                        text-align: center;
-                    }}
-                    .progress-container {{
-                        width: 100%;
-                        background-color: #e8e8e8;
-                        border-radius: 8px;
-                        margin: 30px 0;
-                        overflow: hidden;
-                        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                    }}
-                    .progress-bar {{
-                        width: {progress}%;
-                        height: 30px;
-                        background: linear-gradient(90deg, #3c6382, #4a69bd);
-                        text-align: center;
-                        line-height: 30px;
-                        color: white;
-                        transition: width 0.5s ease;
-                        border-radius: 8px;
-                    }}
-                    .status {{
-                        margin: 20px 0;
-                        padding: 15px;
-                        background-color: #f0ece3;
-                        border-left: 5px solid #e67e22;
-                        border-radius: 0 8px 8px 0;
-                    }}
-                    .refresh-btn {{
-                        background-color: #3c6382;
-                        color: white;
-                        border: none;
-                        padding: 12px 24px;
-                        text-align: center;
-                        text-decoration: none;
-                        display: block;
-                        font-size: 16px;
-                        margin: 20px auto;
-                        cursor: pointer;
-                        border-radius: 8px;
-                        transition: background-color 0.3s ease;
-                    }}
-                    .refresh-btn:hover {{
-                        background-color: #4a69bd;
-                    }}
-                </style>
-                <script>
-                    // Auto-refresh every 2 seconds
-                    setTimeout(function() {{
-                        window.location.reload();
-                    }}, 2000);
-                </script>
-            </head>
-            <body>
-                <h1>Article Matching in Progress</h1>
-                <div class="progress-container">
-                    <div class="progress-bar">{progress}%</div>
-                </div>
-                <div class="status">{status}</div>
-                <p>You will be automatically redirected to the article when ready.</p>
-                <button class="refresh-btn" onclick="window.location.reload()">Refresh Status</button>
-            </body>
-            </html>
-            """
-            
-        final_result = task_info.get('final_result')
-        if not final_result or final_result.get('status') != 'success':
-            error_msg = "An error occurred during article matching."
-            if final_result and final_result.get('message'):
-                error_msg = final_result.get('message')
-                
-            logger.error(f"Task {task_id} has no successful result: {final_result}")
-                
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Article Matching Error</title>
-                <style>
-                    body {{
-                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                        line-height: 1.6;
-                        color: #333;
-                        max-width: 800px;
-                        margin: 0 auto;
-                        padding: 20px;
-                        background-color: #f7f5f2;
-                    }}
-                    h1 {{
-                        color: #e67e22;
-                        text-align: center;
-                    }}
-                    .error-msg {{
-                        margin: 20px 0;
-                        padding: 15px;
-                        background-color: #fde9e0;
-                        border-left: 5px solid #e67e22;
-                        text-align: left;
-                        border-radius: 0 8px 8px 0;
-                    }}
-                    pre {{
-                        background-color: #f0ece3;
-                        padding: 15px;
-                        border-radius: 8px;
-                        overflow-x: auto;
-                        text-align: left;
-                        font-size: 14px;
-                        box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
-                    }}
-                    .back-btn {{
-                        background-color: #3c6382;
-                        color: white;
-                        border: none;
-                        padding: 12px 24px;
-                        text-align: center;
-                        text-decoration: none;
-                        display: block;
-                        font-size: 16px;
-                        margin: 20px auto;
-                        cursor: pointer;
-                        border-radius: 8px;
-                        transition: background-color 0.3s ease;
-                    }}
-                    .back-btn:hover {{
-                        background-color: #4a69bd;
-                    }}
-                </style>
-            </head>
-            <body>
-                <h1>Article Matching Error</h1>
-                <div class="error-msg">{error_msg}</div>
-                <h2>Debugging Information</h2>
-                <pre>{json.dumps(final_result, indent=2) if final_result else "No result data available"}</pre>
-                <button class="back-btn" onclick="window.history.back()">Go Back</button>
-            </body>
-            </html>
-            """
-            
-        article_data = final_result.get('article')
-        if not article_data:
-            logger.error(f"Task {task_id} has no article data in result: {final_result}")
-            return "<html><body><h1>Error</h1><p>No article data found in result</p></body></html>", 400
-            
-        article_id = article_data.get('id')
-        logger.info(f"Article ID from result: {article_id}")
+        logger.info("/verify-email endpoint called")
+        data = request.get_json()
+        logger.info(f"/verify-email received data: {data}")
+        email = data.get('email', '').strip() if data else ''
         
-        if not article_id:
-            logger.error(f"No article ID found in result: {article_data}")
-            return "<html><body><h1>Error</h1><p>No article ID found in result</p></body></html>", 400
-        
-        # Get the article URL
-        server_url = request.host_url.rstrip('/')
-        logger.info(f"Server URL: {server_url}")
-        
-        article_url = article_data.get('article_url')
-        if not article_url:
-            article_url = f"{server_url}/article-html/{article_id}"
-        
-        logger.info(f"Redirecting to article URL: {article_url}")
-        
-        # Instead of returning a page with buttons, redirect directly to the article
-        # Use a meta refresh tag to do the redirect
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta http-equiv="refresh" content="0;url={article_url}">
-            <title>Redirecting to article...</title>
-            <style>
-                body {{
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                    line-height: 1.6;
-                    color: #333;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    background-color: #f7f5f2;
-                    text-align: center;
-                }}
-                h1 {{
-                    color: #34495e;
-                    text-align: center;
-                }}
-                p {{
-                    margin: 20px 0;
-                }}
-                a {{
-                    color: #3c6382;
-                    text-decoration: none;
-                }}
-                a:hover {{
-                    text-decoration: underline;
-                    color: #e67e22;
-                }}
-            </style>
-            <script>
-                // Redirect immediately
-                window.location.href = "{article_url}";
-            </script>
-        </head>
-        <body>
-            <h1>Redirecting...</h1>
-            <p>If you are not automatically redirected, <a href="{article_url}">click here</a> to view the article.</p>
-        </body>
-        </html>
-        """
+        if not email:
+            return jsonify({
+                "status": "error",
+                "message": "Email is required"
+            }), 400
             
+        # Improved email validation: require at least 2 characters for TLD
+        email_regex = r'^[^\s@]+@[^\s@]+\.[a-zA-Z0-9]{2,}$'
+        if not re.match(email_regex, email):
+            return jsonify({
+                "status": "error",
+                "message": "Invalid email format. Please use a valid email address (e.g. user@example.com)."
+            }), 400
+            
+        # Create response with success message
+        response = make_response(jsonify({
+            "status": "success",
+            "message": "Email verified successfully"
+        }))
+        
+        # Set cookie that expires in 30 days
+        is_local = request.host.startswith('localhost') or request.host.startswith('127.0.0.1')
+        response.set_cookie(
+            'verified_email',
+            email,
+            max_age=30*24*60*60,  # 30 days in seconds
+            httponly=True,  # Prevent JavaScript access
+            secure=not is_local,    # Only send over HTTPS unless local
+            samesite='Lax'  # Protect against CSRF
+        )
+        
+        return response
+        
     except Exception as e:
-        logger.error(f"Error in direct article redirect: {e}")
+        logger.error(f"Error verifying email: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"An error occurred while verifying email: {str(e)}"
+        }), 500
+
+@app.route('/check-email-verification', methods=['GET'])
+def check_email_verification():
+    """Check if email has been verified via cookie"""
+    try:
+        email = request.cookies.get('verified_email')
+        if email:
+            return jsonify({
+                "status": "success",
+                "verified": True,
+                "email": email
+            })
+        else:
+            return jsonify({
+                "status": "success",
+                "verified": False
+            })
+    except Exception as e:
+        logger.error(f"Error checking email verification: {e}")
+        return jsonify({
+            "status": "error",
+            "message": "An error occurred while checking email verification"
+        }), 500
+
+@app.route('/process-articles', methods=['GET'])
+def process_articles():
+    """Run ansys.py to generate questions and create articles from cached content without requiring user interests"""
+    try:
+        logger.info("Starting article processing: generating questions, answers, and creating articles...")
+        
+        # Get the path to ansys.py in parent directory
+        try:
+            ansys_path = get_ansys_path()
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            return jsonify({
+                "status": "error",
+                "message": f"ansys.py not found in parent directory. Please make sure it's located in the correct directory."
+            }), 404
+        
+        logger.info(f"Found ansys.py at: {ansys_path}")
+        
+        # Get already processed article IDs
+        processed_ids = get_processed_article_ids()
+        # Create a processed IDs file that ansys.py can use
+        processed_ids_file = os.path.join(tempfile.gettempdir(), 'processed_article_ids.json')
+        with open(processed_ids_file, 'w', encoding='utf-8') as f:
+            json.dump({'processed_ids': list(processed_ids)}, f)
+        logger.info(f"Created temporary processed IDs file with {len(processed_ids)} IDs at {processed_ids_file}")
+        
+        # On macOS, open a new terminal window to run the command
+        if sys.platform == 'darwin':
+            # Construct the command to run in Terminal with appropriate flags
+            # Use default interests so it doesn't prompt for input, but still processes articles
+            terminal_cmd = f"ANSYS_PROCESSED_IDS_FILE={processed_ids_file} echo 'technology, programming, science' | {sys.executable} {ansys_path}"
+            
+            # Create AppleScript to open new Terminal window
+            apple_script = f'''
+            tell application "Terminal"
+                do script "cd {os.path.dirname(ansys_path)} && echo 'Running: {terminal_cmd}' && {terminal_cmd} || echo '\\nERROR: Command failed with exit code $?'"
+                set position of front window to {{100, 100}}
+                set custom title of front window to "ANSYS Article Processing"
+            end tell
+            '''
+            
+            # Run the AppleScript
+            process = subprocess.run(['osascript', '-e', apple_script], capture_output=True, text=True)
+            if process.returncode != 0:
+                logger.error(f"Failed to open Terminal: {process.stderr}")
+                return jsonify({
+                    "status": "error",
+                    "message": f"Failed to start processing: {process.stderr}"
+                }), 500
+                
+            logger.info("Opened new Terminal window to run the command")
+            
+            return jsonify({
+                "status": "success",
+                "message": f"Started article processing in a new terminal window. Skipping {len(processed_ids)} already processed articles. Please check the terminal for progress.",
+                "skipped_articles": len(processed_ids)
+            })
+        else:
+            # For non-macOS platforms, run in the background
+            def run_ansys_processing():
+                try:
+                    logger.info(f"Running ansys.py for article processing with processed IDs file: {processed_ids_file}")
+                    
+                    # Set environment variable for the subprocess
+                    env = os.environ.copy()
+                    env["ANSYS_PROCESSED_IDS_FILE"] = processed_ids_file
+                    
+                    # Use echo to provide default interests so it doesn't prompt for input
+                    process = subprocess.Popen(
+                        f"echo 'technology, programming, science' | {sys.executable} {ansys_path}",
+                        shell=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        cwd=os.path.dirname(ansys_path),
+                        env=env
+                    )
+                    stdout, stderr = process.communicate()
+ 
+                    if process.returncode != 0:
+                        logger.error(f"ansys.py failed with return code {process.returncode}")
+                        logger.error(f"stderr: {stderr}")
+                    else:
+                        logger.info("ansys.py completed successfully")
+                        logger.info(f"stdout: {stdout}")
+                        
+                        # Update the processed articles tracking file with any new articles
+                        new_final_articles = glob.glob(os.path.join(CACHE_DIR, 'final_article_*.json'))
+                        new_ids = set()
+                        for article_path in new_final_articles:
+                            filename = os.path.basename(article_path)
+                            article_id = filename.replace('final_article_', '').replace('.json', '')
+                            new_ids.add(article_id)
+                        
+                        update_processed_article_ids(new_ids)
+ 
+                except Exception as e:
+                    logger.error(f"Exception running ansys.py: {e}")
+                    logger.error(traceback.format_exc())
+            
+            # Start the thread
+            thread = threading.Thread(target=run_ansys_processing)
+            thread.daemon = True
+            thread.start()
+            
+            return jsonify({
+                "status": "success",
+                "message": f"Started article processing in the background. Skipping {len(processed_ids)} already processed articles.",
+                "skipped_articles": len(processed_ids)
+            })
+        
+    except Exception as e:
+        logger.error(f"Exception in process_articles: {e}")
         logger.error(traceback.format_exc())
-        return f"<html><body><h1>Error</h1><p>An error occurred: {str(e)}</p></body></html>", 500
+        return jsonify({
+            "status": "error", 
+            "message": f"Exception: {str(e)}"
+        }), 500
 
 if __name__ == '__main__':
     try:
         # Sync article files on startup
         logger.info("Syncing article files on startup...")
         try:
-            copy_articles_script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'copy_articles.py')
-            if os.path.exists(copy_articles_script):
-                subprocess.run([sys.executable, copy_articles_script], check=True)
-                logger.info("Article files sync completed successfully")
-            else:
-                logger.warning(f"Could not find copy_articles.py script at {copy_articles_script}")
+            # Copy articles to public directory
+            copied, skipped = copy_articles_to_public()
+            logger.info(f"Copied {copied} articles to public directory, skipped {skipped} unchanged files")
         except Exception as e:
-            logger.error(f"Error syncing article files: {e}")
+            logger.error(f"Error copying articles to public directory: {e}")
+            logger.error(traceback.format_exc())
+            
+        # Generate summaries for existing articles if needed
+        logger.info("Checking for articles that need summaries...")
+        try:
+            # Find all final article files
+            final_articles = glob.glob(os.path.join(CACHE_DIR, 'final_article_*.json'))
+            if len(final_articles) == 0 and os.path.exists(CACHE_DIR):
+                final_articles = glob.glob(os.path.join(CACHE_DIR, 'final_article_*.json'))
+                
+            # Count how many articles need summaries
+            articles_updated = 0
+            articles_with_summaries = 0
+            
+            # Check each article and add a summary section if it doesn't have one
+            for article_path in final_articles:
+                try:
+                    # Read the article
+                    with open(article_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    
+                    # Get the content
+                    content = data.get('content', '')
+                    if not content:
+                        continue
+                        
+                    # Check if it already has a Summary section
+                    if '## Summary' not in content:
+                        # No explicit summary section, generate one
+                        summary = extract_article_summary(content)
+                        
+                        # Add the summary after the title
+                        lines = content.splitlines()
+                        if lines and lines[0].startswith('# '):
+                            # Insert after the title
+                            new_content = lines[0] + '\n\n## Summary\n\n' + summary + '\n\n' + '\n'.join(lines[1:])
+                            
+                            # Update the article
+                            data['content'] = new_content
+                            with open(article_path, 'w', encoding='utf-8') as f:
+                                json.dump(data, f)
+                                
+                            # Update markdown file if it exists
+                            filename = os.path.basename(article_path)
+                            article_id = filename.replace('final_article_', '').replace('.json', '')
+                            markdown_path = os.path.join(MARKDOWN_DIR, f"tech_deep_dive_{article_id}.md")
+                            if os.path.exists(markdown_path):
+                                with open(markdown_path, 'w', encoding='utf-8') as md_file:
+                                    md_file.write(new_content)
+                                    
+                            # Update HTML file if it exists
+                            html_path = os.path.join(HTML_DIR, f"tech_deep_dive_{article_id}.html")
+                            if os.path.exists(html_path):
+                                try:
+                                    # Read the HTML file
+                                    with open(html_path, 'r', encoding='utf-8') as f:
+                                        html_content = f.read()
+                                        
+                                    # Insert the summary after the title (this is a very basic approach)
+                                    # A better approach would be to parse the HTML and insert properly
+                                    title_end = html_content.find('</h1>')
+                                    if title_end > 0:
+                                        new_html = html_content[:title_end + 5] + f'<h2>Summary</h2><p>{summary}</p>' + html_content[title_end + 5:]
+                                        
+                                        # Write the updated HTML
+                                        with open(html_path, 'w', encoding='utf-8') as f:
+                                            f.write(new_html)
+                                except Exception as html_err:
+                                    logger.error(f"Error updating HTML file {html_path}: {html_err}")
+                                    
+                            articles_updated += 1
+                    else:
+                        articles_with_summaries += 1
+                        
+                except Exception as e:
+                    logger.error(f"Error processing article {article_path}: {e}")
+                    
+            logger.info(f"Added summaries to {articles_updated} articles, {articles_with_summaries} already had summaries")
+        except Exception as e:
+            logger.error(f"Error generating summaries for articles: {e}")
             logger.error(traceback.format_exc())
             
         logger.info("Starting server (Flask development server)...")

@@ -559,6 +559,13 @@ async def summarize_all_articles_async(articles):
 
 # ===== HELPER FUNCTIONS =====
 
+def normalize_title(title):
+    """Clean and normalize article titles by removing arrow notations and redundant text"""
+    # Remove arrow notation (-> text) from titles
+    if "->" in title:
+        title = title.split("->")[0].strip()
+    return title
+
 def is_valid_hn_link(link):
     """Check if link matches the format: item?id= followed by digits"""
     # More flexible pattern that allows for different item IDs
@@ -677,6 +684,9 @@ def article_grabber(run_background_processing=True):
                 
             title = title_element.get_text(strip=True)
             
+            # Normalize the title to remove arrow notation
+            title = normalize_title(title)
+            
             # Get the item ID from the row
             item_id = row.get("id")
             if not item_id:
@@ -713,6 +723,8 @@ def article_grabber(run_background_processing=True):
                 permalink = post_data.get("permalink")
                 
                 if title and permalink:
+                    # Normalize the title
+                    title = normalize_title(title)
                     full_url = f"https://www.reddit.com{permalink}"
                     all_articles.append([title, full_url])
                     
@@ -796,6 +808,9 @@ def preprocess(articles, user_interests):
         safe_print(f"*** SCORING DISABLED: ANSYS_NO_SCORE is set - only extracting subjects for {len(articles)} articles ***")
         results = []
         for title, link in articles:
+            # Normalize the title to remove arrow notation
+            title = normalize_title(title)
+            
             # Extract subject using LLM or fallback
             prompt = f"[INST] Analyze this title and tell me what the subject is. Perform this on {title}. DO NOT OUTPUT ANYTHING ELSE. [/INST]"
             llm = get_llama_model()
@@ -826,6 +841,9 @@ def preprocess(articles, user_interests):
     def process_article(article_data):
         title = article_data[0]
         link = article_data[1]
+        
+        # Normalize the title to remove arrow notation
+        title = normalize_title(title)
         
         # Check if we have this article in cache
         cached_data = article_cache.get_from_cache(link, user_interests)
@@ -1406,8 +1424,11 @@ def format_blog_article(all_article_results):
     # Get the top article to use as the main focus
     main_article = sorted_articles[0]['article']
     
+    # Normalize the subject to remove arrow notation
+    main_subject = normalize_title(main_article['subject'])
+    
     # Add the title and introduction
-    blog.append(f"# Deep Dive: {main_article['subject']}")
+    blog.append(f"# Deep Dive: {main_subject}")
     blog.append("\n## Introduction")
     
     # Get article summaries
@@ -1421,7 +1442,7 @@ def format_blog_article(all_article_results):
             article_summaries.append(ARTICLE_SUMMARY_CACHE[article_link].get('summary', ''))
     
     # Generate an introduction using Llama based on the article summaries
-    intro_prompt = f"""[INST] Based on these article summaries about {main_article['subject']}, write a short introduction paragraph that explains the topic and why it's interesting or important:
+    intro_prompt = f"""[INST] Based on these article summaries about {main_subject}, write a short introduction paragraph that explains the topic and why it's interesting or important:
 
 {' '.join(article_summaries)}
 
@@ -1437,7 +1458,8 @@ Keep it under 150 words and make it engaging. [/INST]"""
     for article_result in sorted_articles:
         article = article_result['article']
         article_title = article['title']
-        article_subject = article['subject']
+        # Normalize the subject to remove arrow notation
+        article_subject = normalize_title(article['subject'])
         
         # Add article section
         blog.append(f"\n## {article_subject}: {article_title}")
@@ -1472,7 +1494,7 @@ Keep it under 150 words and make it engaging. [/INST]"""
     # Add a conclusion
     blog.append("## Conclusion")
     
-    conclusion_prompt = f"""[INST] Based on the information about {main_article['subject']}, write a brief conclusion paragraph that summarizes the key insights and why this topic matters.
+    conclusion_prompt = f"""[INST] Based on the information about {main_subject}, write a brief conclusion paragraph that summarizes the key insights and why this topic matters.
 
 Keep it under 100 words and end with a thought-provoking statement or question. [/INST]"""
     
@@ -1483,7 +1505,7 @@ Keep it under 100 words and end with a thought-provoking statement or question. 
     
     # Add additional questions for further exploration
     safe_print(f"Generating additional questions for further exploration...")
-    additional_questions = generate_additional_questions(main_article['subject'], main_article['title'])
+    additional_questions = generate_additional_questions(main_subject, article_title)
     
     blog.append("\n## Further Exploration")
     blog.append("Want to dive deeper into this topic? Here are some thought-provoking questions to explore:")
@@ -1797,21 +1819,19 @@ async def main():
             # Join all sections into a single document
             blog_article = "\n\n".join(blog)
             
-            # Save the blog to a file
+            # Save as HTML file only (not saving markdown files anymore)
             timestamp = int(time())
-            safe_subject = re.sub(r'[^A-Za-z0-9]+', '_', subject).strip('_')
-            blog_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'tech_deep_dive_{timestamp}_{safe_subject}.md')
-            with open(blog_file, 'w', encoding='utf-8') as f:
-                f.write(blog_article)
-            safe_print(f"Saved article to: {blog_file}")
+            # Normalize the subject before creating the safe version
+            normalized_subject = normalize_title(subject)
+            safe_subject = re.sub(r'[^A-Za-z0-9]+', '_', normalized_subject).strip('_')
             
-            # Also save a styled HTML version for better formatting
+            # Create styled HTML version
             html_content = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tech Deep Dive: {subject}</title>
+    <title>Tech Deep Dive: {normalized_subject}</title>
     <style>
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -1910,16 +1930,18 @@ async def main():
 </html>
             """
             
+            # Save only HTML file - NOT Markdown
             html_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'tech_deep_dive_{timestamp}_{safe_subject}.html')
             with open(html_file, 'w', encoding='utf-8') as f:
                 f.write(html_content)
+            safe_print(f"Saved article to: {html_file}")
             
             # Cache the final article
             try:
                 # Create a cache path for this final article
                 cache_path = os.path.join(CACHE_DIR, f"final_article_{timestamp}_{safe_subject}.json")
                 
-                # Cache the content
+                # Cache the content - still need to store as markdown format in the cache for compatibility
                 with open(cache_path, 'w', encoding='utf-8') as f:
                     json.dump({
                         'content': blog_article,
