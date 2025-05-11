@@ -50,12 +50,6 @@ async function safeReadFile(filePath, defaultValue = null) {
       return defaultValue;
     }
     
-    // Check if this is a temporary file that doesn't exist
-    if (filePath.includes('/tmp/') && !fs.existsSync(filePath)) {
-      console.warn(`File does not exist: ${filePath} - returning default value`);
-      return defaultValue;
-    }
-    
     // Convert file path to blob key
     const blobKey = getBlobKeyFromPath(filePath);
     
