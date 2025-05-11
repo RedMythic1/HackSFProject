@@ -17,8 +17,15 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 // Constants
-const CACHE_DIR = path.join(process.cwd(), '.vercel', 'cache');
-const LOCAL_CACHE_DIR = path.join(process.cwd(), 'local_cache');
+const CACHE_DIR = process.env.CACHE_DIR || path.join(process.cwd(), '.vercel', 'cache');
+const LOCAL_CACHE_DIR = process.env.LOCAL_CACHE_DIR || path.join(process.cwd(), 'local_cache');
+
+// Detailed logging of directories
+console.log(`API Server initialized with:
+  CACHE_DIR: ${CACHE_DIR}
+  LOCAL_CACHE_DIR: ${LOCAL_CACHE_DIR}
+  Current working directory: ${process.cwd()}
+  Vercel environment: ${process.env.VERCEL === '1' ? 'Yes' : 'No'}`);
 
 // Cache for articles and summaries
 const CACHE = {
@@ -31,13 +38,23 @@ const CACHE = {
 try {
   if (!fs.existsSync(CACHE_DIR)) {
     fs.mkdirSync(CACHE_DIR, { recursive: true });
+    console.log(`Created CACHE_DIR: ${CACHE_DIR}`);
   }
   if (!fs.existsSync(LOCAL_CACHE_DIR)) {
     fs.mkdirSync(LOCAL_CACHE_DIR, { recursive: true });
+    console.log(`Created LOCAL_CACHE_DIR: ${LOCAL_CACHE_DIR}`);
   }
-  console.log(`Cache directories initialized: 
-    CACHE_DIR: ${CACHE_DIR}
-    LOCAL_CACHE_DIR: ${LOCAL_CACHE_DIR}`);
+  
+  // List contents for debugging
+  if (fs.existsSync(LOCAL_CACHE_DIR)) {
+    const files = fs.readdirSync(LOCAL_CACHE_DIR);
+    console.log(`LOCAL_CACHE_DIR contains ${files.length} files`);
+    if (files.length > 0) {
+      console.log(`First 5 files: ${files.slice(0, 5).join(', ')}`);
+    }
+  }
+  
+  console.log(`Cache directories initialized`);
 } catch (error) {
   console.error('Error creating cache directories:', error);
 }
@@ -599,9 +616,11 @@ app.get('/api/articles', async (req, res) => {
     // Ensure we return an array format the frontend expects
     if (Array.isArray(result)) {
       console.log(`Returning ${result.length} articles`);
+      console.log('Sample article:', result.length > 0 ? JSON.stringify(result[0]).substring(0, 200) + '...' : 'No articles');
       return res.json(result);
     } else if (result && result.articles && Array.isArray(result.articles)) {
       console.log(`Returning ${result.articles.length} articles (from object)`);
+      console.log('Sample article:', result.articles.length > 0 ? JSON.stringify(result.articles[0]).substring(0, 200) + '...' : 'No articles');
       return res.json(result.articles);
     } else {
       console.log('No articles found or invalid format');
@@ -624,9 +643,13 @@ app.get('/api/article/:id', async (req, res) => {
       });
     }
     
+    console.log(`GET /api/article/${articleId} - Getting article details`);
+    
     // Use our server.js module
     const serverFunctions = require('./server');
     const result = serverFunctions.get_article_endpoint(articleId);
+    
+    console.log(`Article retrieval result status: ${result.status || 'unknown'}`);
     
     if (result.status === 'error') {
       return res.status(404).json(result);

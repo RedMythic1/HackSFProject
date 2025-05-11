@@ -6,7 +6,7 @@
       "use": "@vercel/node"
     },
     {
-      "src": "dist/**/*",
+      "src": "dist/**",
       "use": "@vercel/static"
     }
   ],
@@ -39,5 +39,11 @@
       "status": 404,
       "dest": "/dist/index.html"
     }
-  ]
+  ],
+  "env": {
+    "CACHE_DIR": "/tmp/cache",
+    "LOCAL_CACHE_DIR": "/tmp/local_cache",
+    "NODE_ENV": "production",
+    "VERCEL": "1"
+  }
 } 

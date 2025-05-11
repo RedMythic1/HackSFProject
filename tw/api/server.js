@@ -16,6 +16,12 @@ console.log(`Running in ${isVercel ? 'Vercel' : 'local'} environment`);
 const CACHE_DIR = isVercel ? '/tmp/cache' : path.join(process.cwd(), '.vercel', 'cache');
 const LOCAL_CACHE_DIR = isVercel ? '/tmp/local_cache' : path.join(process.cwd(), 'local_cache');
 
+// Log the actual paths being used
+console.log(`Using cache directories:
+  CACHE_DIR: ${CACHE_DIR}
+  LOCAL_CACHE_DIR: ${LOCAL_CACHE_DIR}
+  Current working directory: ${process.cwd()}`);
+
 // In-memory cache for Vercel environment
 const MEMORY_CACHE = {
   articles: [],
@@ -247,8 +253,32 @@ function process_articles_endpoint(query) {
     let localFinalArticles = [];
     
     try {
-      finalArticles = glob.sync(`${CACHE_DIR}/final_article_*.json`);
-      localFinalArticles = glob.sync(`${LOCAL_CACHE_DIR}/final_article_*.json`);
+      // Check if directories exist first
+      if (fs.existsSync(CACHE_DIR)) {
+        console.log(`CACHE_DIR exists: ${CACHE_DIR}`);
+        finalArticles = glob.sync(`${CACHE_DIR}/final_article_*.json`);
+        console.log(`Found ${finalArticles.length} articles in CACHE_DIR`);
+      } else {
+        console.warn(`CACHE_DIR does not exist: ${CACHE_DIR}`);
+      }
+      
+      if (fs.existsSync(LOCAL_CACHE_DIR)) {
+        console.log(`LOCAL_CACHE_DIR exists: ${LOCAL_CACHE_DIR}`);
+        // List all files in the directory for debugging
+        const files = fs.readdirSync(LOCAL_CACHE_DIR);
+        console.log(`Files in LOCAL_CACHE_DIR: ${files.length} files`);
+        console.log(`First 5 files: ${files.slice(0, 5).join(', ')}`);
+        
+        // Filter for final article files
+        const articleFiles = files.filter(file => file.startsWith('final_article_') && file.endsWith('.json'));
+        console.log(`Found ${articleFiles.length} article files by direct filtering`);
+        
+        // Get full paths
+        localFinalArticles = articleFiles.map(file => path.join(LOCAL_CACHE_DIR, file));
+        console.log(`Mapped ${localFinalArticles.length} full article paths`);
+      } else {
+        console.warn(`LOCAL_CACHE_DIR does not exist: ${LOCAL_CACHE_DIR}`);
+      }
     } catch (error) {
       console.warn(`Error searching for articles: ${error.message}`);
     }
@@ -257,6 +287,12 @@ function process_articles_endpoint(query) {
     console.log(`Found ${localFinalArticles.length} articles in LOCAL_CACHE_DIR`);
     
     const allFinalArticles = [...finalArticles, ...localFinalArticles];
+    console.log(`Total articles found: ${allFinalArticles.length}`);
+    
+    // Log first few article paths for debugging
+    if (allFinalArticles.length > 0) {
+      console.log(`Sample article paths: ${allFinalArticles.slice(0, 3).join(', ')}`);
+    }
     
     // If no articles found in filesystem, return demo data
     if (allFinalArticles.length === 0) {
@@ -384,122 +420,178 @@ function get_article_endpoint(articleId) {
     if (articleId.startsWith('demo')) {
       const demoArticle = getDemoArticleDetail(articleId);
       console.log(`Returning demo article: "${demoArticle.title}"`);
-      return demoArticle;
+      return {
+        status: 'success',
+        article: demoArticle
+      };
     }
     
     // Check memory cache first (for Vercel)
     if (isVercel && MEMORY_CACHE.articleDetails[articleId]) {
       console.log(`Returning article from memory cache: "${MEMORY_CACHE.articleDetails[articleId].title}"`);
-      return MEMORY_CACHE.articleDetails[articleId];
+      return {
+        status: 'success',
+        article: MEMORY_CACHE.articleDetails[articleId]
+      };
     }
     
     // Sanitize article_id to ensure it doesn't contain path traversal
-    if (!articleId || !articleId.match(/^[a-zA-Z0-9_]+$/)) {
+    const safeArticleId = articleId.replace(/[^a-zA-Z0-9_]/g, '');
+    if (safeArticleId !== articleId) {
+      console.warn(`Article ID sanitized from "${articleId}" to "${safeArticleId}"`);
+    }
+    
+    if (!safeArticleId) {
       console.warn(`Invalid article ID format: ${articleId}`);
       return {
-        title: "Article Not Found",
-        link: "#",
-        summary: "The requested article could not be found. The ID format is invalid."
+        status: "error",
+        message: "The requested article could not be found. The ID format is invalid."
       };
     }
     
     // Lookup the article in the cache
-    const articlePath = path.join(CACHE_DIR, `final_article_${articleId}.json`);
-    const localArticlePath = path.join(LOCAL_CACHE_DIR, `final_article_${articleId}.json`);
+    console.log(`Looking for article files matching ID: ${safeArticleId}`);
     
-    console.log(`Checking for article at: ${articlePath}`);
-    console.log(`Checking for article at: ${localArticlePath}`);
+    // Try exact matches first
+    const exactPathsToCheck = [
+      path.join(CACHE_DIR, `final_article_${safeArticleId}.json`),
+      path.join(LOCAL_CACHE_DIR, `final_article_${safeArticleId}.json`)
+    ];
     
-    let articleData;
-    let sourcePath;
+    console.log(`Checking exact paths: ${exactPathsToCheck.join(', ')}`);
     
-    try {
-      if (fs.existsSync(articlePath)) {
-        console.log(`Article found in main cache: ${articlePath}`);
-        sourcePath = articlePath;
-        articleData = JSON.parse(fs.readFileSync(articlePath, 'utf-8'));
-      } else if (fs.existsSync(localArticlePath)) {
-        console.log(`Article found in local cache: ${localArticlePath}`);
-        sourcePath = localArticlePath;
-        articleData = JSON.parse(fs.readFileSync(localArticlePath, 'utf-8'));
-      } else {
-        console.warn(`Article not found for ID: ${articleId}`);
-        
-        // Try to find by partial ID match in filenames
-        console.log("Attempting to find article by partial ID match...");
-        let allArticles = [];
+    // Try to find by exact match first
+    for (const filePath of exactPathsToCheck) {
+      if (fs.existsSync(filePath)) {
+        console.log(`Found exact match for article at: ${filePath}`);
         try {
-          allArticles = [
-            ...glob.sync(`${CACHE_DIR}/final_article_*${articleId}*.json`),
-            ...glob.sync(`${LOCAL_CACHE_DIR}/final_article_*${articleId}*.json`)
-          ];
-        } catch (globError) {
-          console.warn(`Error searching for partial matches: ${globError.message}`);
-        }
-        
-        if (allArticles.length > 0) {
-          console.log(`Found ${allArticles.length} potential matches by ID partial`);
-          sourcePath = allArticles[0]; // Take the first match
-          articleData = JSON.parse(fs.readFileSync(sourcePath, 'utf-8'));
-        } else {
-          // Return a demo article as fallback
-          const demoArticle = getDemoArticleDetail('demo1');
-          console.log(`No article found, returning fallback demo article`);
-          return demoArticle;
+          const fileContent = fs.readFileSync(filePath, 'utf-8');
+          const articleData = JSON.parse(fileContent);
+          
+          // Create response object with status
+          const response = processArticleData(articleData, safeArticleId);
+          
+          // Cache for future requests if in Vercel
+          if (isVercel) {
+            MEMORY_CACHE.articleDetails[safeArticleId] = response.article;
+          }
+          
+          return response;
+        } catch (readError) {
+          console.error(`Error reading file ${filePath}: ${readError.message}`);
+          // Continue to try other files
         }
       }
-    } catch (fsError) {
-      console.error(`File system error: ${fsError.message}`);
-      // Return a demo article as fallback
-      const demoArticle = getDemoArticleDetail('demo1');
-      console.log(`File system error, returning fallback demo article`);
-      return demoArticle;
     }
     
-    // Extract title and content
-    const content = articleData.content || '';
-    let title = 'Unknown Title';
+    // If no exact match, try to find partial matches
+    console.log("No exact match found, searching for partial matches...");
     
-    // Extract title from content
-    if (content) {
-      const lines = content.split('\n');
-      if (lines.length > 0) {
-        if (lines[0].startsWith('# ')) {
-          title = lines[0].substring(2).trim();
-        } else {
-          title = lines[0].trim();
+    let allMatchingFiles = [];
+    try {
+      // Check both directories for files containing the article ID
+      if (fs.existsSync(CACHE_DIR)) {
+        const cacheFiles = fs.readdirSync(CACHE_DIR);
+        const matches = cacheFiles.filter(file => 
+          file.startsWith('final_article_') && 
+          file.includes(safeArticleId) && 
+          file.endsWith('.json')
+        );
+        allMatchingFiles.push(...matches.map(file => path.join(CACHE_DIR, file)));
+      }
+      
+      if (fs.existsSync(LOCAL_CACHE_DIR)) {
+        const localFiles = fs.readdirSync(LOCAL_CACHE_DIR);
+        const matches = localFiles.filter(file => 
+          file.startsWith('final_article_') && 
+          file.includes(safeArticleId) && 
+          file.endsWith('.json')
+        );
+        allMatchingFiles.push(...matches.map(file => path.join(LOCAL_CACHE_DIR, file)));
+      }
+    } catch (fsError) {
+      console.error(`Error searching for article files: ${fsError.message}`);
+    }
+    
+    console.log(`Found ${allMatchingFiles.length} potential partial matches`);
+    
+    // Process the first match if any found
+    if (allMatchingFiles.length > 0) {
+      try {
+        const filePath = allMatchingFiles[0];
+        console.log(`Using first partial match: ${filePath}`);
+        
+        const fileContent = fs.readFileSync(filePath, 'utf-8');
+        const articleData = JSON.parse(fileContent);
+        
+        // Create response object
+        const response = processArticleData(articleData, safeArticleId);
+        
+        // Cache for future requests if in Vercel
+        if (isVercel) {
+          MEMORY_CACHE.articleDetails[safeArticleId] = response.article;
         }
+        
+        return response;
+      } catch (readError) {
+        console.error(`Error reading partial match file: ${readError.message}`);
+      }
+    }
+    
+    // No article found, return error
+    console.warn(`No article found for ID: ${safeArticleId}`);
+    return {
+      status: "error",
+      message: "The requested article could not be found."
+    };
+  } catch (error) {
+    console.error(`Error in get_article_endpoint: ${error.message}`);
+    return {
+      status: "error",
+      message: `An error occurred while retrieving the article: ${error.message}`
+    };
+  }
+}
+
+/**
+ * Helper function to process article data and create a consistent response
+ * @param {Object} articleData - Raw article data from file
+ * @param {string} articleId - Article ID
+ * @returns {Object} Formatted response with article data
+ */
+function processArticleData(articleData, articleId) {
+  // Extract content and create title/summary
+  const content = articleData.content || '';
+  let title = 'Unknown Title';
+  let summary = '';
+  
+  // Extract title from content
+  if (content) {
+    const lines = content.split('\n');
+    if (lines.length > 0) {
+      if (lines[0].startsWith('# ')) {
+        title = lines[0].substring(2).trim();
+      } else {
+        title = lines[0].trim();
       }
     }
     
     // Create a summary from the content
-    let summary = content;
-    if (content && content.length > 200) {
-      summary = extractArticleSummary(content);
-    }
-    
-    // Create response object
-    const response = {
+    summary = extractArticleSummary(content);
+  }
+  
+  // Build response object
+  return {
+    status: "success",
+    article: {
+      id: articleId,
       title: title,
       link: articleData.url || `https://news.ycombinator.com/item?id=${articleId}`,
-      summary: summary
-    };
-    
-    // Cache in memory for future requests if on Vercel
-    if (isVercel) {
-      MEMORY_CACHE.articleDetails[articleId] = response;
+      summary: summary,
+      content: content,
+      timestamp: articleData.timestamp || Date.now()
     }
-    
-    console.log(`Returning article: "${title}"`);
-    return response;
-  } catch (error) {
-    console.error(`Error getting article by ID ${articleId}:`, error);
-    
-    // Return a demo article as fallback
-    const demoArticle = getDemoArticleDetail('demo1');
-    console.log(`Error occurred, returning fallback demo article`);
-    return demoArticle;
-  }
+  };
 }
 
 /**

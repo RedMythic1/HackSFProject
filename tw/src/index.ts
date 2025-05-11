@@ -212,6 +212,7 @@ class ApiService {
             : '';
         
         console.log(`ApiService initialized with baseUrl: ${this.baseUrl}`);
+        console.log(`Current hostname: ${window.location.hostname}`);
     }
 
     async getArticles(interests?: string): Promise<Article[]> {
@@ -229,7 +230,17 @@ class ApiService {
             
             const data = await response.json();
             console.log(`Articles fetched successfully. Count: ${data.length}`);
-            return data;
+            console.log(`Sample article data:`, data.length > 0 ? data[0] : 'No articles');
+            
+            // Ensure each article has the expected format and properties
+            const formattedArticles = data.map((article: any) => ({
+                title: article.title || 'Untitled Article',
+                subject: article.subject || '',
+                link: article.link || '',
+                score: article.score || 0
+            }));
+            
+            return formattedArticles;
         } catch (error) {
             console.error('Error fetching articles:', error);
             return [];
@@ -249,8 +260,20 @@ class ApiService {
             }
             
             const data = await response.json();
-            console.log('Article details fetched successfully');
-            return data;
+            console.log('Article details response:', data);
+            
+            // If we get a proper response with article data
+            if (data.status === 'success' && data.article) {
+                console.log('Article details fetched successfully:', data.article.title);
+                return {
+                    title: data.article.title,
+                    link: data.article.link,
+                    summary: data.article.summary
+                };
+            } else {
+                console.error('Invalid article data format:', data);
+                return null;
+            }
         } catch (error) {
             console.error('Error fetching article details:', error);
             return null;
@@ -308,14 +331,53 @@ class AppController {
         this.articlesContainer.innerHTML = '<div class="loading">Loading articles...</div>';
         
         try {
+            console.log("Fetching articles from API...");
             const articles = await this.apiService.getArticles(interests);
+            
+            console.log(`Received ${articles.length} articles from API`);
             
             if (articles.length === 0) {
                 this.articlesContainer.innerHTML = '<div class="error">No articles found</div>';
                 return;
             }
             
-            this.renderArticles(articles);
+            // Initialize model if not already done
+            if (!embeddingModel) {
+                console.log("Initializing embedding model for scoring...");
+                await initEmbeddingModel();
+            }
+            
+            // Log the articles we received
+            console.log("Articles to score:", articles.map(a => ({
+                title: a.title, 
+                score: a.score,
+                link: a.link
+            })));
+            
+            // Score articles based on user interests
+            const userInterests = interests || '';
+            console.log(`Scoring articles based on interests: "${userInterests}"`);
+            
+            const scoringPromises = articles.map(async (article) => {
+                // Always score articles on the frontend
+                console.log(`Scoring article: "${article.title}"`);
+                const newScore = await scoreArticle(article, userInterests);
+                console.log(`Article "${article.title}" scored: ${newScore}`);
+                return {
+                    ...article,
+                    score: newScore
+                };
+            });
+            
+            // Wait for all scoring to complete
+            const scoredArticles = await Promise.all(scoringPromises);
+            console.log(`Scored ${scoredArticles.length} articles`);
+            
+            // Sort by score (highest first)
+            scoredArticles.sort((a, b) => b.score - a.score);
+            console.log("Articles sorted by score");
+            
+            this.renderArticles(scoredArticles);
         } catch (error) {
             console.error('Error loading articles:', error);
             this.articlesContainer.innerHTML = '<div class="error">Error loading articles. Please try again later.</div>';
@@ -325,11 +387,13 @@ class AppController {
     private renderArticles(articles: Article[]): void {
         if (!this.articlesContainer) return;
         
+        console.log(`Rendering ${articles.length} articles`);
         this.articlesContainer.innerHTML = '';
         
         articles.forEach(article => {
             // Extract article ID from link
             const articleId = article.link.split('id=')[1] || '';
+            console.log(`Rendering article: "${article.title}" (ID: ${articleId})`);
             
             const articleCard = document.createElement('div');
             articleCard.className = 'article-card';
@@ -349,12 +413,22 @@ class AppController {
             if (articleLink) {
                 articleLink.addEventListener('click', (e) => {
                     e.preventDefault();
+                    console.log(`Article link clicked for ${articleId}`);
                     this.viewArticleDetails(articleId);
                 });
             }
             
             this.articlesContainer?.appendChild(articleCard);
         });
+        
+        // Add a debug counter
+        const debugInfo = document.createElement('div');
+        debugInfo.className = 'debug-info';
+        debugInfo.textContent = `Displaying ${articles.length} articles`;
+        debugInfo.style.marginTop = '20px';
+        debugInfo.style.fontSize = '12px';
+        debugInfo.style.color = '#666';
+        this.articlesContainer.appendChild(debugInfo);
     }
     
     private async viewArticleDetails(articleId: string): Promise<void> {
