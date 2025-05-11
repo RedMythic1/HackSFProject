@@ -1,8 +1,8 @@
 const path = require('path');
 
 module.exports = {
-  mode: 'development',
   entry: './src/index.ts',
+  mode: 'development',
   devtool: 'inline-source-map',
   module: {
     rules: [
@@ -16,10 +16,9 @@ module.exports = {
   resolve: {
     extensions: ['.tsx', '.ts', '.js'],
     fallback: {
-      "fs": false,
       "path": require.resolve("path-browserify"),
-      "crypto": require.resolve("crypto-browserify"),
-    },
+      "crypto": require.resolve("crypto-browserify")
+    }
   },
   output: {
     filename: 'bundle.js',
@@ -27,9 +26,12 @@ module.exports = {
   },
   devServer: {
     static: {
-      directory: path.join(__dirname, 'public'),
+      directory: path.join(__dirname, 'dist'),
     },
     compress: true,
-    port: 9001,
+    port: 9000,
+    proxy: {
+      '/api': 'http://localhost:3000',
+    },
   },
 }; 

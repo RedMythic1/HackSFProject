@@ -6,6 +6,8 @@ const path = require('path');
 const { createHash } = require('crypto');
 const { promisify } = require('util');
 const { glob } = require('glob');
+const axios = require('axios');
+const { JSDOM } = require('jsdom');
 
 // Setup Express app
 const app = express();
@@ -17,6 +19,13 @@ app.use(express.json());
 // Constants
 const CACHE_DIR = path.join(process.cwd(), '.vercel', 'cache');
 const LOCAL_CACHE_DIR = path.join(process.cwd(), 'local_cache');
+
+// Cache for articles and summaries
+const CACHE = {
+  articles: [],
+  summaries: {},
+  interests: {}
+};
 
 // Ensure cache directories exist
 try {
@@ -36,6 +45,97 @@ try {
 // Helper function to generate cache keys
 function generateCacheKey(input) {
   return createHash('md5').update(input).digest('hex');
+}
+
+// Helper function to fetch HN articles
+async function fetchArticles() {
+  try {
+    const response = await axios.get('https://news.ycombinator.com/');
+    const dom = new JSDOM(response.data);
+    const document = dom.window.document;
+    
+    const articles = [];
+    const rows = document.querySelectorAll('.athing');
+    
+    rows.forEach(row => {
+      const titleElement = row.querySelector('.titleline > a');
+      if (!titleElement) return;
+      
+      const title = titleElement.textContent.trim();
+      const itemId = row.getAttribute('id');
+      
+      if (itemId) {
+        const commentLink = `https://news.ycombinator.com/item?id=${itemId}`;
+        articles.push([title, commentLink]);
+      }
+    });
+    
+    CACHE.articles = articles;
+    return articles;
+  } catch (error) {
+    console.error('Error fetching articles:', error);
+    return [];
+  }
+}
+
+// Helper function to extract content from article
+async function extractContent(url) {
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+    
+    const dom = new JSDOM(response.data);
+    const document = dom.window.document;
+    
+    // Extract title
+    const title = document.querySelector('title')?.textContent || 'No title found';
+    
+    // Extract content from paragraphs
+    const paragraphs = document.querySelectorAll('p');
+    const content = Array.from(paragraphs)
+      .map(p => p.textContent.trim())
+      .filter(text => text.length > 30)
+      .join('\n\n');
+      
+    return `Title: ${title}\n\n${content || 'No content found'}`;
+  } catch (error) {
+    console.error('Error extracting content:', error);
+    return null;
+  }
+}
+
+// Helper function to generate a simple summary
+function summarizeContent(content, maxLength = 1000) {
+  if (!content) return null;
+  
+  // Simple summarization: take first few paragraphs
+  const paragraphs = content.split('\n\n');
+  const summary = paragraphs.slice(0, 3).join('\n\n');
+  
+  return summary.length > maxLength ? summary.substring(0, maxLength) + '...' : summary;
+}
+
+// Basic scoring function for articles based on interests
+function scoreArticle(article, interests) {
+  if (!interests || !interests.length) return 50; // Default score
+  
+  const [title, _] = article;
+  const interestTerms = interests.split(',').map(term => term.trim().toLowerCase());
+  
+  let score = 50; // Base score
+  
+  // Simple scoring: +10 for each interest keyword in the title
+  interestTerms.forEach(term => {
+    if (title.toLowerCase().includes(term)) {
+      score += 10;
+    }
+  });
+  
+  // Cap score at 100
+  return Math.min(score, 100);
 }
 
 // Route: Log messages
@@ -484,6 +584,126 @@ app.post('/verify-email', (req, res) => {
   } catch (error) {
     console.error('Error verifying email:', error);
     return res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// Endpoints
+app.get('/api/articles', async (req, res) => {
+  try {
+    // Use cached articles or fetch new ones
+    const articles = CACHE.articles.length > 0 ? CACHE.articles : await fetchArticles();
+    
+    // Get user interests from query params
+    const userInterests = req.query.interests || '';
+    
+    // Process and score articles
+    const processedArticles = articles.map((article, index) => {
+      const [title, link] = article;
+      
+      // Extract subject from title
+      const words = title.split(' ');
+      const subject = words.length > 3 ? words.slice(0, 3).join(' ') : title;
+      
+      // Score based on user interests
+      const score = scoreArticle(article, userInterests);
+      
+      return {
+        title,
+        link,
+        subject,
+        score
+      };
+    });
+    
+    // Sort by score
+    processedArticles.sort((a, b) => b.score - a.score);
+    
+    res.json(processedArticles);
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Error processing articles' });
+  }
+});
+
+app.get('/api/article/:id', async (req, res) => {
+  try {
+    const articleId = req.params.id;
+    
+    // Find article in cache
+    const article = CACHE.articles.find(([_, link]) => link.includes(articleId));
+    
+    if (!article) {
+      return res.status(404).json({ error: 'Article not found' });
+    }
+    
+    const [title, link] = article;
+    
+    // Check if we have a cached summary
+    if (CACHE.summaries[link]) {
+      return res.json({
+        title,
+        link,
+        summary: CACHE.summaries[link]
+      });
+    }
+    
+    // Extract and summarize content
+    const content = await extractContent(link);
+    const summary = summarizeContent(content);
+    
+    // Cache the summary
+    CACHE.summaries[link] = summary;
+    
+    res.json({
+      title,
+      link,
+      summary
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Error retrieving article' });
+  }
+});
+
+app.post('/api/analyze-interests', (req, res) => {
+  try {
+    const { interests } = req.body;
+    
+    if (!interests) {
+      return res.status(400).json({ error: 'No interests provided' });
+    }
+    
+    // Store interests in cache
+    CACHE.interests = interests;
+    
+    // Simple analysis
+    const interestTerms = interests.split(',').map(term => term.trim());
+    const analysis = {
+      count: interestTerms.length,
+      terms: interestTerms,
+      relevantArticles: []
+    };
+    
+    // Find relevant articles based on interests
+    if (CACHE.articles.length > 0) {
+      const scoredArticles = CACHE.articles.map(article => {
+        return {
+          title: article[0],
+          link: article[1],
+          score: scoreArticle(article, interests)
+        };
+      });
+      
+      // Get top 3 relevant articles
+      analysis.relevantArticles = scoredArticles
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+    }
+    
+    res.json(analysis);
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Error analyzing interests' });
   }
 });
 
