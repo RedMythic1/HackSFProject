@@ -722,10 +722,15 @@ app.get('/api/article/:id', async (req, res) => {
     
     console.log(`GET /api/article/${articleId} - Getting article details`);
     
-    // Use listBlobFiles instead of the file system glob
-    const localFinalArticleGlob = await listBlobFiles(`final_article_*.json`);
-
-    // ... rest of the endpoint code ...
+    // Use our server.js module
+    const serverFunctions = require('./server');
+    const result = await serverFunctions.get_article_endpoint(articleId);
+    
+    if (result.status === 'error') {
+      return res.status(404).json(result);
+    }
+    
+    return res.json(result);
   } catch (error) {
     console.error('Error retrieving article:', error);
     return res.status(500).json({ 

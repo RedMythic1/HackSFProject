@@ -7,7 +7,13 @@ const crypto = require('crypto');
 const { glob } = require('glob');
 const axios = require('axios');
 const { JSDOM } = require('jsdom');
-const { put, list, get, del } = require('@vercel/blob');
+const { put, list, head } = require('@vercel/blob');
+
+// Verify that the imported functions exist
+console.log(`Vercel Blob functions loaded:
+  put: ${typeof put === 'function' ? 'Yes' : 'No'}
+  list: ${typeof list === 'function' ? 'Yes' : 'No'}
+  head: ${typeof head === 'function' ? 'Yes' : 'No'}`);
 
 // More robust environment detection
 const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true' || process.cwd().includes('/var/task');
@@ -43,9 +49,15 @@ async function safeReadFile(filePath, defaultValue = null) {
     
     console.log(`Attempting to read from blob storage: ${blobKey}`);
     try {
-      const blob = await get(blobKey);
-      if (blob) {
-        const content = await blob.text();
+      // First check if the blob exists
+      const blobMetadata = await head(blobKey);
+      if (blobMetadata) {
+        // If it exists, fetch its content
+        const response = await fetch(blobMetadata.url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch blob content: ${response.status}`);
+        }
+        const content = await response.text();
         return JSON.parse(content);
       }
     } catch (blobError) {
@@ -532,36 +544,61 @@ async function get_article_endpoint(articleId) {
         .replace('.json', '');
     }
     
-    // Create a path to find the article in blob storage
-    const localCachePath = `/tmp/final_article_${articleId}.json`;
+    // Try to get from blob storage directly - use the proper blob key, not a local path
+    const blobKey = `${BLOB_ARTICLE_PREFIX}${articleId}.json`;
+    console.log(`Looking for article in blob storage with key: ${blobKey}`);
     
-    // Try to get from blob storage
-    const article = await safeReadFile(localCachePath);
-    
-    if (!article) {
-      // Try to fallback to demo articles
-      const demoArticle = getDemoArticleDetail(articleId);
-      if (demoArticle) {
+    try {
+      // First check if the blob exists using head
+      const blobMetadata = await head(blobKey);
+      
+      if (blobMetadata) {
+        console.log(`Article found in blob storage: ${blobKey}`);
+        // If the blob exists, fetch its content with a regular fetch
+        const response = await fetch(blobMetadata.url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch blob content: ${response.status}`);
+        }
+        
+        const content = await response.text();
+        const article = JSON.parse(content);
+        
+        // Process the article data
+        const processedArticle = processArticleData(article, articleId);
+        
         return {
           status: 'success',
-          method: 'demo',
-          article: demoArticle
+          method: 'blob',
+          article: processedArticle
         };
+      } else {
+        console.log(`Article not found in blob storage: ${blobKey}`);
       }
-      
+    } catch (blobError) {
+      console.warn(`Error accessing blob storage: ${blobError.message}`);
+    }
+    
+    // Try to fallback to demo articles
+    const demoArticle = getDemoArticleDetail(articleId);
+    if (demoArticle) {
+      console.log(`Returning demo article for id: ${articleId}`);
       return {
-        status: 'error',
-        message: `Article ${articleId} not found`
+        status: 'success',
+        method: 'demo',
+        article: {
+          id: articleId,
+          title: demoArticle.title,
+          link: demoArticle.link,
+          summary: demoArticle.summary,
+          content: `# ${demoArticle.title}\n\n${demoArticle.summary}\n\nThis is a demo article provided as a fallback.`,
+          timestamp: Date.now()
+        }
       };
     }
     
-    // Process the article data
-    const processedArticle = processArticleData(article, articleId);
-    
     return {
-      status: 'success',
-      method: 'database',
-      article: processedArticle
+      status: 'error',
+      message: `Article ${articleId} not found`
     };
   } catch (error) {
     console.error(`Error retrieving article ${articleId}:`, error);

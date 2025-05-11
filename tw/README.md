@@ -69,6 +69,34 @@ export BLOB_READ_WRITE_TOKEN="your_token_here"
 
 For production, the Vercel configuration automatically includes the blob token from the project environment variables.
 
+## Vercel Blob Storage Tools
+
+### Migrating Local Cache to Blob Storage
+
+To upload local cache files to Vercel Blob Storage, you can use the included script:
+
+```bash
+# Set your Vercel Blob Storage token
+export BLOB_READ_WRITE_TOKEN="your_vercel_blob_token"
+
+# Run the upload script
+./upload-cache.sh
+```
+
+This will upload all JSON files from the `local_cache` directory to Vercel Blob Storage.
+
+### Accessing Blob Storage Directly
+
+You can view and access all files stored in Vercel Blob Storage using these endpoints:
+
+- List all blobs: `/api/list-blobs`
+- View a specific blob: `/api/blob/articles/final_article_1234567890.json`
+
+Example blob URLs will look like:
+```
+https://yourproject.public.blob.vercel-storage.com/articles/final_article_1234567890-randomstring.json
+```
+
 ## Getting Started
 
 1. Make sure you have all the required dependencies installed.
