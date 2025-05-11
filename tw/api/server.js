@@ -131,7 +131,7 @@ function generateDemoArticles() {
       id: 'demo1',
       title: 'Introduction to Machine Learning',
       subject: 'A comprehensive guide to understanding the basics of Machine Learning and its applications in the modern world.',
-      score: 85,
+      score: 0,
       timestamp: Date.now() - 3600000, // 1 hour ago
       link: 'https://example.com/article/1'
     },
@@ -139,7 +139,7 @@ function generateDemoArticles() {
       id: 'demo2',
       title: 'The Future of Web Development',
       subject: 'Exploring emerging trends in web development including WebAssembly, Progressive Web Apps, and more.',
-      score: 78,
+      score: 0,
       timestamp: Date.now() - 7200000, // 2 hours ago
       link: 'https://example.com/article/2'
     },
@@ -147,7 +147,7 @@ function generateDemoArticles() {
       id: 'demo3',
       title: 'Blockchain Technology Explained',
       subject: 'Understanding the fundamentals of blockchain technology and its potential beyond cryptocurrencies.',
-      score: 82,
+      score: 0,
       timestamp: Date.now() - 10800000, // 3 hours ago
       link: 'https://example.com/article/3'
     },
@@ -155,7 +155,7 @@ function generateDemoArticles() {
       id: 'demo4',
       title: 'Artificial Intelligence Ethics',
       subject: 'Examining the ethical considerations in AI development and implementation in society.',
-      score: 90,
+      score: 0,
       timestamp: Date.now() - 14400000, // 4 hours ago
       link: 'https://example.com/article/4'
     },
@@ -163,7 +163,7 @@ function generateDemoArticles() {
       id: 'demo5',
       title: 'Cloud Computing Fundamentals',
       subject: 'An overview of cloud computing services, models, and best practices for businesses.',
-      score: 75,
+      score: 0,
       timestamp: Date.now() - 18000000, // 5 hours ago
       link: 'https://example.com/article/5'
     },
@@ -171,7 +171,7 @@ function generateDemoArticles() {
       id: 'demo6',
       title: 'Data Science for Beginners',
       subject: 'Getting started with data science: tools, techniques, and essential knowledge.',
-      score: 88,
+      score: 0,
       timestamp: Date.now() - 21600000, // 6 hours ago
       link: 'https://example.com/article/6'
     }
@@ -337,7 +337,7 @@ function process_articles_endpoint(query) {
             id: articleId,
             title: title,
             subject: subject,
-            score: 50, // Default score
+            score: 0, // Changed from 50 to 0 (scores will be calculated on the frontend)
             timestamp: data.timestamp || Date.now(),
             link: `https://news.ycombinator.com/item?id=${articleId}`
           });
