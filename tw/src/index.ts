@@ -51,6 +51,7 @@ interface Article {
     subject: string;
     score: number;
     summary?: string;
+    id?: string;
 }
 
 interface ArticleDetail {
@@ -236,10 +237,12 @@ class ApiService {
             
             // Ensure each article has the expected format and properties
             const formattedArticles = data.map((article: any) => ({
+                id: article.id || '', // Preserve ID from API response
                 title: article.title || 'Untitled Article',
                 subject: article.subject || '',
                 link: article.link || '',
-                score: article.score || 0
+                score: article.score || 0,
+                summary: article.summary || ''
             }));
             
             return formattedArticles;
@@ -395,9 +398,28 @@ class AppController {
         this.articlesContainer.innerHTML = '';
         
         articles.forEach(article => {
-            // Extract article ID from link - Fix the ID extraction to be more reliable
-            const linkParts = article.link.split('/');
-            const articleId = linkParts[linkParts.length - 1]; // Get the last part of the link
+            // Extract article ID from link - Use article.id if available, otherwise extract from link
+            let articleId;
+            
+            // Check if the article already has an id property
+            if ('id' in article && article.id) {
+                articleId = article.id;
+            } else {
+                // Extract from link - making this more robust
+                const linkParts = article.link.split('/');
+                articleId = linkParts[linkParts.length - 1]; // Get the last part of the link
+                
+                // If the link doesn't contain a valid ID, generate one from the title
+                if (!articleId || articleId === '#') {
+                    // Make a slug from title + random numbers to ensure uniqueness
+                    const titleSlug = article.title
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]+/g, '-')
+                        .replace(/(^-|-$)/g, '');
+                    articleId = `${titleSlug}-${Date.now().toString().slice(-6)}`;
+                }
+            }
+            
             console.log(`Rendering article: "${article.title}" (ID: ${articleId})`);
             
             const articleCard = document.createElement('div');
