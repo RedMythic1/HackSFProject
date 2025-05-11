@@ -2,85 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/index.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "api/server_handler.py",
+      "src": "index.py",
       "use": "@vercel/python"
-    },
-    {
-      "src": "dist/**/*",
-      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/api/python/(.*)",
-      "dest": "/api/server_handler.py"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/log",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/check-cache",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/final-articles",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/final-article/(.*)",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/get-final-article/(.*)",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/analyze-interests",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/verify-email",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/command",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/articles/(.*)",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/static/(.*)",
-      "dest": "/dist/static/$1"
-    },
-    {
-      "src": "/bundle.js",
-      "dest": "/dist/bundle.js"
-    },
-    {
       "src": "/(.*)",
-      "dest": "/dist/$1"
+      "dest": "/"
     }
-  ],
-  "functions": {
-    "api/index.js": {
-      "memory": 1024,
-      "maxDuration": 60
-    },
-    "api/server_handler.py": {
-      "memory": 1024,
-      "maxDuration": 60,
-      "runtime": "python3.9"
-    }
-  }
+  ]
 } 
