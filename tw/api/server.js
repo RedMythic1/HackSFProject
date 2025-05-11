@@ -109,9 +109,19 @@ async function safeWriteFile(filePath, data) {
 
 // Helper function to convert file path to blob key
 function getBlobKeyFromPath(filePath) {
+  if (!filePath || typeof filePath !== 'string') {
+    console.warn(`Invalid file path: ${filePath}`);
+    return null;
+  }
+
   const basename = path.basename(filePath);
   
-  if (basename.startsWith('final_article_')) {
+  // Fix duplicated 'final_article_' prefix pattern
+  if (basename.startsWith('final_article_final_article_')) {
+    // Extract the actual ID after the duplicate prefix
+    const id = basename.replace('final_article_final_article_', '');
+    return BLOB_ARTICLE_PREFIX + id;
+  } else if (basename.startsWith('final_article_')) {
     return BLOB_ARTICLE_PREFIX + basename.replace('final_article_', '');
   } else if (basename.startsWith('summary_')) {
     return BLOB_SUMMARY_PREFIX + basename.replace('summary_', '');
@@ -124,9 +134,15 @@ function getBlobKeyFromPath(filePath) {
 
 // Helper function to get virtual path from blob key
 function getVirtualPathFromBlobKey(blobKey) {
+  if (!blobKey || typeof blobKey !== 'string') {
+    console.warn(`Invalid blob key: ${blobKey}`);
+    return null;
+  }
+
   const basename = path.basename(blobKey);
   
   if (blobKey.startsWith(BLOB_ARTICLE_PREFIX)) {
+    // Create a clean filename without duplicated prefixes
     return `/tmp/final_article_${basename}`;
   } else if (blobKey.startsWith(BLOB_SUMMARY_PREFIX)) {
     return `/tmp/summary_${basename}`;

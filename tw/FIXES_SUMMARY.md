@@ -9,6 +9,10 @@
 2. **Missing File Error**
    - Log: `Skipping article /tmp/final_article_final_article_1746916855_PLAttice.json - could not read file`
    - Cause: The API is trying to read a temporary file that doesn't exist or attempting to access a Blob that has path formatting issues.
+   
+3. **Duplicated Prefix Error**
+   - Log: `Skipping article /tmp/final_article_final_article_1746915309_US_vs_Google_amicus_curiae_brief_of_Y_Combinator_in_support_of_plaintiffs.json - could not read file`
+   - Cause: Some file paths have duplicated `final_article_` prefixes, causing path resolution issues.
 
 ## Solutions Implemented
 
@@ -42,6 +46,13 @@
 - Created `test-blob.js` to validate Blob Storage connectivity
 - Created `fix-article-issues.js` to identify and fix problematic blobs
 
+### 5. Fixed Duplicated Prefixes Issue
+
+- Modified `getBlobKeyFromPath()` in `server.js` to handle duplicated `final_article_` prefixes
+- Modified `getVirtualPathFromBlobKey()` to create clean file paths
+- Created `fix-duplicate-prefixes.js` to identify and fix existing blob keys with duplicated prefixes
+- Updated `update-vercel.sh` to run the prefix fixing script during deployment
+
 ## Deployment Instructions
 
 1. Test local blob access:
@@ -55,13 +66,18 @@
    node tools/fix-article-issues.js
    ```
 
-3. Update your Vercel deployment:
+3. Fix any duplicated prefixes in blob keys:
+   ```bash
+   node tools/fix-duplicate-prefixes.js
+   ```
+
+4. Update your Vercel deployment:
    ```bash
    chmod +x update-vercel.sh
    ./update-vercel.sh
    ```
 
-4. Verify the deployment environment:
+5. Verify the deployment environment:
    ```bash
    node tools/check-vercel-env.js
    ```
@@ -71,5 +87,6 @@
 Once deployed, monitor the application logs. If you continue to see "file not found" errors, you can:
 
 1. Run the `fix-article-issues.js` script to identify and remove problematic blobs
-2. Check your Vercel project settings to ensure environment variables are properly set
-3. Check the public `/api/env-check` endpoint to verify settings 
+2. Run the `fix-duplicate-prefixes.js` script to fix any remaining duplicated prefixes
+3. Check your Vercel project settings to ensure environment variables are properly set
+4. Check the public `/api/env-check` endpoint to verify settings 

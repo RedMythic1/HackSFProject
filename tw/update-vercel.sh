@@ -3,6 +3,15 @@
 # Update Vercel deployment with correct Blob token configuration
 echo "Updating Vercel deployment..."
 
+# Make sure we're in the correct directory
+if [[ $(basename $(pwd)) == "tw" ]]; then
+    PROJECT_DIR=$(pwd)
+    echo "Current directory: $PROJECT_DIR"
+else
+    echo "Error: This script should be run from the 'tw' directory"
+    exit 1
+fi
+
 # Check if vercel CLI is installed
 if ! command -v vercel &> /dev/null; then
     echo "Error: Vercel CLI not found. Please install it with 'npm install -g vercel'"
@@ -40,8 +49,16 @@ if [ $? -ne 0 ]; then
     echo "Warning: Article issue check failed. Proceeding with deployment anyway."
 fi
 
+# Fix any duplicated prefixes
+echo "Checking for duplicated prefixes in blob keys..."
+node tools/fix-duplicate-prefixes.js
+if [ $? -ne 0 ]; then
+    echo "Warning: Failed to fix duplicated prefixes. Proceeding with deployment anyway."
+fi
+
 # Deploy to Vercel with environment variables
 echo "Deploying to Vercel..."
+# Run deployment command from the current directory
 vercel --prod \
   --env BLOB_READ_WRITE_TOKEN="$BLOB_READ_WRITE_TOKEN" \
   --env BLOB_URL="$BLOB_URL"
