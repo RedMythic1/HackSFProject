@@ -67,18 +67,26 @@ class ApiService {
         this.baseUrl = window.location.hostname === 'localhost' 
             ? 'http://localhost:3000' 
             : '';
+        
+        console.log(`ApiService initialized with baseUrl: ${this.baseUrl}`);
     }
 
     async getArticles(interests?: string): Promise<Article[]> {
         try {
             const queryParams = interests ? `?interests=${encodeURIComponent(interests)}` : '';
-            const response = await fetch(`${this.baseUrl}/api/articles${queryParams}`);
+            const url = `${this.baseUrl}/api/articles${queryParams}`;
+            console.log(`Fetching articles from: ${url}`);
+            
+            const response = await fetch(url);
             
             if (!response.ok) {
-                throw new Error('Failed to fetch articles');
+                console.error(`Error response from server: ${response.status}`);
+                throw new Error(`Failed to fetch articles: ${response.statusText}`);
             }
             
-            return await response.json();
+            const data = await response.json();
+            console.log(`Articles fetched successfully. Count: ${data.length}`);
+            return data;
         } catch (error) {
             console.error('Error fetching articles:', error);
             return [];
@@ -87,13 +95,19 @@ class ApiService {
 
     async getArticleDetails(articleId: string): Promise<ArticleDetail | null> {
         try {
-            const response = await fetch(`${this.baseUrl}/api/article/${articleId}`);
+            const url = `${this.baseUrl}/api/article/${articleId}`;
+            console.log(`Fetching article details from: ${url}`);
+            
+            const response = await fetch(url);
             
             if (!response.ok) {
-                throw new Error('Failed to fetch article details');
+                console.error(`Error response from server: ${response.status}`);
+                throw new Error(`Failed to fetch article details: ${response.statusText}`);
             }
             
-            return await response.json();
+            const data = await response.json();
+            console.log('Article details fetched successfully');
+            return data;
         } catch (error) {
             console.error('Error fetching article details:', error);
             return null;

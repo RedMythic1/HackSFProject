@@ -210,29 +210,38 @@
         </main>
     </div>
     
-    <script src="/bundle.js"></script>
+    <!-- Script will be injected by webpack -->
     <script>
         // Check if we got a 404 error code from the server
-        if (window.location.pathname !== '/' && 
-            window.location.pathname !== '/index.html' && 
-            !window.location.pathname.startsWith('/api/')) {
-            
-            // Check if the URL contains an error code
-            const urlParams = new URLSearchParams(window.location.search);
-            const errorCode = urlParams.get('code');
-            
-            if (errorCode === 'NOT_FOUND' || window.location.pathname.includes('/article/')) {
-                // Show custom 404 and hide the main app
-                document.querySelector('.interest-form').style.display = 'none';
-                document.getElementById('articles-section').style.display = 'none';
-                document.getElementById('not-found').style.display = 'block';
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.location.pathname !== '/' && 
+                window.location.pathname !== '/index.html' && 
+                !window.location.pathname.startsWith('/api/')) {
                 
-                // Add event listener to the back button
-                document.getElementById('back-to-home').addEventListener('click', function() {
-                    window.location.href = '/';
-                });
+                // Check if the URL contains an error code
+                const urlParams = new URLSearchParams(window.location.search);
+                const errorCode = urlParams.get('code');
+                
+                if (errorCode === 'NOT_FOUND' || window.location.pathname.includes('/article/')) {
+                    // Show custom 404 and hide the main app
+                    const interestForm = document.querySelector('.interest-form');
+                    const articlesSection = document.getElementById('articles-section');
+                    const notFound = document.getElementById('not-found');
+                    
+                    if (interestForm) interestForm.style.display = 'none';
+                    if (articlesSection) articlesSection.style.display = 'none';
+                    if (notFound) notFound.style.display = 'block';
+                    
+                    // Add event listener to the back button
+                    const backButton = document.getElementById('back-to-home');
+                    if (backButton) {
+                        backButton.addEventListener('click', function() {
+                            window.location.href = '/';
+                        });
+                    }
+                }
             }
-        }
+        });
     </script>
 </body>
 </html> 

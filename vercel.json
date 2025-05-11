@@ -1,17 +1,15 @@
 {
   "version": 2,
+  "buildCommand": "npm run vercel-build",
+  "outputDirectory": "tw/dist",
   "builds": [
     {
       "src": "tw/api/index.js",
       "use": "@vercel/node"
     },
     {
-      "src": "tw/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist",
-        "outputDirectory": "tw/dist"
-      }
+      "src": "tw/dist/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -20,8 +18,23 @@
       "dest": "tw/api/index.js"
     },
     {
+      "src": "/static/(.*)",
+      "dest": "/tw/dist/static/$1"
+    },
+    {
+      "src": "/bundle.js",
+      "dest": "/tw/dist/bundle.js"
+    },
+    {
+      "src": "/article/(.*)",
+      "dest": "/tw/dist/index.html"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
       "src": "/(.*)",
-      "dest": "tw/dist/$1"
+      "dest": "/tw/dist/index.html"
     }
   ]
 } 

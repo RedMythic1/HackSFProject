@@ -139,7 +139,7 @@ function scoreArticle(article, interests) {
 }
 
 // Route: Log messages
-app.post('/log', (req, res) => {
+app.post('/api/log', (req, res) => {
   try {
     const { message, level = 'info', source = 'unknown' } = req.body;
     
@@ -158,7 +158,7 @@ app.post('/log', (req, res) => {
 });
 
 // Route: Check cache status
-app.get('/check-cache', async (req, res) => {
+app.get('/api/check-cache', async (req, res) => {
   try {
     console.log('Checking cache status');
     
@@ -648,6 +648,71 @@ app.post('/api/analyze-interests', (req, res) => {
     return res.status(500).json({ status: 'error', message: error.message });
   }
 });
+
+// Handle both '/log' and '/api/log' routes
+app.post('/log', (req, res) => {
+  // Redirect to the main handler
+  app.handle(req, { ...req, url: '/api/log' }, res);
+});
+
+// Create a catch-all route for API requests
+app.all('/api/*', (req, res, next) => {
+  // Check if this route matches any of our defined routes
+  const routes = app._router.stack
+    .filter(layer => layer.route)
+    .map(layer => ({ path: layer.route.path, methods: layer.route.methods }));
+  
+  const matchedRoute = routes.find(route => {
+    // Check if the path matches any of our defined routes
+    if (req.path === route.path) {
+      // Check if the HTTP method is supported
+      return route.methods[req.method.toLowerCase()];
+    }
+    return false;
+  });
+  
+  if (matchedRoute) {
+    // If we found a matching route, continue to the next middleware
+    return next();
+  }
+  
+  if (req.method === 'OPTIONS') {
+    // Handle CORS preflight requests
+    return res.status(200).end();
+  }
+  
+  // Return a 404 for any API route not explicitly defined
+  console.warn(`API route not found: ${req.method} ${req.path}`);
+  return res.status(404).json({
+    status: 'error',
+    message: 'API endpoint not found',
+    path: req.path
+  });
+});
+
+// Add error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({
+    status: 'error',
+    message: 'Internal Server Error',
+    error: process.env.NODE_ENV === 'production' ? undefined : err.message
+  });
+});
+
+// Handle requests at both root level and with /api prefix
+app.use((req, res, next) => {
+  console.log(`Request received: ${req.method} ${req.url}`);
+  next();
+});
+
+// Start the server if not being used as a module
+if (!module.parent) {
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => {
+    console.log(`Server listening on port ${port}`);
+  });
+}
 
 // Special route for Vercel serverless deployment
 module.exports = app; 

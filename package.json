@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "description": "A tool to analyze tech interests and provide relevant content",
   "main": "index.js",
+  "engines": {
+    "node": ">=16.0.0"
+  },
   "scripts": {
     "start": "cd tw && ./start_all.sh",
     "build": "cd tw && npm run build",
     "vercel-build": "cd tw && npm install && npm run build",
+    "deploy": "vercel --prod",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:embeddings": "ts-node src/utils/testEmbeddings.ts"
   },
