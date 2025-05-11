@@ -27,6 +27,8 @@ All the functionality in this directory is self-contained - it doesn't require a
   - transformers (optional, for advanced summarization)
   - sentence-transformers (optional, for embedding generation)
   - duckduckgo-search
+- Required Node.js packages:
+  - @vercel/edge-config
 
 ## Files and Structure
 
@@ -39,63 +41,122 @@ All the functionality in this directory is self-contained - it doesn't require a
   - `process_articles.sh` - Process articles with user interests
   - `manage.sh` - Combined interface for common operations
 - Directories:
-  - `local_cache/` - Cached articles and summaries
+  - `local_cache/` - Cached articles and summaries (for local fallback)
   - `public/articles/` - Generated HTML files for viewing
   - `models/` - Directory for AI model files (you may need to add these manually)
 
-## Storage
+## Vercel Edge Config Integration
 
-This application now uses Vercel Blob Storage for all cache operations instead of the local filesystem. This provides several benefits:
+This application now uses Vercel Edge Config for storing cache data, configuration, and article data. This provides several benefits over the previous Blob Storage approach:
 
-1. Persistent storage across serverless function invocations
-2. No dependency on ephemeral filesystem in Vercel's serverless environment
-3. Data is accessible from any region or instance
+1. Better performance with lower latency (data is stored at the network edge)
+2. Simpler API for key-value storage
+3. Reduced cost for small data items
+4. Built-in integration with Vercel deployments
+5. Improved global distribution of data
 
-All local cache files have been migrated to Vercel Blob Storage under the following prefixes:
+## Edge Config Setup
 
-- `articles/final_article_*` - Processed articles
-- `articles/summary_*` - Article summaries
-- `articles/search_*` - Search results
+All cache data has been migrated to Vercel Edge Config with the following key prefixes:
 
-### Local Development
+- `articles/final_article_*.json` - Final processed articles
+- `articles/summary_*.json` - Article summaries
+- `articles/search_*.json` - Search results
+- `articles/processed_articles.json` - List of processed article IDs
 
-When running in a local environment, the application will still use Vercel Blob Storage through the API rather than accessing local file systems. Make sure to set up the BLOB_READ_WRITE_TOKEN environment variable for local development.
-
-```sh
-export BLOB_READ_WRITE_TOKEN="your_token_here"
-```
-
-### Production Deployment
-
-For production, the Vercel configuration automatically includes the blob token from the project environment variables.
-
-## Vercel Blob Storage Tools
-
-### Migrating Local Cache to Blob Storage
-
-To upload local cache files to Vercel Blob Storage, you can use the included script:
+To use Edge Config for your local development, you must set up the required environment variables:
 
 ```bash
-# Set your Vercel Blob Storage token
+# Required environment variables for Edge Config
+export EDGE_CONFIG="https://edge-config.vercel.com/ecfg_xsczamr0q3eodjuagxzwjiznqxxs?token=854495e2-1208-47c1-84a6-213468e23510"
+export USE_EDGE_CONFIG="1"
+```
+
+You can run the `setup-edge-config.sh` script to set these variables automatically:
+
+```bash
+source setup-edge-config.sh
+```
+
+## Vercel Edge Config Tools
+
+### Migrating from Blob Storage to Edge Config
+
+If you were previously using Vercel Blob Storage, you can migrate your data to Edge Config using the included script:
+
+```bash
+# Set your Vercel Blob Storage token (required for reading from Blob Storage)
 export BLOB_READ_WRITE_TOKEN="your_vercel_blob_token"
 
-# Run the upload script
-./upload-cache.sh
+# Run the migration script
+./migrate-to-edge-config.sh
 ```
 
-This will upload all JSON files from the `local_cache` directory to Vercel Blob Storage.
+This will migrate all your data from Blob Storage to Edge Config, update your environment variables, and configure your application to use Edge Config for storage.
 
-### Accessing Blob Storage Directly
+### Accessing Edge Config Directly
 
-You can view and access all files stored in Vercel Blob Storage using these endpoints:
+You can view and manage data stored in Edge Config using the edge-config-utils.js tool:
 
-- List all blobs: `/api/list-blobs`
-- View a specific blob: `/api/blob/articles/final_article_1234567890.json`
+```bash
+# List all keys with a specific prefix
+node tools/edge-config-utils.js list articles/final_article_
 
-Example blob URLs will look like:
+# Get data for a specific key
+node tools/edge-config-utils.js get articles/final_article_12345.json
+
+# Upload a file to Edge Config
+node tools/edge-config-utils.js put articles/my-file.json path/to/local/file.json
+
+# Delete a key
+node tools/edge-config-utils.js delete articles/my-file.json
+
+# Upload a directory to Edge Config
+node tools/edge-config-utils.js upload-dir local_cache articles/
+
+# Download items to a local directory
+node tools/edge-config-utils.js download articles/ downloaded-files/
 ```
-https://yourproject.public.blob.vercel-storage.com/articles/final_article_1234567890-randomstring.json
+
+## Command Line Interface
+
+The command line interface for article processing has been updated to use Edge Config:
+
+```bash
+# Cache articles without processing (only subjectizes)
+./process_articles.sh cache
+
+# Process articles with specified interests
+./process_articles.sh process "technology, AI, science"
+
+# List all cached articles
+./process_articles.sh list
 ```
+
+When EDGE_CONFIG is set, these commands will use Edge Config for storage. Otherwise, they will fall back to using the local cache.
+
+## API Endpoints
+
+The API now reads and writes directly to Edge Config:
+
+```
+GET /api/articles - List all articles
+GET /api/article/:id - Get a specific article
+GET /api/get-summary?id=:id - Get summary for a specific article
+GET /api/get-search?query=:query - Get search results
+```
+
+For a full list of available API endpoints, see the API documentation.
+
+## Troubleshooting
+
+If you encounter issues with Edge Config, try the following:
+
+1. Check that your EDGE_CONFIG environment variable is set correctly
+2. Verify that the @vercel/edge-config package is installed: `npm install @vercel/edge-config`
+3. Run the setup-edge-config.sh script to ensure all environment variables are set correctly
+4. Check the application logs for any error messages related to Edge Config
+5. Clear and rebuild your local cache if necessary
 
 ## Getting Started
 

@@ -11,12 +11,18 @@ NC='\033[0m' # No Color
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-# Ensure we're using the tw/local_cache directory
+# Ensure we're using the tw/local_cache directory for local operations
 CACHE_DIR="$SCRIPT_DIR/local_cache"
 # Path to local ansys.py file
 ANSYS_LOCAL_PATH="$SCRIPT_DIR/ansys_local.py"
 
-# Make sure cache directory exists
+# Load Edge Config environment
+source "$SCRIPT_DIR/setup-edge-config.sh" >/dev/null 2>&1 || true
+
+# Edge Config variables
+EDGE_CONFIG_URL="https://edge-config.vercel.com/ecfg_xsczamr0q3eodjuagxzwjiznqxxs?token=854495e2-1208-47c1-84a6-213468e23510"
+
+# Make sure cache directory exists (for local fallback)
 mkdir -p "$CACHE_DIR"
 
 # Function to print a styled header
@@ -39,6 +45,11 @@ print_info() {
     echo -e "${YELLOW}! $1${NC}"
 }
 
+# Function to print a warning message
+print_warning() {
+    echo -e "${YELLOW}! $1${NC}"
+}
+
 # Function to check if ansys_local.py exists
 check_ansys() {
     if [ ! -f "$ANSYS_LOCAL_PATH" ]; then
@@ -48,6 +59,23 @@ check_ansys() {
     fi
     print_success "Found ansys_local.py at $ANSYS_LOCAL_PATH"
     echo ""
+    return 0
+}
+
+# Function to check if Edge Config environment variables are set
+check_edge_config() {
+    if [ -z "$EDGE_CONFIG" ]; then
+        print_warning "EDGE_CONFIG not set. Falling back to local cache."
+        return 1
+    fi
+    
+    # Check if @vercel/edge-config is installed
+    if ! node -e "try { require('@vercel/edge-config'); } catch(e) { process.exit(1); }" &> /dev/null; then
+        print_warning "@vercel/edge-config package not found. Falling back to local cache."
+        return 1
+    }
+    
+    print_success "Using Vercel Edge Config for storage"
     return 0
 }
 
@@ -61,9 +89,38 @@ cache_articles() {
     
     # Get the already processed article IDs
     PROCESSED_IDS_FILE=$(mktemp)
-    if [ -f "$CACHE_DIR/processed_articles.json" ]; then
+    
+    # Try to get processed_articles.json from Edge Config first
+    if check_edge_config; then
+        print_info "Attempting to get processed articles from Edge Config"
+        node -e "
+        const { createClient } = require('@vercel/edge-config');
+        
+        async function getProcessedArticles() {
+            try {
+                const edgeConfig = createClient('$EDGE_CONFIG');
+                const data = await edgeConfig.get('articles/processed_articles.json');
+                if (data) {
+                    console.log(JSON.stringify(data));
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error('Error getting processed articles:', error.message);
+                return false;
+            }
+        }
+        getProcessedArticles();" > "$PROCESSED_IDS_FILE" 2>/dev/null || true
+        
+        if [ -s "$PROCESSED_IDS_FILE" ]; then
+            print_success "Retrieved processed articles from Edge Config"
+        else
+            echo '{"processed_ids":[]}' > "$PROCESSED_IDS_FILE"
+            print_info "Starting fresh with no processed articles"
+        fi
+    elif [ -f "$CACHE_DIR/processed_articles.json" ]; then
         cp "$CACHE_DIR/processed_articles.json" "$PROCESSED_IDS_FILE"
-        print_info "Using existing processed articles list"
+        print_info "Using existing processed articles list from local cache"
     else
         echo '{"processed_ids":[]}' > "$PROCESSED_IDS_FILE"
         print_info "Starting fresh with no processed articles"
@@ -72,8 +129,11 @@ cache_articles() {
     # Set environment variables for ansys_local.py
     export ANSYS_PROCESSED_IDS_FILE="$PROCESSED_IDS_FILE"
     export ANSYS_NO_SCORE=1
-    # Force using tw/local_cache directory
+    # Force using tw/local_cache directory for local files
     export CACHE_DIR="$CACHE_DIR"
+    # Set Edge Config environment variables
+    export EDGE_CONFIG="$EDGE_CONFIG_URL"
+    export USE_EDGE_CONFIG=1
     
     print_info "Starting article caching process (subjectizing only)..."
     
@@ -82,7 +142,44 @@ cache_articles() {
     
     # Check if caching was successful
     if [ $? -eq 0 ]; then
-        print_success "Articles cached and subjectized successfully in $CACHE_DIR"
+        print_success "Articles cached and subjectized successfully"
+        
+        # Upload the processed_ids file to Edge Config if available
+        if check_edge_config; then
+            print_info "Uploading processed articles file to Edge Config"
+            node -e "
+            const fs = require('fs');
+            const { createClient } = require('@vercel/edge-config');
+            
+            async function uploadProcessedArticles() {
+                try {
+                    const edgeConfig = createClient('$EDGE_CONFIG');
+                    const data = JSON.parse(fs.readFileSync('$PROCESSED_IDS_FILE', 'utf8'));
+                    
+                    // Get existing items to create patch
+                    const allItems = await edgeConfig.getAll();
+                    const patch = {
+                        ...allItems,
+                        'articles/processed_articles.json': data
+                    };
+                    
+                    await edgeConfig.patch(patch);
+                    console.log('Uploaded processed articles to Edge Config');
+                    return true;
+                } catch (error) {
+                    console.error('Error uploading processed articles:', error.message);
+                    return false;
+                }
+            }
+            uploadProcessedArticles();" >/dev/null 2>&1 || true
+            
+            # Also run the upload cache script to ensure all files are in Edge Config
+            print_info "Ensuring all cache files are in Edge Config..."
+            node "$SCRIPT_DIR/tools/edge-config-utils.js" upload-dir "$CACHE_DIR" "articles/" >/dev/null 2>&1 || true
+        else
+            # Fallback to local file
+            cp "$PROCESSED_IDS_FILE" "$CACHE_DIR/processed_articles.json"
+        fi
     else
         print_error "Error caching articles"
     fi
@@ -108,18 +205,50 @@ process_articles() {
     
     # Get the already processed article IDs
     PROCESSED_IDS_FILE=$(mktemp)
-    if [ -f "$CACHE_DIR/processed_articles.json" ]; then
+    
+    # Try to get processed_articles.json from Edge Config first
+    if check_edge_config; then
+        print_info "Attempting to get processed articles from Edge Config"
+        node -e "
+        const { createClient } = require('@vercel/edge-config');
+        
+        async function getProcessedArticles() {
+            try {
+                const edgeConfig = createClient('$EDGE_CONFIG');
+                const data = await edgeConfig.get('articles/processed_articles.json');
+                if (data) {
+                    console.log(JSON.stringify(data));
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error('Error getting processed articles:', error.message);
+                return false;
+            }
+        }
+        getProcessedArticles();" > "$PROCESSED_IDS_FILE" 2>/dev/null || true
+        
+        if [ -s "$PROCESSED_IDS_FILE" ]; then
+            print_success "Retrieved processed articles from Edge Config"
+        else
+            echo '{"processed_ids":[]}' > "$PROCESSED_IDS_FILE"
+            print_info "Starting fresh with no processed articles"
+        fi
+    elif [ -f "$CACHE_DIR/processed_articles.json" ]; then
         cp "$CACHE_DIR/processed_articles.json" "$PROCESSED_IDS_FILE"
-        print_info "Using existing processed articles list"
+        print_info "Using existing processed articles list from local cache"
     else
         echo '{"processed_ids":[]}' > "$PROCESSED_IDS_FILE"
         print_info "Starting fresh with no processed articles"
     fi
     
-    # Set environment variable for ansys_local.py
+    # Set environment variables for ansys_local.py
     export ANSYS_PROCESSED_IDS_FILE="$PROCESSED_IDS_FILE"
-    # Force using tw/local_cache directory
+    # Force using tw/local_cache directory for local fallback
     export CACHE_DIR="$CACHE_DIR"
+    # Set Edge Config environment variables
+    export EDGE_CONFIG="$EDGE_CONFIG_URL"
+    export USE_EDGE_CONFIG=1
     
     print_info "Starting article processing with interests: $INTERESTS"
     
@@ -130,8 +259,42 @@ process_articles() {
     if [ $? -eq 0 ]; then
         print_success "Articles processed successfully"
         
-        # Update the processed articles file from temp file
-        cp "$PROCESSED_IDS_FILE" "$CACHE_DIR/processed_articles.json"
+        # Upload the processed_ids file to Edge Config if available
+        if check_edge_config; then
+            print_info "Uploading processed articles file to Edge Config"
+            node -e "
+            const fs = require('fs');
+            const { createClient } = require('@vercel/edge-config');
+            
+            async function uploadProcessedArticles() {
+                try {
+                    const edgeConfig = createClient('$EDGE_CONFIG');
+                    const data = JSON.parse(fs.readFileSync('$PROCESSED_IDS_FILE', 'utf8'));
+                    
+                    // Get existing items to create patch
+                    const allItems = await edgeConfig.getAll();
+                    const patch = {
+                        ...allItems,
+                        'articles/processed_articles.json': data
+                    };
+                    
+                    await edgeConfig.patch(patch);
+                    console.log('Uploaded processed articles to Edge Config');
+                    return true;
+                } catch (error) {
+                    console.error('Error uploading processed articles:', error.message);
+                    return false;
+                }
+            }
+            uploadProcessedArticles();" >/dev/null 2>&1 || true
+            
+            # Also run the upload cache script to ensure all files are in Edge Config
+            print_info "Ensuring all cache files are in Edge Config..."
+            node "$SCRIPT_DIR/tools/edge-config-utils.js" upload-dir "$CACHE_DIR" "articles/" >/dev/null 2>&1 || true
+        else
+            # Fallback to local file
+            cp "$PROCESSED_IDS_FILE" "$CACHE_DIR/processed_articles.json"
+        fi
         
         # Check if we need to copy HTML files to public directory
         HTML_DIR="$SCRIPT_DIR/public/articles"
@@ -157,31 +320,88 @@ process_articles() {
 list_articles() {
     print_header "CACHED ARTICLES"
     
-    # Count the cached article summaries
-    SUMMARY_COUNT=$(find "$CACHE_DIR" -name "summary_*.json" | wc -l)
-    print_info "Found $SUMMARY_COUNT article summaries in cache"
-    
-    # Count the final articles
-    FINAL_COUNT=$(find "$CACHE_DIR" -name "final_article_*.json" | wc -l)
-    print_info "Found $FINAL_COUNT final articles in cache"
-    
-    if [ $FINAL_COUNT -eq 0 ]; then
-        print_info "No final articles found. You may need to process articles first."
-        return 0
+    if check_edge_config; then
+        print_info "Listing articles from Edge Config"
+        node -e "
+        const { createClient } = require('@vercel/edge-config');
+        
+        async function listArticles() {
+            try {
+                const edgeConfig = createClient('$EDGE_CONFIG');
+                const allItems = await edgeConfig.getAll();
+                
+                // Filter keys that start with the article prefix
+                const articleKeys = Object.keys(allItems).filter(key => 
+                    key.startsWith('articles/final_article_')
+                );
+                
+                console.log(`Found ${articleKeys.length} articles in Edge Config`);
+                
+                if (articleKeys.length === 0) {
+                    console.log('No articles found. You may need to process articles first.');
+                    return;
+                }
+                
+                console.log('\nFinal Articles:');
+                console.log('----------------');
+                
+                // Sort keys (newest first based on timestamp in the path)
+                articleKeys.sort((a, b) => b.localeCompare(a));
+                
+                // Display articles
+                for (let i = 0; i < articleKeys.length; i++) {
+                    const key = articleKeys[i];
+                    const id = key.replace('articles/final_article_', '').replace('.json', '');
+                    const data = allItems[key];
+                    
+                    try {
+                        // Extract title from content
+                        let title = 'Unknown Title';
+                        if (data.content) {
+                            const lines = data.content.split('\\n');
+                            if (lines[0]) {
+                                title = lines[0].startsWith('# ') ? lines[0].substring(2) : lines[0];
+                            }
+                        }
+                        
+                        console.log(`${i+1}. ${title} (${id})`);
+                    } catch (error) {
+                        console.log(`${i+1}. Error parsing article ${id}: ${error.message}`);
+                    }
+                }
+            } catch (error) {
+                console.error('Error listing articles:', error.message);
+            }
+        }
+        listArticles();" || true
+    else
+        # Fallback to local listing
+        # Count the cached article summaries
+        SUMMARY_COUNT=$(find "$CACHE_DIR" -name "summary_*.json" | wc -l)
+        print_info "Found $SUMMARY_COUNT article summaries in local cache"
+        
+        # Count the final articles
+        FINAL_COUNT=$(find "$CACHE_DIR" -name "final_article_*.json" | wc -l)
+        print_info "Found $FINAL_COUNT final articles in local cache"
+        
+        if [ $FINAL_COUNT -eq 0 ]; then
+            print_info "No final articles found. You may need to process articles first."
+            return 0
+        fi
+        
+        echo ""
+        echo "Final Articles:"
+        echo "----------------"
+        
+        # Extract and display article titles from final article files
+        ARTICLE_NUMBER=1
+        for ARTICLE_FILE in $(find "$CACHE_DIR" -name "final_article_*.json" | sort); do
+            TITLE=$(grep -m 1 "^# " "$ARTICLE_FILE" | sed 's/^# //' || echo "Unknown Title")
+            ID=$(basename "$ARTICLE_FILE" | sed 's/final_article_//' | sed 's/\.json//')
+            echo "$ARTICLE_NUMBER. $TITLE ($ID)"
+            ARTICLE_NUMBER=$((ARTICLE_NUMBER + 1))
+        done
     fi
-    
-    echo ""
-    echo "Final Articles:"
-    echo "----------------"
-    
-    # Extract and display article titles from final article files
-    ARTICLE_NUMBER=1
-    for ARTICLE_FILE in $(find "$CACHE_DIR" -name "final_article_*.json" | sort); do
-        TITLE=$(grep -m 1 "^# " "$ARTICLE_FILE" | sed 's/^# //' || echo "Unknown Title")
-        ID=$(basename "$ARTICLE_FILE" | sed 's/final_article_//' | sed 's/\.json//')
-        echo "$ARTICLE_NUMBER. $TITLE ($ID)"
-        ARTICLE_NUMBER=$((ARTICLE_NUMBER + 1))
-    done
 }
 
 # Function to display help
@@ -198,11 +418,14 @@ show_help() {
     echo "  $0 cache                                # Cache and subjectize articles only"
     echo "  $0 process \"technology, AI, science\"    # Process articles with interests"
     echo "  $0 list                                 # List all cached articles"
-    echo ""
-    echo "Note: All files are stored in ${CACHE_DIR}"
 }
 
 # Main script execution
+if [ $# -eq 0 ]; then
+    show_help
+    exit 0
+fi
+
 case "$1" in
     cache)
         cache_articles
@@ -213,14 +436,12 @@ case "$1" in
     list)
         list_articles
         ;;
-    help|--help|-h)
+    help)
         show_help
         ;;
     *)
-        print_error "Unknown command: $1"
+        echo "Unknown command: $1"
         show_help
         exit 1
         ;;
-esac
-
-exit 0 
+esac 
