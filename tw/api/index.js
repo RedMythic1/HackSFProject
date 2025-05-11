@@ -492,7 +492,7 @@ app.post('/api/sync-cache', async (req, res) => {
 });
 
 // Route: Get cached file
-app.get('/api/get-cached-file', (req, res) => {
+app.get('/api/get-cached-file', async (req, res) => {
   try {
     const { file } = req.query;
     
@@ -500,7 +500,39 @@ app.get('/api/get-cached-file', (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Missing file parameter' });
     }
     
-    // Try local cache first, then main cache
+    // Convert file path to blob key
+    const blobKey = getBlobKeyFromPath(file);
+    console.log(`Looking for cached file in blob storage: ${blobKey}`);
+    
+    // Try to get from blob storage first
+    try {
+      const blob = await get(blobKey);
+      if (blob) {
+        const content = await blob.text();
+        console.log(`Retrieved file from blob storage: ${blobKey}`);
+        
+        try {
+          // Try to parse as JSON
+          const data = JSON.parse(content);
+          return res.json({
+            status: 'success',
+            data,
+            source: 'blob'
+          });
+        } catch (jsonError) {
+          // Return as text if not valid JSON
+          return res.json({
+            status: 'success',
+            data: content,
+            source: 'blob'
+          });
+        }
+      }
+    } catch (blobError) {
+      console.warn(`Error reading from blob storage: ${blobError.message}`);
+    }
+    
+    // Fallback to local cache if blob storage failed
     let filePath = path.join('/tmp', file);
     let source = 'local';
     
@@ -513,7 +545,7 @@ app.get('/api/get-cached-file', (req, res) => {
       }
     }
     
-    // Read the file
+    // Read the file from local filesystem
     const fileContent = fs.readFileSync(filePath, 'utf-8');
     
     try {
@@ -755,6 +787,53 @@ app.post('/api/analyze-interests', async (req, res) => {
     return res.json(result);
   } catch (error) {
     console.error('Error analyzing interests:', error);
+    return res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// Route: Upload to blob storage
+app.post('/api/upload-blob', async (req, res) => {
+  try {
+    // Validate request
+    const { blobKey, data, contentType = 'application/json' } = req.body;
+
+    if (!blobKey) {
+      return res.status(400).json({ status: 'error', message: 'Missing blobKey parameter' });
+    }
+
+    if (!data) {
+      return res.status(400).json({ status: 'error', message: 'Missing data parameter' });
+    }
+
+    // Check authorization
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Missing or invalid token' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (token !== process.env.BLOB_READ_WRITE_TOKEN) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid token' });
+    }
+
+    console.log(`Uploading to Blob Storage: ${blobKey}`);
+    
+    // Upload to Vercel Blob Storage
+    const content = typeof data === 'string' ? data : JSON.stringify(data);
+    const { url } = await put(blobKey, content, { 
+      access: 'public',
+      contentType
+    });
+    
+    console.log(`Successfully uploaded to Blob Storage: ${url}`);
+    
+    return res.json({
+      status: 'success',
+      url,
+      blobKey
+    });
+  } catch (error) {
+    console.error('Error uploading to blob storage:', error);
     return res.status(500).json({ status: 'error', message: error.message });
   }
 });

@@ -334,139 +334,97 @@ function getDemoArticleDetail(id) {
 // --- API Endpoints Implementation ---
 
 /**
- * Process articles endpoint implementation
+ * Process articles endpoint
  * @param {Object} query - Query parameters
- * @returns {Object} Response object with articles
+ * @returns {Array} Array of articles
  */
 async function process_articles_endpoint(query) {
   try {
-    // Check if we have cached articles in memory
-    if (MEMORY_CACHE.articles.length > 0) {
-      console.log(`Returning ${MEMORY_CACHE.articles.length} articles from memory cache`);
-      return MEMORY_CACHE.articles;
-    }
+    console.log("Processing articles endpoint with query:", query);
     
-    // Try to find articles in storage
-    console.log(`Looking for articles in storage`);
+    // First try to get articles from blob storage
+    console.log("Looking for cached articles in blob storage");
+    const finalArticleFiles = await listBlobFiles('final_article_*.json');
+    console.log(`Found ${finalArticleFiles.length} final article files in blob storage`);
     
-    let finalArticles = [];
-    let localFinalArticles = [];
-    
-    try {
-      if (isVercel) {
-        // For Vercel, use blob storage
-        finalArticles = await listBlobFiles('final_article_*.json');
-      } else {
-        // For local environment, use filesystem
-        if (fs.existsSync(CACHE_DIR)) {
-          finalArticles = glob.sync(`${CACHE_DIR}/final_article_*.json`);
-          console.log(`Found ${finalArticles.length} articles in CACHE_DIR`);
-        }
-        
-        if (fs.existsSync(LOCAL_CACHE_DIR)) {
-          // Use safe directory reading that won't crash on Vercel
-          try {
-            const files = fs.readdirSync(LOCAL_CACHE_DIR);
-            const articleFiles = files.filter(file => file.startsWith('final_article_') && file.endsWith('.json'));
-            localFinalArticles = articleFiles.map(file => path.join(LOCAL_CACHE_DIR, file));
-            console.log(`Found ${localFinalArticles.length} articles in LOCAL_CACHE_DIR`);
-          } catch (dirError) {
-            console.warn(`Error reading from LOCAL_CACHE_DIR: ${dirError.message}`);
+    if (finalArticleFiles.length > 0) {
+      // We have cached articles, process them
+      console.log(`Processing ${finalArticleFiles.length} articles from blob storage`);
+      
+      const articles = [];
+      for (const filePath of finalArticleFiles.slice(0, 20)) { // Limit to 20 articles for performance
+        try {
+          // Load article data from blob storage
+          const articleData = await safeReadFile(filePath);
+          if (!articleData) {
+            console.warn(`Skipping article ${filePath} - could not read file`);
+            continue;
           }
-        }
-      }
-    } catch (error) {
-      console.warn(`Error searching for articles: ${error.message}`);
-    }
-    
-    const allFinalArticles = [...finalArticles, ...localFinalArticles];
-    console.log(`Total articles found: ${allFinalArticles.length}`);
-    
-    // If no articles found in storage, return demo data
-    if (allFinalArticles.length === 0) {
-      console.log("No articles found in storage, using demo data");
-      const demoArticles = generateDemoArticles();
-      MEMORY_CACHE.articles = demoArticles; // Cache for future requests
-      return demoArticles;
-    }
-    
-    // Extract and load article data
-    const articleData = [];
-    const uniqueTitles = new Set();
-    
-    for (const articlePath of allFinalArticles) {
-      try {
-        // Use our safe file reading function
-        const data = await safeReadFile(articlePath, null);
-        if (!data) {
-          continue; // Skip if file couldn't be read
-        }
-        
-        // Extract filename and article ID
-        const filename = path.basename(articlePath);
-        const articleId = filename.replace('final_article_', '').replace('.json', '');
-        
-        // Get the first line as the title
-        const content = data.content || '';
-        if (!content) {
-          continue;
-        }
-        
-        const lines = content.split('\n');
-        let title = lines.length > 0 ? lines[0] : 'Unknown Title';
-        if (title.startsWith('# ')) {
-          title = title.substring(2); // Remove Markdown heading marker
-        }
-        
-        // Normalize title
-        title = normalizeArticleTitle(title);
-        
-        // Create a subject (keywords or summary extract)
-        let subject = data.keywords || '';
-        if (!subject && content) {
-          // Extract a short snippet from content if no keywords
-          const contentWithoutTitle = content.replace(lines[0], '').trim();
-          const contentLines = contentWithoutTitle.split('\n');
-          for (const line of contentLines) {
-            if (line && !line.startsWith('#') && line.length > 10) {
-              subject = line.length > 100 ? line.substring(0, 100) + '...' : line;
-              break;
+          
+          const filename = path.basename(filePath);
+          const id = filename.replace('final_article_', '').replace('.json', '');
+          
+          // Extract title from content
+          let title = 'Untitled Article';
+          let summary = '';
+          let subject = '';
+          
+          if (articleData.content) {
+            // Extract title (first line with # prefix)
+            const contentLines = articleData.content.split('\n');
+            if (contentLines[0] && contentLines[0].startsWith('# ')) {
+              title = contentLines[0].substring(2);
+            }
+            
+            // Try to extract summary from first few paragraphs
+            const paragraphs = articleData.content.split('\n\n').filter(p => p.trim() && !p.startsWith('#'));
+            if (paragraphs.length > 0) {
+              summary = paragraphs[0];
+              if (paragraphs.length > 1) {
+                summary += '\n\n' + paragraphs[1];
+              }
+            }
+            
+            // Try to extract subject from content
+            const subjectMatch = articleData.content.match(/##\s+(.+?)\n/);
+            if (subjectMatch) {
+              subject = subjectMatch[1].replace(/subject|topic|about|:/gi, '').trim();
+            } else {
+              // Fallback to using part of the title
+              subject = title.split(':')[0];
             }
           }
-        }
-        
-        if (!uniqueTitles.has(title)) {
-          uniqueTitles.add(title);
-          articleData.push({
-            id: articleId,
-            title: title,
-            subject: subject,
-            score: 0, // Scores will be calculated on the frontend
-            timestamp: data.timestamp || Date.now(),
-            link: `https://news.ycombinator.com/item?id=${articleId}`
+          
+          articles.push({
+            id,
+            title,
+            link: `article/${id}`,
+            summary: summary || 'No summary available',
+            subject: subject || 'General',
+            score: 0 // Will be scored by frontend
           });
+        } catch (error) {
+          console.error(`Error processing article ${filePath}:`, error);
         }
-      } catch (error) {
-        console.error(`Error loading article ${articlePath}: ${error}`);
       }
+      
+      // Sort by ID (most recent first, assuming ID includes timestamp)
+      articles.sort((a, b) => {
+        const idA = a.id.split('_')[0];
+        const idB = b.id.split('_')[0];
+        return idB.localeCompare(idA);
+      });
+      
+      console.log(`Returning ${articles.length} processed articles from blob storage`);
+      return articles;
     }
     
-    // Sort by timestamp (newest first)
-    articleData.sort((a, b) => b.timestamp - a.timestamp);
-    
-    console.log(`Processed ${articleData.length} unique articles`);
-    
-    // Cache in memory for future requests
-    MEMORY_CACHE.articles = articleData;
-    
-    return articleData;
+    // If no blob storage articles, use demo data
+    console.log("No articles in blob storage, returning demo articles");
+    return generateDemoArticles();
   } catch (error) {
-    console.error(`Error getting articles: ${error}`);
-    
-    // Return demo data as fallback
-    const demoArticles = generateDemoArticles();
-    MEMORY_CACHE.articles = demoArticles;
-    return demoArticles;
+    console.error(`Error in process_articles_endpoint: ${error}`);
+    return generateDemoArticles();
   }
 }
 
@@ -529,82 +487,70 @@ async function get_homepage_articles_endpoint() {
 }
 
 /**
- * Get a specific article by ID
- * @param {string} articleId - The article ID to retrieve
- * @returns {Object} Article data or error
+ * Get article endpoint
+ * @param {string} articleId - Article ID
+ * @returns {Object} Response with article data
  */
 async function get_article_endpoint(articleId) {
   try {
-    console.log(`get_article_endpoint: Retrieving article ${articleId}`);
-    
-    // In case articleId contains a blob path (for backward compatibility)
-    if (typeof articleId === 'string' && articleId.includes('/')) {
-      articleId = path.basename(articleId)
-        .replace('final_article_', '')
-        .replace('.json', '');
-    }
-    
-    // Try to get from blob storage directly - use the proper blob key, not a local path
-    const blobKey = `${BLOB_ARTICLE_PREFIX}${articleId}.json`;
-    console.log(`Looking for article in blob storage with key: ${blobKey}`);
-    
-    try {
-      // First check if the blob exists using head
-      const blobMetadata = await head(blobKey);
-      
-      if (blobMetadata) {
-        console.log(`Article found in blob storage: ${blobKey}`);
-        // If the blob exists, fetch its content with a regular fetch
-        const response = await fetch(blobMetadata.url);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch blob content: ${response.status}`);
-        }
-        
-        const content = await response.text();
-        const article = JSON.parse(content);
-        
-        // Process the article data
-        const processedArticle = processArticleData(article, articleId);
-        
-        return {
-          status: 'success',
-          method: 'blob',
-          article: processedArticle
-        };
-      } else {
-        console.log(`Article not found in blob storage: ${blobKey}`);
-      }
-    } catch (blobError) {
-      console.warn(`Error accessing blob storage: ${blobError.message}`);
-    }
-    
-    // Try to fallback to demo articles
-    const demoArticle = getDemoArticleDetail(articleId);
-    if (demoArticle) {
-      console.log(`Returning demo article for id: ${articleId}`);
-      return {
-        status: 'success',
-        method: 'demo',
-        article: {
-          id: articleId,
-          title: demoArticle.title,
-          link: demoArticle.link,
-          summary: demoArticle.summary,
-          content: `# ${demoArticle.title}\n\n${demoArticle.summary}\n\nThis is a demo article provided as a fallback.`,
-          timestamp: Date.now()
-        }
+    if (!articleId) {
+      return { 
+        status: 'error', 
+        message: 'Article ID is required' 
       };
     }
     
-    return {
-      status: 'error',
-      message: `Article ${articleId} not found`
-    };
+    console.log(`Getting article details for: ${articleId}`);
+    
+    // Search for this article in blob storage
+    const blobFiles = await listBlobFiles(`final_article_*${articleId}*.json`);
+    console.log(`Found ${blobFiles.length} matching blob files for article ID: ${articleId}`);
+    
+    if (blobFiles.length === 0) {
+      // If not found directly, try listing all articles and finding by ID
+      const allBlobFiles = await listBlobFiles('final_article_*.json');
+      console.log(`Searching through ${allBlobFiles.length} total articles for ID: ${articleId}`);
+      
+      for (const filePath of allBlobFiles) {
+        const filename = path.basename(filePath);
+        // Check if the filename contains this ID
+        if (filename.includes(articleId)) {
+          blobFiles.push(filePath);
+          console.log(`Found matching article in broader search: ${filename}`);
+          break;
+        }
+      }
+    }
+    
+    // If we found a matching file, read and process it
+    if (blobFiles.length > 0) {
+      // Use the first matching file
+      const articlePath = blobFiles[0];
+      console.log(`Reading article data from: ${articlePath}`);
+      
+      // Read blob data
+      const articleData = await safeReadFile(articlePath);
+      
+      if (!articleData) {
+        console.error(`Failed to read article data from: ${articlePath}`);
+        return { 
+          status: 'error', 
+          message: 'Failed to read article data' 
+        };
+      }
+      
+      // Process the article data
+      return processArticleData(articleData, articleId);
+    }
+    
+    // If no article found in blob storage, return demo data
+    console.log(`Article not found in storage, using demo data for: ${articleId}`);
+    return getDemoArticleDetail(articleId);
   } catch (error) {
-    console.error(`Error retrieving article ${articleId}:`, error);
-    return {
-      status: 'error',
-      message: `Failed to retrieve article: ${error.message}`
+    console.error(`Error getting article ${articleId}:`, error);
+    return { 
+      status: 'error', 
+      message: error.message || 'Internal server error' 
     };
   }
 }
@@ -626,7 +572,7 @@ function processArticleData(articleData, articleId) {
     const lines = content.split('\n');
     if (lines.length > 0) {
       if (lines[0].startsWith('# ')) {
-        title = lines[0].substring(2).trim();
+        title = lines[0].substring(2);
       } else {
         title = lines[0].trim();
       }
@@ -655,40 +601,123 @@ function processArticleData(articleData, articleId) {
  * @param {string} interests - Comma-separated user interests
  * @returns {Object} Response object with recommendations
  */
-function analyze_interests_endpoint(interests) {
+async function analyze_interests_endpoint(interests) {
   try {
+    console.log(`Analyzing interests: ${interests}`);
+    
     if (!interests) {
-      return {
-        status: "error",
-        message: "No interests provided"
+      console.error("No interests provided for analysis");
+      return { 
+        status: 'error', 
+        message: 'No interests provided' 
       };
     }
     
-    console.log(`Analyzing interests: ${interests}`);
+    // Get all final articles from blob storage
+    console.log("Fetching articles from Vercel Blob Storage");
+    const finalArticleFiles = await listBlobFiles('final_article_*.json');
+    console.log(`Found ${finalArticleFiles.length} final article files in blob storage`);
     
-    // Generate demo recommendations based on interests
-    const interestsList = interests.split(',').map(i => i.trim().toLowerCase());
-    const demoArticles = generateDemoArticles();
+    if (finalArticleFiles.length === 0) {
+      return {
+        status: 'success',
+        articles: []
+      };
+    }
     
-    // Simple scoring based on keyword matching
-    demoArticles.forEach(article => {
-      let score = 50; // Base score
-      interestsList.forEach(interest => {
-        if (article.title.toLowerCase().includes(interest) || 
-            article.subject.toLowerCase().includes(interest)) {
-          score += 10;
+    // Process each article
+    const articles = [];
+    for (const filePath of finalArticleFiles) {
+      try {
+        // Load article data from blob storage
+        const articleData = await safeReadFile(filePath);
+        if (!articleData) {
+          console.warn(`Skipping article ${filePath} - could not read file`);
+          continue;
         }
-      });
-      article.score = Math.min(score, 100); // Cap at 100
-    });
+        
+        const filename = path.basename(filePath);
+        const id = filename.replace('final_article_', '').replace('.json', '');
+        
+        // Extract title and content from article data
+        let title = 'Untitled Article';
+        let subject = '';
+        
+        if (articleData.content) {
+          // Extract title from markdown content (the first line starting with # )
+          const contentLines = articleData.content.split('\n');
+          if (contentLines[0] && contentLines[0].startsWith('# ')) {
+            title = contentLines[0].substring(2);
+          }
+          
+          // Try to extract a subject by looking for certain patterns in the content
+          // First, try to find a line starting with "## " that mentions "subject" or "topic"
+          const subjectLinePattern = contentLines.find(line => 
+            (line.startsWith('## ') && 
+             (line.toLowerCase().includes('subject') || line.toLowerCase().includes('topic')))
+          );
+          
+          if (subjectLinePattern) {
+            subject = subjectLinePattern.replace(/^## /, '');
+          } else {
+            // If no explicit subject/topic heading, try to find a sentence mentioning "subject is" or "topic is"
+            const subjectMentionPattern = /(?:subject|topic)\s+(?:is|was|about)?\s+["']?([^"'.]+)["']?/i;
+            const fullContent = articleData.content;
+            const subjectMatch = fullContent.match(subjectMentionPattern);
+            
+            if (subjectMatch && subjectMatch[1]) {
+              subject = subjectMatch[1].trim();
+            } else {
+              // Fallback: just use the first part of the title
+              subject = title.split(':')[0];
+            }
+          }
+        }
+        
+        // Calculate a simple score based on text matching between interests and subject/title
+        // This is a basic fallback since we no longer use Python for vectorization
+        const interestTerms = interests.toLowerCase().split(/[,\s]+/).filter(term => term.length > 2);
+        const articleText = `${title} ${subject}`.toLowerCase();
+        
+        let matchScore = 50; // Base score
+        
+        // Simple scoring based on term matching
+        interestTerms.forEach(term => {
+          if (articleText.includes(term)) {
+            matchScore += 10;
+          }
+        });
+        
+        // Cap at 100
+        matchScore = Math.min(100, matchScore);
+        
+        articles.push({
+          id,
+          title,
+          subject,
+          score: matchScore,
+          filename
+        });
+      } catch (error) {
+        console.error(`Error processing article ${filePath}:`, error);
+      }
+    }
     
-    // Sort by score
-    demoArticles.sort((a, b) => b.score - a.score);
+    // Sort by score (highest first)
+    articles.sort((a, b) => b.score - a.score);
     
-    return demoArticles;
+    console.log(`Processed ${articles.length} articles, returning top scores`);
+    
+    return {
+      status: 'success',
+      articles
+    };
   } catch (error) {
-    console.error(`Error in analyze_interests: ${error}`);
-    return generateDemoArticles();
+    console.error('Error analyzing interests:', error);
+    return { 
+      status: 'error', 
+      message: error.message 
+    };
   }
 }
 

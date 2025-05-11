@@ -11,6 +11,20 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}=== Starting Services ===${NC}"
 
+# Set up environment variables for Vercel Blob Storage
+if [ -f ".env" ]; then
+  echo -e "${BLUE}Loading environment variables from .env file...${NC}"
+  export $(grep -v '^#' .env | xargs)
+else
+  echo -e "${YELLOW}No .env file found, setting default Vercel Blob Storage variables...${NC}"
+  export BLOB_READ_WRITE_TOKEN="vercel_blob_rw_MzCMzRmJaiRlp3km_L5RVXS9InB9rTT1Aov2ZI4kzQFoT5S"
+  export BLOB_URL="https://mzcmzrmjairlp3km.public.blob.vercel-storage.com"
+fi
+
+echo -e "${GREEN}Vercel Blob Storage configured:${NC}"
+echo -e "${GREEN}- BLOB_URL: ${BLOB_URL}${NC}"
+echo -e "${GREEN}- BLOB_READ_WRITE_TOKEN: [Secret]${NC}"
+
 # Check for required dependencies
 check_dependency() {
   if ! command -v $1 &> /dev/null; then
@@ -39,7 +53,8 @@ start_backend() {
 # Function to start the frontend
 start_frontend() {
   echo -e "${GREEN}Starting frontend webpack development server...${NC}"
-  npm start &
+  # Pass the environment variables to the frontend process
+  BLOB_READ_WRITE_TOKEN="${BLOB_READ_WRITE_TOKEN}" BLOB_URL="${BLOB_URL}" npm start &
   FRONTEND_PID=$!
   echo -e "${GREEN}Frontend server started with PID: ${FRONTEND_PID}${NC}"
 }
@@ -69,6 +84,7 @@ start_frontend
 echo -e "${BLUE}All services started. Press Ctrl+C to stop.${NC}"
 echo -e "${BLUE}Backend server: http://localhost:5001${NC}"
 echo -e "${BLUE}Frontend server: http://localhost:3000${NC}"
+echo -e "${BLUE}Using Vercel Blob Storage: ${BLOB_URL}${NC}"
 
 # Keep the script running to hold the processes
 while true; do
