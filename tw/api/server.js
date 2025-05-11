@@ -611,56 +611,90 @@ async function get_article_endpoint(articleId) {
     
     console.log(`Getting article details for: ${articleId}`);
     
-    // Search for this article in blob storage
-    const blobFiles = [
+    // First try exact match
+    const exactBlobFiles = [
+      ...(await listBlobFiles(`final_article_${articleId}.json`)),
+      ...(await listBlobFiles(`final_article_${articleId}.html`))
+    ];
+    
+    if (exactBlobFiles.length > 0) {
+      console.log(`Found exact match for article ID: ${articleId}`);
+      const articlePath = exactBlobFiles[0];
+      const articleData = await safeReadFile(articlePath);
+      
+      if (articleData) {
+        console.log(`Successfully loaded article data from: ${articlePath}`);
+        return processArticleData(articleData, articleId);
+      }
+    }
+    
+    // Try partial match if exact match fails
+    console.log(`No exact match found, trying partial match for: ${articleId}`);
+    const partialBlobFiles = [
       ...(await listBlobFiles(`final_article_*${articleId}*.json`)),
       ...(await listBlobFiles(`final_article_*${articleId}*.html`))
     ];
-    console.log(`Found ${blobFiles.length} matching blob files for article ID: ${articleId}`);
+    console.log(`Found ${partialBlobFiles.length} potential matching blob files for article ID: ${articleId}`);
     
-    if (blobFiles.length === 0) {
-      // If not found directly, try listing all articles and finding by ID
+    if (partialBlobFiles.length === 0) {
+      // If still no matches, list all articles and check each one
+      console.log(`No partial matches, checking all articles for ID: ${articleId}`);
       const allBlobFiles = [
         ...(await listBlobFiles('final_article_*.json')),
         ...(await listBlobFiles('final_article_*.html'))
       ];
       console.log(`Searching through ${allBlobFiles.length} total articles for ID: ${articleId}`);
       
-      for (const filePath of allBlobFiles) {
-        const filename = path.basename(filePath);
-        // Check if the filename contains this ID
-        if (filename.includes(articleId)) {
-          blobFiles.push(filePath);
-          console.log(`Found matching article in broader search: ${filename}`);
-          break;
+      // Check if any filename contains this ID (case insensitive)
+      const lowercaseId = articleId.toLowerCase();
+      const matchingFiles = allBlobFiles.filter(filePath => {
+        const filename = path.basename(filePath).toLowerCase();
+        return filename.includes(lowercaseId);
+      });
+      
+      if (matchingFiles.length > 0) {
+        console.log(`Found ${matchingFiles.length} matching articles by filename search`);
+        const articlePath = matchingFiles[0];
+        console.log(`Using first match: ${articlePath}`);
+        
+        // Read blob data
+        const articleData = await safeReadFile(articlePath);
+        
+        if (articleData) {
+          console.log(`Successfully loaded article data from: ${articlePath}`);
+          return processArticleData(articleData, articleId);
         }
       }
-    }
-    
-    // If we found a matching file, read and process it
-    if (blobFiles.length > 0) {
-      // Use the first matching file
-      const articlePath = blobFiles[0];
-      console.log(`Reading article data from: ${articlePath}`);
+      
+      // Log all available articles for debugging
+      console.log('Available articles:');
+      allBlobFiles.forEach((file, index) => {
+        console.log(`${index + 1}. ${path.basename(file)}`);
+      });
+    } else {
+      // Use the first matching file from partial match
+      const articlePath = partialBlobFiles[0];
+      console.log(`Using partial match: ${articlePath}`);
       
       // Read blob data
       const articleData = await safeReadFile(articlePath);
       
-      if (!articleData) {
+      if (articleData) {
+        console.log(`Successfully loaded article data from: ${articlePath}`);
+        return processArticleData(articleData, articleId);
+      } else {
         console.error(`Failed to read article data from: ${articlePath}`);
-        return { 
-          status: 'error', 
-          message: 'Failed to read article data' 
-        };
       }
-      
-      // Process the article data
-      return processArticleData(articleData, articleId);
     }
     
-    // If no article found in blob storage, return demo data
-    console.log(`Article not found in storage, using demo data for: ${articleId}`);
-    return getDemoArticleDetail(articleId);
+    // If no article found in blob storage or couldn't read data, try demo data
+    console.log(`Article not found in storage, checking demo data for: ${articleId}`);
+    const demoResult = getDemoArticleDetail(articleId);
+    
+    return {
+      status: "success",
+      article: demoResult
+    };
   } catch (error) {
     console.error(`Error getting article ${articleId}:`, error);
     return { 

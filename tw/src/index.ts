@@ -50,6 +50,7 @@ interface Article {
     link: string;
     subject: string;
     score: number;
+    summary?: string;
 }
 
 interface ArticleDetail {
@@ -327,50 +328,51 @@ class AppController {
     
     private async loadArticles(interests?: string): Promise<void> {
         if (!this.articlesContainer) return;
-        
-        this.articlesContainer.innerHTML = '<div class="loading">Loading articles...</div>';
-        
+
         try {
-            console.log("Fetching articles from API...");
+            console.log(`Loading articles with interests: ${interests || 'none'}`);
+            
+            // Show loading message
+            this.articlesContainer.innerHTML = '<div class="loading">Loading articles...</div>';
+            
+            // Fetch articles from API
             const articles = await this.apiService.getArticles(interests);
             
-            console.log(`Received ${articles.length} articles from API`);
-            
             if (articles.length === 0) {
-                this.articlesContainer.innerHTML = '<div class="error">No articles found</div>';
+                this.articlesContainer.innerHTML = '<div class="message">No articles found. Please try with different interests.</div>';
                 return;
             }
             
-            // Initialize model if not already done
-            if (!embeddingModel) {
-                console.log("Initializing embedding model for scoring...");
-                await initEmbeddingModel();
+            console.log(`Fetched ${articles.length} articles, now scoring based on interests: ${interests || 'none'}`);
+            
+            // Score articles if we have interests
+            let scoredArticles = [...articles];
+            
+            if (interests && interests.trim()) {
+                // Use the interests to score each article
+                console.log('Scoring articles using vector similarity...');
+                
+                const scoringPromises = articles.map(article => scoreArticle(article, interests));
+                const scores = await Promise.all(scoringPromises);
+                
+                // Apply the scores to the articles
+                scoredArticles = articles.map((article, index) => ({
+                    ...article,
+                    score: Math.round(scores[index])
+                }));
+                
+                console.log('Article scoring complete. Score range:', 
+                    Math.min(...scores).toFixed(1), 'to', 
+                    Math.max(...scores).toFixed(1));
+            } else {
+                // No interests provided, use default scoring
+                console.log('No interests provided, using default scoring');
+                scoredArticles = articles.map(article => ({
+                    ...article,
+                    score: article.score || Math.floor(Math.random() * 30) + 70 // Random score between 70-99 if none provided
+                }));
             }
             
-            // Log the articles we received
-            console.log("Articles to score:", articles.map(a => ({
-                title: a.title, 
-                score: a.score,
-                link: a.link
-            })));
-            
-            // Score articles based on user interests
-            const userInterests = interests || '';
-            console.log(`Scoring articles based on interests: "${userInterests}"`);
-            
-            const scoringPromises = articles.map(async (article) => {
-                // Always score articles on the frontend
-                console.log(`Scoring article: "${article.title}"`);
-                const newScore = await scoreArticle(article, userInterests);
-                console.log(`Article "${article.title}" scored: ${newScore}`);
-                return {
-                    ...article,
-                    score: newScore
-                };
-            });
-            
-            // Wait for all scoring to complete
-            const scoredArticles = await Promise.all(scoringPromises);
             console.log(`Scored ${scoredArticles.length} articles`);
             
             // Sort by score (highest first)
@@ -392,7 +394,7 @@ class AppController {
         
         articles.forEach(article => {
             // Extract article ID from link
-            const articleId = article.link.split('id=')[1] || '';
+            const articleId = article.link.split('id=')[1] || article.link.split('/').pop() || '';
             console.log(`Rendering article: "${article.title}" (ID: ${articleId})`);
             
             const articleCard = document.createElement('div');
@@ -404,6 +406,10 @@ class AppController {
                 </div>
                 <div class="article-body">
                     <div class="article-subject">${this.escapeHtml(article.subject)}</div>
+                    <div class="article-introduction">
+                        <h4>Introduction</h4>
+                        <p>${this.truncateText(article.summary || 'No introduction available', 100)}</p>
+                    </div>
                     <a href="/article/${articleId}" class="article-link" data-article-id="${articleId}">Read more</a>
                 </div>
             `;
@@ -427,7 +433,6 @@ class AppController {
         debugInfo.textContent = `Displaying ${articles.length} articles`;
         debugInfo.style.marginTop = '20px';
         debugInfo.style.fontSize = '12px';
-        debugInfo.style.color = '#666';
         this.articlesContainer.appendChild(debugInfo);
     }
     
@@ -500,8 +505,31 @@ class AppController {
     }
     
     private handleInterestsSubmit(): void {
-        const interests = this.interestsInput?.value || '';
-        this.loadArticles(interests);
+        if (!this.interestsInput) return;
+        
+        const interests = this.interestsInput.value.trim();
+        console.log(`Interests submitted: "${interests}"`);
+        
+        // Disable the button during loading
+        if (this.submitButton) {
+            this.submitButton.setAttribute('disabled', 'true');
+            this.submitButton.textContent = 'Loading...';
+        }
+        
+        // Show loading indicator in articles container
+        if (this.articlesContainer) {
+            this.articlesContainer.innerHTML = '<div class="loading">Scoring articles based on your interests...</div>';
+        }
+        
+        // Load articles with interests
+        this.loadArticles(interests)
+            .finally(() => {
+                // Re-enable the button when done
+                if (this.submitButton) {
+                    this.submitButton.removeAttribute('disabled');
+                    this.submitButton.textContent = 'Update Interests';
+                }
+            });
     }
     
     private formatSummary(summary: string): string {
@@ -520,6 +548,13 @@ class AppController {
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
+    }
+    
+    // Helper to truncate text with ellipsis
+    private truncateText(text: string, maxLength: number): string {
+        if (!text) return '';
+        if (text.length <= maxLength) return this.escapeHtml(text);
+        return this.escapeHtml(text.substring(0, maxLength)) + '...';
     }
 }
 
