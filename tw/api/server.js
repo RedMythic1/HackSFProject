@@ -178,8 +178,24 @@ async function listBlobFiles(pattern) {
     const { blobs } = await list({ prefix });
     console.log(`Found ${blobs.length} blobs with prefix ${prefix}`);
     
+    // Process each blob to handle duplicate prefixes
+    const processedBlobs = blobs.map(blob => {
+      // Check for duplicate prefixes in the pathname
+      if (blob.pathname.includes('final_article_final_article_')) {
+        console.log(`Found blob with duplicated prefix: ${blob.pathname}`);
+        // Create a normalized pathname without the duplicate prefix
+        const normalizedPathname = blob.pathname.replace('final_article_final_article_', 'final_article_');
+        console.log(`Normalized pathname: ${normalizedPathname}`);
+        return {
+          ...blob,
+          pathname: normalizedPathname
+        };
+      }
+      return blob;
+    });
+    
     // Create virtualized paths to maintain compatibility with existing code
-    return blobs.map(blob => getVirtualPathFromBlobKey(blob.pathname));
+    return processedBlobs.map(blob => getVirtualPathFromBlobKey(blob.pathname));
   } catch (error) {
     console.error(`Error listing blobs: ${error.message}`);
     
