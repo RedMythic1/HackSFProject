@@ -143,7 +143,8 @@ function getVirtualPathFromBlobKey(blobKey) {
   
   if (blobKey.startsWith(BLOB_ARTICLE_PREFIX)) {
     // Create a clean filename without duplicated prefixes
-    return `/tmp/final_article_${basename}`;
+    const cleanName = basename.replace(/^final_article_/, '');
+    return `/tmp/final_article_${cleanName}`;
   } else if (blobKey.startsWith(BLOB_SUMMARY_PREFIX)) {
     return `/tmp/summary_${basename}`;
   } else if (blobKey.startsWith(BLOB_SEARCH_PREFIX)) {
@@ -387,13 +388,12 @@ async function process_articles_endpoint(query) {
     
     // First try to get articles from blob storage
     console.log("Looking for cached articles in blob storage");
-    const finalArticleFiles = await listBlobFiles('final_articles_*.json');
+    const finalArticleFiles = await listBlobFiles('final_article_*.json');
     console.log(`Found ${finalArticleFiles.length} final article files in blob storage`);
     
     if (finalArticleFiles.length > 0) {
       // We have cached articles, process them
       console.log(`Processing ${finalArticleFiles.length} articles from blob storage`);
-      console.log(finalArticleFiles);
       const articles = [];
       for (const filePath of finalArticleFiles.slice(0, 20)) { // Limit to 20 articles for performance
         try {
@@ -481,7 +481,7 @@ async function get_homepage_articles_endpoint() {
     
     // Use listBlobFiles to get articles from Vercel Blob Storage
     const articleFiles = await listBlobFiles('final_article_*.json');
-    console.log(`Found ${articleFiles.length} article files`);
+    console.log(`Found ${articleFiles.length} article files: homepage test`);
     
     if (articleFiles.length === 0) {
       // No articles found in blob storage, fall back to demo articles

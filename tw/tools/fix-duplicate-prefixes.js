@@ -42,7 +42,26 @@ async function fixDuplicatePrefixes() {
           if (!response.ok) {
             throw new Error(`Failed to fetch blob content: ${response.status}`);
           }
-          const content = await response.text();
+          let content = await response.text();
+          
+          // Check if the content is JSON and parse it to fix any duplicate prefixes within
+          try {
+            const contentObj = JSON.parse(content);
+            // Look for duplicated prefixes in fields like "filename" or "filepath" that might exist
+            if (contentObj.filepath && contentObj.filepath.includes('final_article_final_article_')) {
+              contentObj.filepath = contentObj.filepath.replace('final_article_final_article_', 'final_article_');
+              console.log(`Fixed duplicated prefix in content filepath: ${contentObj.filepath}`);
+            }
+            if (contentObj.filename && contentObj.filename.includes('final_article_final_article_')) {
+              contentObj.filename = contentObj.filename.replace('final_article_final_article_', 'final_article_');
+              console.log(`Fixed duplicated prefix in content filename: ${contentObj.filename}`);
+            }
+            // Stringify content back if we made changes
+            content = JSON.stringify(contentObj, null, 2);
+          } catch (jsonError) {
+            // Not JSON or other parsing error, continue with original content
+            console.log(`Content is not JSON or could not be parsed: ${jsonError.message}`);
+          }
           
           // Create a new normalized key
           const normalizedKey = blob.pathname.replace('final_article_final_article_', 'final_article_');
@@ -102,7 +121,7 @@ async function fixDuplicatePrefixes() {
             throw new Error(`Failed to fetch blob content: ${response.status}`);
           }
           
-          const content = await response.text();
+          let content = await response.text();
           console.log(`Successfully read content from ${regularBlob.pathname}`);
           
           // Re-upload to ensure it's valid
@@ -133,7 +152,7 @@ async function fixDuplicatePrefixes() {
             throw new Error(`Failed to fetch blob content: ${response.status}`);
           }
           
-          const content = await response.text();
+          let content = await response.text();
           
           // Create a normalized key
           const normalizedKey = `articles/final_article_${problemId}.json`;
