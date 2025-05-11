@@ -10,11 +10,36 @@
       "use": "@vercel/node"
     },
     {
+      "src": "api/env-check.js",
+      "use": "@vercel/node"
+    },
+    {
       "src": "dist/**",
       "use": "@vercel/static"
     }
   ],
   "routes": [
+    {
+      "src": "/api/env-check",
+      "dest": "/api/env-check.js",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS"
+      }
+    },
+    {
+      "src": "/api/health",
+      "dest": "/api/env-check.js",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS"
+      }
+    },
+    {
+      "src": "/api/blob-status",
+      "dest": "/api/index.js",
+      "continue": true
+    },
     {
       "src": "/api/blob-test",
       "dest": "/api/vercel.js"

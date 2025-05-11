@@ -895,6 +895,25 @@ app.use((req, res, next) => {
   next();
 });
 
+// Add a public blob check endpoint that doesn't require authentication
+app.get('/api/blob-status', (req, res) => {
+  console.log('[index.js] GET /api/blob-status');
+  
+  // Check if Blob token is set, but don't reveal it
+  const hasBlobToken = !!process.env.BLOB_READ_WRITE_TOKEN;
+  const hasBlobUrl = !!process.env.BLOB_URL;
+  
+  res.json({
+    status: 'success',
+    blob: {
+      token_configured: hasBlobToken,
+      url_configured: hasBlobUrl,
+      token_length: hasBlobToken ? process.env.BLOB_READ_WRITE_TOKEN.length : 0,
+      vercel_env: process.env.VERCEL || 'not set'
+    }
+  });
+});
+
 // Start the server if not being used as a module
 if (!module.parent) {
   const port = process.env.PORT || 3000;

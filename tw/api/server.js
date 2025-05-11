@@ -44,6 +44,18 @@ const MEMORY_CACHE = {
 // Safe file read function with blob storage
 async function safeReadFile(filePath, defaultValue = null) {
   try {
+    // Check if the file path is valid
+    if (!filePath || typeof filePath !== 'string') {
+      console.warn(`Invalid file path: ${filePath}`);
+      return defaultValue;
+    }
+    
+    // Check if this is a temporary file that doesn't exist
+    if (filePath.includes('/tmp/') && !fs.existsSync(filePath)) {
+      console.warn(`File does not exist: ${filePath} - returning default value`);
+      return defaultValue;
+    }
+    
     // Convert file path to blob key
     const blobKey = getBlobKeyFromPath(filePath);
     
@@ -59,6 +71,8 @@ async function safeReadFile(filePath, defaultValue = null) {
         }
         const content = await response.text();
         return JSON.parse(content);
+      } else {
+        console.warn(`Blob not found: ${blobKey}`);
       }
     } catch (blobError) {
       console.warn(`Error reading from blob storage: ${blobError.message}`);
@@ -137,13 +151,26 @@ async function listBlobFiles(pattern) {
   
   try {
     console.log(`Listing blobs with prefix: ${prefix}`);
+    
+    // Check if token is available
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      console.error("Error listing blobs: Vercel Blob token not set in environment variables");
+      return [];
+    }
+    
     const { blobs } = await list({ prefix });
     console.log(`Found ${blobs.length} blobs with prefix ${prefix}`);
     
     // Create virtualized paths to maintain compatibility with existing code
     return blobs.map(blob => getVirtualPathFromBlobKey(blob.pathname));
   } catch (error) {
-    console.warn(`Error listing blobs: ${error.message}`);
+    console.error(`Error listing blobs: ${error.message}`);
+    
+    // Check for specific error messages
+    if (error.message && error.message.includes("Access denied")) {
+      console.error("Vercel Blob: Access denied error. Check that your token is valid and has proper permissions.");
+    }
+    
     return [];
   }
 }
@@ -452,27 +479,39 @@ async function get_homepage_articles_endpoint() {
 
     // Process the articles
     const processedArticles = [];
+    const skippedArticles = [];
+    
     for (const articlePath of articleFiles) {
-      const articleData = await safeReadFile(articlePath);
-      if (articleData) {
-        const articleId = path.basename(articlePath)
-          .replace('final_article_', '')
-          .replace('.json', '');
-        
-        const processedArticle = processArticleData(articleData, articleId);
-        if (processedArticle) {
-          processedArticles.push(processedArticle);
+      try {
+        const articleData = await safeReadFile(articlePath);
+        if (articleData) {
+          const articleId = path.basename(articlePath)
+            .replace('final_article_', '')
+            .replace('.json', '');
+          
+          const processedArticle = processArticleData(articleData, articleId);
+          if (processedArticle) {
+            processedArticles.push(processedArticle);
+          }
+        } else {
+          console.warn(`Skipping article ${articlePath} - could not read file`);
+          skippedArticles.push(articlePath);
         }
+      } catch (articleError) {
+        console.error(`Error processing article ${articlePath}: ${articleError.message}`);
+        skippedArticles.push(articlePath);
       }
     }
 
     // Sort articles by score (descending)
     processedArticles.sort((a, b) => b.score - a.score);
 
+    // Include skipped articles info in the response
     return {
       status: 'success',
       method: 'database',
       article_count: processedArticles.length,
+      skipped_count: skippedArticles.length,
       articles: processedArticles
     };
   } catch (error) {

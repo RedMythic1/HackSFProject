@@ -5,7 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
-const { put, list, get, del } = require('@vercel/blob');
+const { put, list, get, del, head } = require('@vercel/blob');
 
 // Create Express app
 const app = express();
@@ -387,31 +387,64 @@ app.get('/api/blob/:path(*)', async (req, res) => {
   }
 });
 
-// Blob test endpoint for verification
+// Blob test route
 app.get('/api/blob-test', async (req, res) => {
+  console.log('[vercel.js] GET /api/blob-test');
+  
   try {
-    // Create a test blob
-    const testData = {
-      message: 'This is a test blob',
-      timestamp: Date.now(),
-      environment: process.env.VERCEL ? 'Vercel' : 'Local'
-    };
+    // Verify environment variables
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+    const blobUrl = process.env.BLOB_URL;
     
-    // Upload the test blob
-    const { url } = await put('test-blob.json', JSON.stringify(testData, null, 2), {
-      access: 'public',
-      contentType: 'application/json'
-    });
+    // Don't return the full token, just a masked version
+    const maskedToken = blobToken ? 
+      `${blobToken.substring(0, 10)}...${blobToken.substring(blobToken.length - 4)}` : 
+      'not set';
     
+    // Test blob access
+    let blobAccessSuccessful = false;
+    let blobErrorMessage = null;
+    
+    try {
+      // Create a test blob
+      const testBlobKey = `test/blob-test-${Date.now()}.json`;
+      const { url } = await put(testBlobKey, JSON.stringify({ test: true, timestamp: Date.now() }), { 
+        access: 'public', 
+        contentType: 'application/json' 
+      });
+      
+      // Get the blob metadata to confirm it worked
+      const metadata = await head(testBlobKey);
+      
+      // Delete the test blob to clean up
+      await del(testBlobKey);
+      
+      blobAccessSuccessful = true;
+    } catch (blobError) {
+      blobErrorMessage = blobError.message;
+    }
+    
+    // Return the environment status
     res.json({
-      success: true,
-      message: 'Test blob created successfully',
-      url,
-      data: testData
+      status: 'success',
+      environment: {
+        NODE_ENV: process.env.NODE_ENV || 'not set',
+        VERCEL: process.env.VERCEL || 'not set',
+        BLOB_READ_WRITE_TOKEN: maskedToken,
+        BLOB_URL: blobUrl || 'not set',
+        DEPLOYMENT_URL: process.env.VERCEL_URL || 'not set',
+        REGION: process.env.VERCEL_REGION || 'not set',
+      },
+      blob_access: {
+        successful: blobAccessSuccessful,
+        error: blobErrorMessage
+      }
     });
   } catch (error) {
-    console.error('Error creating test blob:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
   }
 });
 
