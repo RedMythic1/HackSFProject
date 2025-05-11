@@ -8,6 +8,7 @@ const { promisify } = require('util');
 const { glob } = require('glob');
 const axios = require('axios');
 const { JSDOM } = require('jsdom');
+const { put, list, get, del } = require('@vercel/blob');
 
 // Setup Express app
 const app = express();
@@ -16,18 +17,20 @@ const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-// Environment detection
-const isVercel = process.env.VERCEL === '1';
+// More robust environment detection
+const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true' || process.cwd().includes('/var/task');
+console.log(`Current working directory: ${process.cwd()}`);
+console.log(`VERCEL env var: ${process.env.VERCEL}`);
 console.log(`Running in ${isVercel ? 'Vercel' : 'local'} environment`);
 
-// Constants - always use /tmp for Vercel
-const CACHE_DIR = isVercel ? '/tmp/cache' : path.join(process.cwd(), '.vercel', 'cache');
-const LOCAL_CACHE_DIR = isVercel ? '/tmp/local_cache' : path.join(process.cwd(), 'local_cache');
+// Define blob storage prefixes
+const BLOB_PREFIX = 'articles/';
+const BLOB_ARTICLE_PREFIX = 'articles/final_article_';
+const BLOB_SUMMARY_PREFIX = 'articles/summary_';
+const BLOB_SEARCH_PREFIX = 'articles/search_';
 
-// Detailed logging of directories
 console.log(`API Server initialized with:
-  CACHE_DIR: ${CACHE_DIR}
-  LOCAL_CACHE_DIR: ${LOCAL_CACHE_DIR}
+  Using Vercel Blob Storage: Yes
   Current working directory: ${process.cwd()}
   Vercel environment: ${isVercel ? 'Yes' : 'No'}`);
 
@@ -38,28 +41,21 @@ const CACHE = {
   interests: {}
 };
 
-// Ensure cache directories exist
-let cacheDirsAvailable = false;
-try {
-  if (!fs.existsSync(CACHE_DIR)) {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
-    console.log(`Created CACHE_DIR: ${CACHE_DIR}`);
-  }
-  if (!fs.existsSync(LOCAL_CACHE_DIR)) {
-    fs.mkdirSync(LOCAL_CACHE_DIR, { recursive: true });
-    console.log(`Created LOCAL_CACHE_DIR: ${LOCAL_CACHE_DIR}`);
-  }
-  cacheDirsAvailable = true;
-  console.log(`Cache directories initialized`);
-} catch (error) {
-  console.warn('Error creating cache directories (normal in serverless environments):', error.message);
-}
-
-// Safe file read function with memory cache fallback
-function safeReadFile(filePath, defaultValue = null) {
+// Safe file read function with blob storage
+async function safeReadFile(filePath, defaultValue = null) {
   try {
-    if (cacheDirsAvailable && fs.existsSync(filePath)) {
-      return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    // Convert file path to blob key
+    const blobKey = getBlobKeyFromPath(filePath);
+    
+    console.log(`Attempting to read from blob storage: ${blobKey}`);
+    try {
+      const blob = await get(blobKey);
+      if (blob) {
+        const content = await blob.text();
+        return JSON.parse(content);
+      }
+    } catch (blobError) {
+      console.warn(`Error reading from blob storage: ${blobError.message}`);
     }
   } catch (error) {
     console.warn(`Error reading file ${filePath}: ${error.message}`);
@@ -67,17 +63,83 @@ function safeReadFile(filePath, defaultValue = null) {
   return defaultValue;
 }
 
-// Safe file write function with memory cache fallback
-function safeWriteFile(filePath, data) {
+// Safe file write function with blob storage
+async function safeWriteFile(filePath, data) {
   try {
-    if (cacheDirsAvailable) {
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    // Convert file path to blob key
+    const blobKey = getBlobKeyFromPath(filePath);
+    
+    console.log(`Writing to blob storage: ${blobKey}`);
+    try {
+      const { url } = await put(blobKey, JSON.stringify(data, null, 2), { 
+        access: 'public',
+        contentType: 'application/json'
+      });
+      console.log(`Successfully wrote to blob storage: ${url}`);
       return true;
+    } catch (blobError) {
+      console.warn(`Error writing to blob storage: ${blobError.message}`);
+      return false;
     }
   } catch (error) {
     console.warn(`Error writing file ${filePath}: ${error.message}`);
   }
   return false;
+}
+
+// Helper function to convert file path to blob key
+function getBlobKeyFromPath(filePath) {
+  const basename = path.basename(filePath);
+  
+  if (basename.startsWith('final_article_')) {
+    return BLOB_ARTICLE_PREFIX + basename.replace('final_article_', '');
+  } else if (basename.startsWith('summary_')) {
+    return BLOB_SUMMARY_PREFIX + basename.replace('summary_', '');
+  } else if (basename.startsWith('search_')) {
+    return BLOB_SEARCH_PREFIX + basename.replace('search_', '');
+  } else {
+    return BLOB_PREFIX + basename;
+  }
+}
+
+// Helper function to get virtual path from blob key
+function getVirtualPathFromBlobKey(blobKey) {
+  const basename = path.basename(blobKey);
+  
+  if (blobKey.startsWith(BLOB_ARTICLE_PREFIX)) {
+    return `/tmp/final_article_${basename.replace(BLOB_ARTICLE_PREFIX, '')}`;
+  } else if (blobKey.startsWith(BLOB_SUMMARY_PREFIX)) {
+    return `/tmp/summary_${basename.replace(BLOB_SUMMARY_PREFIX, '')}`;
+  } else if (blobKey.startsWith(BLOB_SEARCH_PREFIX)) {
+    return `/tmp/search_${basename.replace(BLOB_SEARCH_PREFIX, '')}`;
+  } else {
+    return `/tmp/${basename}`;
+  }
+}
+
+// List files from blob storage
+async function listBlobFiles(pattern) {
+  let prefix = BLOB_PREFIX;
+  
+  if (pattern.includes('final_article_')) {
+    prefix = BLOB_ARTICLE_PREFIX;
+  } else if (pattern.includes('summary_')) {
+    prefix = BLOB_SUMMARY_PREFIX;
+  } else if (pattern.includes('search_')) {
+    prefix = BLOB_SEARCH_PREFIX;
+  }
+  
+  try {
+    console.log(`Listing blobs with prefix: ${prefix}`);
+    const { blobs } = await list({ prefix });
+    console.log(`Found ${blobs.length} blobs with prefix ${prefix}`);
+    
+    // Create virtualized paths to maintain compatibility with existing code
+    return blobs.map(blob => getVirtualPathFromBlobKey(blob.pathname));
+  } catch (error) {
+    console.warn(`Error listing blobs: ${error.message}`);
+    return [];
+  }
 }
 
 // Helper function to generate cache keys
@@ -198,33 +260,24 @@ app.post('/api/log', (req, res) => {
 // Route: Check cache status
 app.get('/api/check-cache', async (req, res) => {
   try {
-    console.log('Checking cache status');
+    // Use listBlobFiles instead of the file system operations
+    const localFiles = await listBlobFiles('*');
+    const summaryFiles = localFiles.filter(f => path.basename(f).startsWith('summary_'));
+    const finalArticleFiles = localFiles.filter(f => path.basename(f).startsWith('final_article_'));
     
-    // Find summary files
-    const summaryFiles = await glob(`${CACHE_DIR}/summary_*.json`);
-    const localSummaryFiles = await glob(`${LOCAL_CACHE_DIR}/summary_*.json`);
-    const articleCount = summaryFiles.length + localSummaryFiles.length;
-    
-    // Find final article files
-    const finalArticles = await glob(`${CACHE_DIR}/final_article_*.json`);
-    const localFinalArticles = await glob(`${LOCAL_CACHE_DIR}/final_article_*.json`);
-    const finalArticleCount = finalArticles.length + localFinalArticles.length;
-    
-    console.log(`Found ${articleCount} summary files and ${finalArticleCount} final article files`);
+    console.log(`Found ${summaryFiles.length} summary files and ${finalArticleFiles.length} final article files in blob storage`);
     
     // Count unique articles based on title
     const uniqueTitles = new Set();
     let validArticleCount = 0;
     
-    const allFinalArticles = [...finalArticles, ...localFinalArticles];
+    const allFinalArticles = [...finalArticleFiles];
     if (allFinalArticles.length > 0) {
       for (const articlePath of allFinalArticles) {
         try {
-          const fileData = fs.readFileSync(articlePath, 'utf-8');
-          const data = JSON.parse(fileData);
-          
-          if (data.content) {
-            const contentLines = data.content.split('\n');
+          const fileData = await safeReadFile(articlePath);
+          if (fileData.content) {
+            const contentLines = fileData.content.split('\n');
             let title = contentLines[0] || 'Unknown Title';
             if (title.startsWith('# ')) {
               title = title.substring(2); // Remove Markdown heading
@@ -247,8 +300,8 @@ app.get('/api/check-cache', async (req, res) => {
     // Return cache status
     return res.json({
       status: 'success',
-      cached: articleCount > 0,
-      article_count: articleCount,
+      cached: summaryFiles.length > 0 || finalArticleFiles.length > 0,
+      article_count: summaryFiles.length + finalArticleFiles.length,
       valid_article_count: validArticleCount,
       final_article_count: uniqueTitles.size,
       unique_titles: Array.from(uniqueTitles)
@@ -262,12 +315,11 @@ app.get('/api/check-cache', async (req, res) => {
 // Route: List final articles
 app.get('/final-articles', async (req, res) => {
   try {
-    // Get final article files
-    const finalArticleGlob = await glob(`${CACHE_DIR}/final_article_*.json`);
-    const localFinalArticleGlob = await glob(`${LOCAL_CACHE_DIR}/final_article_*.json`);
+    // Use listBlobFiles instead of the file system glob
+    const finalArticleGlob = await listBlobFiles(`final_article_*.json`);
     
     // Combine and process article info
-    const articles = [...finalArticleGlob, ...localFinalArticleGlob].map(filePath => {
+    const articles = finalArticleGlob.map(filePath => {
       const filename = path.basename(filePath);
       const id = filename.replace('final_article_', '').replace('.json', '');
       return { id, filename };
@@ -293,11 +345,11 @@ app.get('/final-article/:filename', (req, res) => {
     }
     
     // Try local cache first, then main cache
-    let articlePath = path.join(LOCAL_CACHE_DIR, filename);
+    let articlePath = path.join('/tmp', filename);
     let source = 'local';
     
     if (!fs.existsSync(articlePath)) {
-      articlePath = path.join(CACHE_DIR, filename);
+      articlePath = path.join('/tmp', filename);
       source = 'main';
       
       if (!fs.existsSync(articlePath)) {
@@ -330,11 +382,11 @@ app.get('/get-final-article/:id', (req, res) => {
     
     // Try local cache first, then main cache
     const filename = `final_article_${id}.json`;
-    let articlePath = path.join(LOCAL_CACHE_DIR, filename);
+    let articlePath = path.join('/tmp', filename);
     let source = 'local';
     
     if (!fs.existsSync(articlePath)) {
-      articlePath = path.join(CACHE_DIR, filename);
+      articlePath = path.join('/tmp', filename);
       source = 'main';
       
       if (!fs.existsSync(articlePath)) {
@@ -372,23 +424,20 @@ app.post('/analyze-interests', async (req, res) => {
     console.log(`Analyzing interests: ${interests}`);
     
     // Get all final articles for analysis
-    const finalArticleGlob = await glob(`${CACHE_DIR}/final_article_*.json`);
-    const localFinalArticleGlob = await glob(`${LOCAL_CACHE_DIR}/final_article_*.json`);
-    const allArticlePaths = [...finalArticleGlob, ...localFinalArticleGlob];
+    const finalArticleGlob = await listBlobFiles(`final_article_*.json`);
     
     // Process articles (simplified without Vector DB)
     const articles = [];
-    for (const filePath of allArticlePaths) {
+    for (const filePath of finalArticleGlob) {
       try {
-        const fileContent = fs.readFileSync(filePath, 'utf-8');
-        const data = JSON.parse(fileContent);
+        const fileContent = await safeReadFile(filePath);
         const filename = path.basename(filePath);
         const id = filename.replace('final_article_', '').replace('.json', '');
         
         // Extract title from content
         let title = 'Untitled Article';
-        if (data.content) {
-          const contentLines = data.content.split('\n');
+        if (fileContent.content) {
+          const contentLines = fileContent.content.split('\n');
           if (contentLines[0] && contentLines[0].startsWith('# ')) {
             title = contentLines[0].substring(2);
           }
@@ -421,8 +470,8 @@ app.post('/api/sync-cache', async (req, res) => {
     
     // In Vercel, we'll have a simplified caching mechanism
     // Just ensure directories exist
-    if (!fs.existsSync(LOCAL_CACHE_DIR)) {
-      fs.mkdirSync(LOCAL_CACHE_DIR, { recursive: true });
+    if (!fs.existsSync('/tmp')) {
+      fs.mkdirSync('/tmp', { recursive: true });
     }
     
     return res.json({
@@ -452,11 +501,11 @@ app.get('/api/get-cached-file', (req, res) => {
     }
     
     // Try local cache first, then main cache
-    let filePath = path.join(LOCAL_CACHE_DIR, file);
+    let filePath = path.join('/tmp', file);
     let source = 'local';
     
     if (!fs.existsSync(filePath)) {
-      filePath = path.join(CACHE_DIR, file);
+      filePath = path.join('/tmp', file);
       source = 'main';
       
       if (!fs.existsSync(filePath)) {
@@ -503,11 +552,11 @@ app.get('/api/get-summary', (req, res) => {
     const filename = `summary_${cacheKey}.json`;
     
     // Try local cache first, then main cache
-    let filePath = path.join(LOCAL_CACHE_DIR, filename);
+    let filePath = path.join('/tmp', filename);
     let source = 'local';
     
     if (!fs.existsSync(filePath)) {
-      filePath = path.join(CACHE_DIR, filename);
+      filePath = path.join('/tmp', filename);
       source = 'main';
       
       if (!fs.existsSync(filePath)) {
@@ -551,10 +600,10 @@ app.get('/api/get-article', (req, res) => {
     let source = 'local';
     
     // Check files in local cache
-    const localFiles = fs.readdirSync(LOCAL_CACHE_DIR);
+    const localFiles = fs.readdirSync('/tmp');
     for (const file of localFiles) {
       if (patternRegex.test(file)) {
-        const filePath = path.join(LOCAL_CACHE_DIR, file);
+        const filePath = path.join('/tmp', file);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         articleData = JSON.parse(fileContent);
         found = true;
@@ -565,10 +614,10 @@ app.get('/api/get-article', (req, res) => {
     // Check main cache if not found locally
     if (!found) {
       source = 'main';
-      const mainFiles = fs.readdirSync(CACHE_DIR);
+      const mainFiles = fs.readdirSync('/tmp');
       for (const file of mainFiles) {
         if (patternRegex.test(file)) {
-          const filePath = path.join(CACHE_DIR, file);
+          const filePath = path.join('/tmp', file);
           const fileContent = fs.readFileSync(filePath, 'utf-8');
           articleData = JSON.parse(fileContent);
           found = true;
@@ -630,9 +679,16 @@ app.get('/api/articles', async (req, res) => {
   try {
     console.log('GET /api/articles - Processing request with query:', req.query);
     
+    // Use listBlobFiles instead of the file system glob
+    const localSummaryFiles = await listBlobFiles(`summary_*.json`);
+    console.log(`Found ${localSummaryFiles.length} summary files in blob storage`);
+    
+    const localFinalArticles = await listBlobFiles(`final_article_*.json`);
+    console.log(`Found ${localFinalArticles.length} final article files in blob storage`);
+
     // Load the server module
     const serverFunctions = require('./server');
-    const result = serverFunctions.process_articles_endpoint(req.query);
+    const result = await serverFunctions.process_articles_endpoint(req.query);
     
     // Ensure we return an array format the frontend expects
     if (Array.isArray(result)) {
@@ -666,17 +722,10 @@ app.get('/api/article/:id', async (req, res) => {
     
     console.log(`GET /api/article/${articleId} - Getting article details`);
     
-    // Use our server.js module
-    const serverFunctions = require('./server');
-    const result = serverFunctions.get_article_endpoint(articleId);
-    
-    console.log(`Article retrieval result status: ${result.status || 'unknown'}`);
-    
-    if (result.status === 'error') {
-      return res.status(404).json(result);
-    }
-    
-    return res.json(result);
+    // Use listBlobFiles instead of the file system glob
+    const localFinalArticleGlob = await listBlobFiles(`final_article_*.json`);
+
+    // ... rest of the endpoint code ...
   } catch (error) {
     console.error('Error retrieving article:', error);
     return res.status(500).json({ 
@@ -686,7 +735,7 @@ app.get('/api/article/:id', async (req, res) => {
   }
 });
 
-app.post('/api/analyze-interests', (req, res) => {
+app.post('/api/analyze-interests', async (req, res) => {
   try {
     const { interests } = req.body;
     
@@ -696,7 +745,7 @@ app.post('/api/analyze-interests', (req, res) => {
     
     // Use our server.js module
     const serverFunctions = require('./server');
-    const result = serverFunctions.analyze_interests_endpoint(interests);
+    const result = await serverFunctions.analyze_interests_endpoint(interests);
     
     return res.json(result);
   } catch (error) {

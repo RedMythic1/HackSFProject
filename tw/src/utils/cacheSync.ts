@@ -20,7 +20,7 @@ interface CacheApiResponse<T = any> {
   message?: string;
   data?: T;
   stats?: CacheSyncStats;
-  source?: 'local' | 'main';
+  source?: 'local' | 'main' | 'blob';
 }
 
 // File types to synchronize (for reference in UI)
@@ -36,7 +36,7 @@ export const FILE_TYPES = {
  */
 export async function syncCache(): Promise<CacheSyncStats> {
   try {
-    console.log('Initiating cache synchronization with server...');
+    console.log('Initiating cache synchronization with Vercel Blob Storage...');
     const response = await fetch('/api/sync-cache', {
       method: 'POST',
       headers: {
@@ -54,7 +54,7 @@ export async function syncCache(): Promise<CacheSyncStats> {
       throw new Error(result.message || 'Unknown server error');
     }
     
-    console.log(`Cache sync complete: ${result.stats?.added} added, ${result.stats?.updated} updated, ${result.stats?.skipped} unchanged`);
+    console.log(`Cache sync complete: Using Vercel Blob Storage`);
     return result.stats || { added: 0, updated: 0, skipped: 0, errors: 0, totalLocal: 0 };
   } catch (err) {
     console.error(`Cache sync failed: ${err}`);
@@ -84,7 +84,7 @@ export async function getCachedFile<T = any>(fileName: string): Promise<T | null
     
     if (!response.ok) {
       if (response.status === 404) {
-        console.log(`File not found in cache: ${fileName}`);
+        console.log(`File not found in blob storage: ${fileName}`);
         return null;
       }
       throw new Error(`Server returned error ${response.status}: ${response.statusText}`);
@@ -98,7 +98,7 @@ export async function getCachedFile<T = any>(fileName: string): Promise<T | null
     
     // Add UI indicator for cache source
     if (result.source) {
-      console.log(`Retrieved from ${result.source} cache: ${fileName}`);
+      console.log(`Retrieved from ${result.source === 'blob' ? 'Vercel Blob Storage' : result.source}: ${fileName}`);
     }
     
     return result.data || null;
@@ -133,7 +133,7 @@ export async function getCachedSummary(articleId: string): Promise<any> {
     
     // Add UI indicator for cache source
     if (result.source) {
-      console.log(`Retrieved summary from ${result.source} cache`);
+      console.log(`Retrieved summary from ${result.source === 'blob' ? 'Vercel Blob Storage' : result.source}`);
     }
     
     return result.data || null;
@@ -168,7 +168,7 @@ export async function getCachedSearch(searchQuery: string): Promise<any> {
     
     // Add UI indicator for cache source
     if (result.source) {
-      console.log(`Retrieved search results from ${result.source} cache`);
+      console.log(`Retrieved search results from ${result.source === 'blob' ? 'Vercel Blob Storage' : result.source}`);
     }
     
     return result.data || null;
@@ -203,7 +203,7 @@ export async function getCachedArticle(articleKey: string): Promise<any> {
     
     // Add UI indicator for cache source
     if (result.source) {
-      console.log(`Retrieved article from ${result.source} cache`);
+      console.log(`Retrieved article from ${result.source === 'blob' ? 'Vercel Blob Storage' : result.source}`);
     }
     
     return result.data || null;

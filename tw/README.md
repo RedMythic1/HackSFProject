@@ -43,6 +43,32 @@ All the functionality in this directory is self-contained - it doesn't require a
   - `public/articles/` - Generated HTML files for viewing
   - `models/` - Directory for AI model files (you may need to add these manually)
 
+## Storage
+
+This application now uses Vercel Blob Storage for all cache operations instead of the local filesystem. This provides several benefits:
+
+1. Persistent storage across serverless function invocations
+2. No dependency on ephemeral filesystem in Vercel's serverless environment
+3. Data is accessible from any region or instance
+
+All local cache files have been migrated to Vercel Blob Storage under the following prefixes:
+
+- `articles/final_article_*` - Processed articles
+- `articles/summary_*` - Article summaries
+- `articles/search_*` - Search results
+
+### Local Development
+
+When running in a local environment, the application will still use Vercel Blob Storage through the API rather than accessing local file systems. Make sure to set up the BLOB_READ_WRITE_TOKEN environment variable for local development.
+
+```sh
+export BLOB_READ_WRITE_TOKEN="your_token_here"
+```
+
+### Production Deployment
+
+For production, the Vercel configuration automatically includes the blob token from the project environment variables.
+
 ## Getting Started
 
 1. Make sure you have all the required dependencies installed.

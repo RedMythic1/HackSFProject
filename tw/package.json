@@ -13,6 +13,7 @@
     "vercel-build": "npm install && npm run build"
   },
   "dependencies": {
+    "@vercel/blob": "^1.0.1",
     "@xenova/transformers": "^2.8.0",
     "axios": "^1.4.0",
     "cors": "^2.8.5",

@@ -7,19 +7,23 @@ const crypto = require('crypto');
 const { glob } = require('glob');
 const axios = require('axios');
 const { JSDOM } = require('jsdom');
+const { put, list, get, del } = require('@vercel/blob');
 
-// Environment detection
-const isVercel = process.env.VERCEL === '1';
+// More robust environment detection
+const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true' || process.cwd().includes('/var/task');
+console.log(`Current working directory: ${process.cwd()}`);
+console.log(`VERCEL env var: ${process.env.VERCEL}`);
 console.log(`Running in ${isVercel ? 'Vercel' : 'local'} environment`);
 
-// Constants - always use /tmp directory for Vercel
-const CACHE_DIR = isVercel ? '/tmp/cache' : path.join(process.cwd(), '.vercel', 'cache');
-const LOCAL_CACHE_DIR = isVercel ? '/tmp/local_cache' : path.join(process.cwd(), 'local_cache');
+// Define blob storage prefixes
+const BLOB_PREFIX = 'articles/';
+const BLOB_ARTICLE_PREFIX = 'articles/final_article_';
+const BLOB_SUMMARY_PREFIX = 'articles/summary_';
+const BLOB_SEARCH_PREFIX = 'articles/search_';
 
 // Log the actual paths being used
-console.log(`Using cache directories:
-  CACHE_DIR: ${CACHE_DIR}
-  LOCAL_CACHE_DIR: ${LOCAL_CACHE_DIR}
+console.log(`Using storage:
+  Using Vercel Blob Storage: Yes
   Current working directory: ${process.cwd()}`);
 
 // In-memory cache for all environments as fallback
@@ -29,31 +33,23 @@ const MEMORY_CACHE = {
   summaries: {}
 };
 
-// Ensure cache directories exist, but handle failure gracefully
-let cacheDirsAvailable = false;
-try {
-  if (!fs.existsSync(CACHE_DIR)) {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(LOCAL_CACHE_DIR)) {
-    fs.mkdirSync(LOCAL_CACHE_DIR, { recursive: true });
-  }
-  cacheDirsAvailable = true;
-  console.log(`Cache directories initialized: 
-    CACHE_DIR: ${CACHE_DIR}
-    LOCAL_CACHE_DIR: ${LOCAL_CACHE_DIR}`);
-} catch (error) {
-  console.warn(`Cannot create cache directories (this is normal in serverless environments): ${error.message}`);
-  console.log('Using in-memory cache fallback');
-}
-
 // --- Helper Functions ---
 
-// Safe file read function with memory cache fallback
-function safeReadFile(filePath, defaultValue = null) {
+// Safe file read function with blob storage
+async function safeReadFile(filePath, defaultValue = null) {
   try {
-    if (cacheDirsAvailable && fs.existsSync(filePath)) {
-      return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    // Convert file path to blob key
+    const blobKey = getBlobKeyFromPath(filePath);
+    
+    console.log(`Attempting to read from blob storage: ${blobKey}`);
+    try {
+      const blob = await get(blobKey);
+      if (blob) {
+        const content = await blob.text();
+        return JSON.parse(content);
+      }
+    } catch (blobError) {
+      console.warn(`Error reading from blob storage: ${blobError.message}`);
     }
   } catch (error) {
     console.warn(`Error reading file ${filePath}: ${error.message}`);
@@ -61,17 +57,83 @@ function safeReadFile(filePath, defaultValue = null) {
   return defaultValue;
 }
 
-// Safe file write function with memory cache fallback
-function safeWriteFile(filePath, data) {
+// Safe file write function with blob storage
+async function safeWriteFile(filePath, data) {
   try {
-    if (cacheDirsAvailable) {
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    // Convert file path to blob key
+    const blobKey = getBlobKeyFromPath(filePath);
+    
+    console.log(`Writing to blob storage: ${blobKey}`);
+    try {
+      const { url } = await put(blobKey, JSON.stringify(data, null, 2), { 
+        access: 'public',
+        contentType: 'application/json'
+      });
+      console.log(`Successfully wrote to blob storage: ${url}`);
       return true;
+    } catch (blobError) {
+      console.warn(`Error writing to blob storage: ${blobError.message}`);
+      return false;
     }
   } catch (error) {
     console.warn(`Error writing file ${filePath}: ${error.message}`);
   }
   return false;
+}
+
+// Helper function to convert file path to blob key
+function getBlobKeyFromPath(filePath) {
+  const basename = path.basename(filePath);
+  
+  if (basename.startsWith('final_article_')) {
+    return BLOB_ARTICLE_PREFIX + basename.replace('final_article_', '');
+  } else if (basename.startsWith('summary_')) {
+    return BLOB_SUMMARY_PREFIX + basename.replace('summary_', '');
+  } else if (basename.startsWith('search_')) {
+    return BLOB_SEARCH_PREFIX + basename.replace('search_', '');
+  } else {
+    return BLOB_PREFIX + basename;
+  }
+}
+
+// Helper function to get virtual path from blob key
+function getVirtualPathFromBlobKey(blobKey) {
+  const basename = path.basename(blobKey);
+  
+  if (blobKey.startsWith(BLOB_ARTICLE_PREFIX)) {
+    return `/tmp/final_article_${basename}`;
+  } else if (blobKey.startsWith(BLOB_SUMMARY_PREFIX)) {
+    return `/tmp/summary_${basename}`;
+  } else if (blobKey.startsWith(BLOB_SEARCH_PREFIX)) {
+    return `/tmp/search_${basename}`;
+  } else {
+    return `/tmp/${basename}`;
+  }
+}
+
+// List files from blob storage
+async function listBlobFiles(pattern) {
+  let prefix = BLOB_PREFIX;
+  
+  if (pattern.includes('final_article_')) {
+    prefix = BLOB_ARTICLE_PREFIX;
+  } else if (pattern.includes('summary_')) {
+    prefix = BLOB_SUMMARY_PREFIX;
+  } else if (pattern.includes('search_')) {
+    prefix = BLOB_SEARCH_PREFIX;
+  }
+  
+  try {
+    console.log(`Listing blobs with prefix: ${prefix}`);
+    const { blobs } = await list({ prefix });
+    console.log(`Found ${blobs.length} blobs with prefix ${prefix}`);
+    
+    // Create virtualized paths to maintain compatibility with existing code
+    return blobs.map(blob => getVirtualPathFromBlobKey(blob.pathname));
+  } catch (error) {
+    console.warn(`Error listing blobs: ${error.message}`);
+    return [];
+  }
 }
 
 /**
@@ -264,7 +326,7 @@ function getDemoArticleDetail(id) {
  * @param {Object} query - Query parameters
  * @returns {Object} Response object with articles
  */
-function process_articles_endpoint(query) {
+async function process_articles_endpoint(query) {
   try {
     // Check if we have cached articles in memory
     if (MEMORY_CACHE.articles.length > 0) {
@@ -272,28 +334,33 @@ function process_articles_endpoint(query) {
       return MEMORY_CACHE.articles;
     }
     
-    // Try to find articles in the filesystem
-    console.log(`Looking for articles in CACHE_DIR and LOCAL_CACHE_DIR`);
+    // Try to find articles in storage
+    console.log(`Looking for articles in storage`);
     
     let finalArticles = [];
     let localFinalArticles = [];
     
     try {
-      // Use glob pattern only if directory exists, otherwise use empty array
-      if (cacheDirsAvailable && fs.existsSync(CACHE_DIR)) {
-        finalArticles = glob.sync(`${CACHE_DIR}/final_article_*.json`);
-        console.log(`Found ${finalArticles.length} articles in CACHE_DIR`);
-      } 
-      
-      if (cacheDirsAvailable && fs.existsSync(LOCAL_CACHE_DIR)) {
-        // Use safe directory reading that won't crash on Vercel
-        try {
-          const files = fs.readdirSync(LOCAL_CACHE_DIR);
-          const articleFiles = files.filter(file => file.startsWith('final_article_') && file.endsWith('.json'));
-          localFinalArticles = articleFiles.map(file => path.join(LOCAL_CACHE_DIR, file));
-          console.log(`Found ${localFinalArticles.length} articles in LOCAL_CACHE_DIR`);
-        } catch (dirError) {
-          console.warn(`Error reading from LOCAL_CACHE_DIR: ${dirError.message}`);
+      if (isVercel) {
+        // For Vercel, use blob storage
+        finalArticles = await listBlobFiles('final_article_*.json');
+      } else {
+        // For local environment, use filesystem
+        if (fs.existsSync(CACHE_DIR)) {
+          finalArticles = glob.sync(`${CACHE_DIR}/final_article_*.json`);
+          console.log(`Found ${finalArticles.length} articles in CACHE_DIR`);
+        }
+        
+        if (fs.existsSync(LOCAL_CACHE_DIR)) {
+          // Use safe directory reading that won't crash on Vercel
+          try {
+            const files = fs.readdirSync(LOCAL_CACHE_DIR);
+            const articleFiles = files.filter(file => file.startsWith('final_article_') && file.endsWith('.json'));
+            localFinalArticles = articleFiles.map(file => path.join(LOCAL_CACHE_DIR, file));
+            console.log(`Found ${localFinalArticles.length} articles in LOCAL_CACHE_DIR`);
+          } catch (dirError) {
+            console.warn(`Error reading from LOCAL_CACHE_DIR: ${dirError.message}`);
+          }
         }
       }
     } catch (error) {
@@ -303,9 +370,9 @@ function process_articles_endpoint(query) {
     const allFinalArticles = [...finalArticles, ...localFinalArticles];
     console.log(`Total articles found: ${allFinalArticles.length}`);
     
-    // If no articles found in filesystem, return demo data
+    // If no articles found in storage, return demo data
     if (allFinalArticles.length === 0) {
-      console.log("No articles found in either cache directory, using demo data");
+      console.log("No articles found in storage, using demo data");
       const demoArticles = generateDemoArticles();
       MEMORY_CACHE.articles = demoArticles; // Cache for future requests
       return demoArticles;
@@ -318,7 +385,7 @@ function process_articles_endpoint(query) {
     for (const articlePath of allFinalArticles) {
       try {
         // Use our safe file reading function
-        const data = safeReadFile(articlePath, null);
+        const data = await safeReadFile(articlePath, null);
         if (!data) {
           continue; // Skip if file couldn't be read
         }
@@ -392,69 +459,115 @@ function process_articles_endpoint(query) {
 }
 
 /**
- * Get article by ID endpoint implementation
- * @param {string} articleId - Article ID
- * @returns {Object} Response object with article data
+ * Get articles and process them for the homepage
+ * @returns {Object} Processed articles or error
  */
-function get_article_endpoint(articleId) {
+async function get_homepage_articles_endpoint() {
   try {
-    console.log(`Getting article details for ID: ${articleId}`);
+    console.log('get_homepage_articles_endpoint: Retrieving articles from database');
     
-    // Check if it's a demo article ID
-    if (articleId.startsWith('demo')) {
-      const demoArticle = getDemoArticleDetail(articleId);
-      console.log(`Returning demo article: "${demoArticle.title}"`);
+    // Use listBlobFiles to get articles from Vercel Blob Storage
+    const articleFiles = await listBlobFiles('final_article_*.json');
+    console.log(`Found ${articleFiles.length} article files`);
+    
+    if (articleFiles.length === 0) {
+      // No articles found in blob storage, fall back to demo articles
+      console.log('No articles found in storage, using demo articles');
       return {
         status: 'success',
-        article: demoArticle
+        method: 'demo',
+        articles: generateDemoArticles()
       };
     }
-    
-    // Check memory cache first
-    if (MEMORY_CACHE.articleDetails[articleId]) {
-      console.log(`Returning article from memory cache: "${MEMORY_CACHE.articleDetails[articleId].title}"`);
-      return {
-        status: 'success',
-        article: MEMORY_CACHE.articleDetails[articleId]
-      };
+
+    // Process the articles
+    const processedArticles = [];
+    for (const articlePath of articleFiles) {
+      const articleData = await safeReadFile(articlePath);
+      if (articleData) {
+        const articleId = path.basename(articlePath)
+          .replace('final_article_', '')
+          .replace('.json', '');
+        
+        const processedArticle = processArticleData(articleData, articleId);
+        if (processedArticle) {
+          processedArticles.push(processedArticle);
+        }
+      }
     }
-    
-    // Build possible file paths
-    const cachePath = path.join(CACHE_DIR, `final_article_${articleId}.json`);
-    const localCachePath = path.join(LOCAL_CACHE_DIR, `final_article_${articleId}.json`);
-    
-    // Try to read the article data using safe read function
-    let articleData = safeReadFile(cachePath, null);
-    
-    // If not found in first location, try the second
-    if (!articleData) {
-      articleData = safeReadFile(localCachePath, null);
-    }
-    
-    // Process the article data if found
-    if (articleData) {
-      const processedArticle = processArticleData(articleData, articleId);
-      
-      // Save to memory cache
-      MEMORY_CACHE.articleDetails[articleId] = processedArticle;
-      
-      return {
-        status: 'success',
-        article: processedArticle
-      };
-    }
-    
-    // Article not found in any location
-    console.log(`Article with ID ${articleId} not found`);
+
+    // Sort articles by score (descending)
+    processedArticles.sort((a, b) => b.score - a.score);
+
     return {
-      status: 'error',
-      message: 'Article not found'
+      status: 'success',
+      method: 'database',
+      article_count: processedArticles.length,
+      articles: processedArticles
     };
   } catch (error) {
-    console.error(`Error getting article ${articleId}: ${error}`);
+    console.error('Error retrieving articles:', error);
     return {
       status: 'error',
-      message: `Error retrieving article: ${error.message}`
+      message: `Failed to retrieve articles: ${error.message}`,
+      method: 'demo',
+      articles: generateDemoArticles()
+    };
+  }
+}
+
+/**
+ * Get a specific article by ID
+ * @param {string} articleId - The article ID to retrieve
+ * @returns {Object} Article data or error
+ */
+async function get_article_endpoint(articleId) {
+  try {
+    console.log(`get_article_endpoint: Retrieving article ${articleId}`);
+    
+    // In case articleId contains a blob path (for backward compatibility)
+    if (typeof articleId === 'string' && articleId.includes('/')) {
+      articleId = path.basename(articleId)
+        .replace('final_article_', '')
+        .replace('.json', '');
+    }
+    
+    // Create a path to find the article in blob storage
+    const localCachePath = `/tmp/final_article_${articleId}.json`;
+    
+    // Try to get from blob storage
+    const article = await safeReadFile(localCachePath);
+    
+    if (!article) {
+      // Try to fallback to demo articles
+      const demoArticle = getDemoArticleDetail(articleId);
+      if (demoArticle) {
+        return {
+          status: 'success',
+          method: 'demo',
+          article: demoArticle
+        };
+      }
+      
+      return {
+        status: 'error',
+        message: `Article ${articleId} not found`
+      };
+    }
+    
+    // Process the article data
+    const processedArticle = processArticleData(article, articleId);
+    
+    return {
+      status: 'success',
+      method: 'database',
+      article: processedArticle
+    };
+  } catch (error) {
+    console.error(`Error retrieving article ${articleId}:`, error);
+    return {
+      status: 'error',
+      message: `Failed to retrieve article: ${error.message}`
     };
   }
 }
@@ -542,9 +655,10 @@ function analyze_interests_endpoint(interests) {
   }
 }
 
-// Export functions for use in other modules
+// Export functions for the API
 module.exports = {
-  process_articles_endpoint,
+  get_homepage_articles_endpoint,
   get_article_endpoint,
+  process_articles_endpoint,
   analyze_interests_endpoint
 }; 

@@ -6,11 +6,23 @@
       "use": "@vercel/node"
     },
     {
+      "src": "api/vercel.js",
+      "use": "@vercel/node"
+    },
+    {
       "src": "dist/**",
       "use": "@vercel/static"
     }
   ],
   "routes": [
+    {
+      "src": "/api/blob-test",
+      "dest": "/api/vercel.js"
+    },
+    {
+      "src": "/api/list-blobs",
+      "dest": "/api/vercel.js"
+    },
     {
       "src": "/api/(.*)",
       "dest": "/api/index.js"
@@ -42,6 +54,8 @@
   ],
   "env": {
     "NODE_ENV": "production",
-    "VERCEL": "1"
+    "VERCEL": "1",
+    "DEBUG": "true",
+    "BLOB_READ_WRITE_TOKEN": "${BLOB_READ_WRITE_TOKEN}"
   }
 } 
