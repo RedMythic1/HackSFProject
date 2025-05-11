@@ -57,6 +57,7 @@ interface ArticleDetail {
     title: string;
     link: string;
     summary: string;
+    content?: string;
 }
 
 // Define types for the zero-shot classification results
@@ -269,7 +270,8 @@ class ApiService {
                 return {
                     title: data.article.title,
                     link: data.article.link,
-                    summary: data.article.summary
+                    summary: data.article.summary,
+                    content: data.article.content
                 };
             } else {
                 console.error('Invalid article data format:', data);
@@ -393,8 +395,9 @@ class AppController {
         this.articlesContainer.innerHTML = '';
         
         articles.forEach(article => {
-            // Extract article ID from link
-            const articleId = article.link.split('id=')[1] || article.link.split('/').pop() || '';
+            // Extract article ID from link - Fix the ID extraction to be more reliable
+            const linkParts = article.link.split('/');
+            const articleId = linkParts[linkParts.length - 1]; // Get the last part of the link
             console.log(`Rendering article: "${article.title}" (ID: ${articleId})`);
             
             const articleCard = document.createElement('div');
@@ -410,17 +413,23 @@ class AppController {
                         <h4>Introduction</h4>
                         <p>${this.truncateText(article.summary || 'No introduction available', 100)}</p>
                     </div>
-                    <a href="/article/${articleId}" class="article-link" data-article-id="${articleId}">Read more</a>
+                    <a href="#" class="article-link" data-article-id="${articleId}">Read more</a>
                 </div>
             `;
             
-            // Add click event to view article details
+            // Add click event to view article details - Log the actual ID being used
             const articleLink = articleCard.querySelector('.article-link') as HTMLAnchorElement;
             if (articleLink) {
                 articleLink.addEventListener('click', (e) => {
                     e.preventDefault();
-                    console.log(`Article link clicked for ${articleId}`);
-                    this.viewArticleDetails(articleId);
+                    // Get the ID from the data attribute to ensure consistency
+                    const clickedId = articleLink.getAttribute('data-article-id');
+                    console.log(`Article link clicked, ID from attribute: ${clickedId}, original ID: ${articleId}`);
+                    if (clickedId) {
+                        this.viewArticleDetails(clickedId);
+                    } else {
+                        console.error('Missing article ID in data attribute');
+                    }
                 });
             }
             
@@ -481,16 +490,48 @@ class AppController {
         
         const articleDetail = document.createElement('div');
         articleDetail.className = 'article-detail';
-        articleDetail.innerHTML = `
+        
+        // Create article HTML content
+        let articleContent = `
             <h2>${this.escapeHtml(article.title)}</h2>
-            <div class="article-summary">
-                ${this.formatSummary(article.summary)}
-            </div>
+        `;
+        
+        // Add the full article content if available, otherwise fall back to summary
+        if (article.content) {
+            // Check if content appears to be HTML (contains tags)
+            if (article.content.includes('<') && article.content.includes('>')) {
+                // It's HTML, insert directly with sanitization
+                articleContent += `
+                    <div class="article-content">
+                        ${this.sanitizeHtml(article.content)}
+                    </div>
+                `;
+            } else {
+                // It's markdown or plain text, format with paragraphs
+                articleContent += `
+                    <div class="article-content">
+                        ${this.formatSummary(article.content)}
+                    </div>
+                `;
+            }
+        } else {
+            // No content, use summary
+            articleContent += `
+                <div class="article-summary">
+                    ${this.formatSummary(article.summary)}
+                </div>
+            `;
+        }
+        
+        // Add action buttons
+        articleContent += `
             <div class="article-actions">
                 <a href="${article.link}" target="_blank" class="article-link">View Original</a>
                 <button id="back-to-articles" class="back-button">Back to Articles</button>
             </div>
         `;
+        
+        articleDetail.innerHTML = articleContent;
         
         // Add back button click event
         const backButton = articleDetail.querySelector('#back-to-articles');
@@ -555,6 +596,32 @@ class AppController {
         if (!text) return '';
         if (text.length <= maxLength) return this.escapeHtml(text);
         return this.escapeHtml(text.substring(0, maxLength)) + '...';
+    }
+
+    // Basic HTML sanitizer to avoid XSS while allowing formatted content
+    private sanitizeHtml(html: string): string {
+        // Create a temporary element
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        
+        // Remove potentially dangerous elements/attributes
+        const scripts = tempDiv.querySelectorAll('script');
+        scripts.forEach(script => script.remove());
+        
+        const iframes = tempDiv.querySelectorAll('iframe');
+        iframes.forEach(iframe => iframe.remove());
+        
+        // Remove on* attributes
+        const allElements = tempDiv.querySelectorAll('*');
+        allElements.forEach(el => {
+            Array.from(el.attributes).forEach(attr => {
+                if (attr.name.startsWith('on') || attr.name === 'href' && attr.value.startsWith('javascript:')) {
+                    el.removeAttribute(attr.name);
+                }
+            });
+        });
+        
+        return tempDiv.innerHTML;
     }
 }
 
