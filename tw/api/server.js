@@ -387,7 +387,7 @@ async function process_articles_endpoint(query) {
     
     // First try to get articles from blob storage
     console.log("Looking for cached articles in blob storage");
-    const finalArticleFiles = await listBlobFiles('final_article_*.json');
+    const finalArticleFiles = await listBlobFiles('*.json');
     console.log(`Found ${finalArticleFiles.length} final article files in blob storage`);
     
     if (finalArticleFiles.length > 0) {

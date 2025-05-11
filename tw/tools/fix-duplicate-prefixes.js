@@ -1,5 +1,6 @@
 // Script to fix issues with duplicated prefixes in blob keys
-const { put, list, get, del } = require('@vercel/blob');
+const { put, list, head } = require('@vercel/blob');
+const path = require('path');
 
 // Blob storage prefixes
 const BLOB_PREFIX = 'articles/';
@@ -37,8 +38,11 @@ async function fixDuplicatePrefixes() {
         
         try {
           // Get the content
-          const originalBlob = await get(blob.pathname);
-          const content = await originalBlob.text();
+          const response = await fetch(blob.url);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch blob content: ${response.status}`);
+          }
+          const content = await response.text();
           
           // Create a new normalized key
           const normalizedKey = blob.pathname.replace('final_article_final_article_', 'final_article_');
@@ -51,9 +55,18 @@ async function fixDuplicatePrefixes() {
             contentType: 'application/json'
           });
           
-          // Delete the original blob with duplicated prefix
+          // Delete the original blob using fetch API + DELETE method
           console.log(`Deleting original blob: ${blob.pathname}`);
-          await del(blob.pathname);
+          const deleteResponse = await fetch(`https://blob.vercel-storage.com/${blob.pathname}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}`
+            }
+          });
+          
+          if (!deleteResponse.ok) {
+            console.warn(`Could not delete original blob: ${deleteResponse.status}`);
+          }
           
           issues.fixed.push({
             original: blob.pathname,
@@ -65,6 +78,101 @@ async function fixDuplicatePrefixes() {
         } catch (error) {
           console.error(`Error fixing blob ${blob.pathname}: ${error.message}`);
         }
+      }
+    }
+    
+    // Special case: Check for specific article IDs known to have issues
+    const problematicIds = ['1746915102_Xenolab', '1746915309_US_vs_Google_amicus_curiae_brief_of_Y_Combinator_in_support_of_plaintiffs'];
+    
+    for (const problemId of problematicIds) {
+      // Look for both regular and duplicated keys in the blob list
+      console.log(`Searching for problematic article ID: ${problemId}`);
+      
+      // Search in the blobs list
+      const regularBlob = blobs.find(blob => blob.pathname === `articles/final_article_${problemId}.json`);
+      const duplicatedBlob = blobs.find(blob => blob.pathname === `articles/final_article_final_article_${problemId}.json`);
+      
+      if (regularBlob) {
+        console.log(`Found article with regular key: ${regularBlob.pathname}`);
+        
+        try {
+          // Create a backup copy
+          const response = await fetch(regularBlob.url);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch blob content: ${response.status}`);
+          }
+          
+          const content = await response.text();
+          console.log(`Successfully read content from ${regularBlob.pathname}`);
+          
+          // Re-upload to ensure it's valid
+          const { url } = await put(regularBlob.pathname, content, { 
+            access: 'public',
+            contentType: 'application/json',
+            allowOverwrite: true
+          });
+          
+          console.log(`Successfully backed up article to ${url}`);
+          issues.fixed.push({
+            original: regularBlob.pathname,
+            fixed: regularBlob.pathname,
+            url
+          });
+        } catch (error) {
+          console.error(`Error backing up article ${regularBlob.pathname}: ${error.message}`);
+        }
+      }
+      
+      if (duplicatedBlob) {
+        console.log(`Found article with duplicated key: ${duplicatedBlob.pathname}`);
+        
+        try {
+          // Get content
+          const response = await fetch(duplicatedBlob.url);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch blob content: ${response.status}`);
+          }
+          
+          const content = await response.text();
+          
+          // Create a normalized key
+          const normalizedKey = `articles/final_article_${problemId}.json`;
+          console.log(`Creating normalized key: ${normalizedKey}`);
+          
+          // Upload to the normalized key
+          const { url } = await put(normalizedKey, content, { 
+            access: 'public',
+            contentType: 'application/json',
+            allowOverwrite: true
+          });
+          
+          // Delete the duplicated blob
+          console.log(`Trying to delete duplicated blob: ${duplicatedBlob.pathname}`);
+          const deleteResponse = await fetch(`https://blob.vercel-storage.com/${duplicatedBlob.pathname}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}`
+            }
+          });
+          
+          if (!deleteResponse.ok) {
+            console.warn(`Could not delete duplicated blob: ${deleteResponse.status}`);
+          }
+          
+          issues.fixed.push({
+            original: duplicatedBlob.pathname,
+            fixed: normalizedKey,
+            url
+          });
+          
+          console.log(`Successfully fixed: ${duplicatedBlob.pathname} → ${normalizedKey}`);
+        } catch (error) {
+          console.error(`Error fixing duplicated article ${duplicatedBlob.pathname}: ${error.message}`);
+        }
+      }
+      
+      if (!regularBlob && !duplicatedBlob) {
+        console.log(`No blob found for article ID: ${problemId}`);
       }
     }
     
@@ -87,7 +195,7 @@ async function fixDuplicatePrefixes() {
       });
     }
     
-    if (issues.duplicated.length === 0) {
+    if (issues.duplicated.length === 0 && issues.fixed.length === 0) {
       console.log('\nNo duplicated prefixes found!');
     }
     
