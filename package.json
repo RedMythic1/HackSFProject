@@ -6,7 +6,7 @@
   "scripts": {
     "start": "cd tw && ./start_all.sh",
     "build": "cd tw && npm run build",
-    "vercel-build": "cd tw && npm run vercel-build",
+    "vercel-build": "cd tw && npm install && npm run build",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:embeddings": "ts-node src/utils/testEmbeddings.ts"
   },
