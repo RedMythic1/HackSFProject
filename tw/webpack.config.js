@@ -15,6 +15,11 @@ module.exports = {
   },
   resolve: {
     extensions: ['.tsx', '.ts', '.js'],
+    fallback: {
+      "fs": false,
+      "path": require.resolve("path-browserify"),
+      "crypto": require.resolve("crypto-browserify"),
+    },
   },
   output: {
     filename: 'bundle.js',
@@ -25,6 +30,6 @@ module.exports = {
       directory: path.join(__dirname, 'public'),
     },
     compress: true,
-    port: 3000,
+    port: 9001,
   },
 }; 

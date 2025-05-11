@@ -11,9 +11,10 @@ NC='\033[0m' # No Color
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PARENT_DIR="$(dirname "$SCRIPT_DIR")"
-# Ensure we're using the tw/.cache directory, not the parent directory's cache
-CACHE_DIR="$SCRIPT_DIR/.cache"
+# Ensure we're using the tw/local_cache directory
+CACHE_DIR="$SCRIPT_DIR/local_cache"
+# Path to local ansys.py file
+ANSYS_LOCAL_PATH="$SCRIPT_DIR/ansys_local.py"
 
 # Make sure cache directory exists
 mkdir -p "$CACHE_DIR"
@@ -38,15 +39,14 @@ print_info() {
     echo -e "${YELLOW}! $1${NC}"
 }
 
-# Function to check if ansys.py exists
+# Function to check if ansys_local.py exists
 check_ansys() {
-    ANSYS_PATH="$PARENT_DIR/ansys.py"
-    if [ ! -f "$ANSYS_PATH" ]; then
-        print_error "ansys.py not found at $ANSYS_PATH"
-        echo "Please make sure ansys.py is located in the parent directory."
+    if [ ! -f "$ANSYS_LOCAL_PATH" ]; then
+        print_error "ansys_local.py not found at $ANSYS_LOCAL_PATH"
+        echo "Please make sure ansys_local.py is located in the current directory."
         exit 1
     fi
-    print_success "Found ansys.py at $ANSYS_PATH"
+    print_success "Found ansys_local.py at $ANSYS_LOCAL_PATH"
     echo ""
     return 0
 }
@@ -56,7 +56,7 @@ cache_articles() {
     print_header "CACHING ARTICLES"
     print_info "This only subjectizes articles and caches the subject lines"
     
-    # Check for ansys.py
+    # Check for ansys_local.py
     check_ansys
     
     # Get the already processed article IDs
@@ -69,17 +69,16 @@ cache_articles() {
         print_info "Starting fresh with no processed articles"
     fi
     
-    # Set environment variables for ansys.py
+    # Set environment variables for ansys_local.py
     export ANSYS_PROCESSED_IDS_FILE="$PROCESSED_IDS_FILE"
     export ANSYS_NO_SCORE=1
-    # Force using tw/.cache directory
+    # Force using tw/local_cache directory
     export CACHE_DIR="$CACHE_DIR"
     
     print_info "Starting article caching process (subjectizing only)..."
-    ANSYS_PATH="$PARENT_DIR/ansys.py"
     
     # Use default interests (doesn't matter for caching)
-    echo "technology, programming, science" | python3 "$ANSYS_PATH" --cache-only
+    echo "technology, programming, science" | python3 "$ANSYS_LOCAL_PATH" --cache-only
     
     # Check if caching was successful
     if [ $? -eq 0 ]; then
@@ -104,7 +103,7 @@ process_articles() {
     
     print_header "PROCESSING ARTICLES WITH INTERESTS: $INTERESTS"
     
-    # Check for ansys.py
+    # Check for ansys_local.py
     check_ansys
     
     # Get the already processed article IDs
@@ -117,16 +116,15 @@ process_articles() {
         print_info "Starting fresh with no processed articles"
     fi
     
-    # Set environment variable for ansys.py
+    # Set environment variable for ansys_local.py
     export ANSYS_PROCESSED_IDS_FILE="$PROCESSED_IDS_FILE"
-    # Force using tw/.cache directory
+    # Force using tw/local_cache directory
     export CACHE_DIR="$CACHE_DIR"
     
     print_info "Starting article processing with interests: $INTERESTS"
-    ANSYS_PATH="$PARENT_DIR/ansys.py"
     
-    # Run ansys.py with the provided interests
-    echo "$INTERESTS" | python3 "$ANSYS_PATH"
+    # Run ansys_local.py with the provided interests
+    echo "$INTERESTS" | python3 "$ANSYS_LOCAL_PATH"
     
     # Check if processing was successful
     if [ $? -eq 0 ]; then
@@ -136,13 +134,15 @@ process_articles() {
         cp "$PROCESSED_IDS_FILE" "$CACHE_DIR/processed_articles.json"
         
         # Check if we need to copy HTML files to public directory
-        HTML_DIR="$PARENT_DIR/final_articles/html"
-        PUBLIC_HTML_DIR="$SCRIPT_DIR/public/articles"
+        HTML_DIR="$SCRIPT_DIR/public/articles"
         
-        if [ -d "$HTML_DIR" ]; then
-            mkdir -p "$PUBLIC_HTML_DIR"
+        # Look for HTML files in current directory
+        HTML_FILES=$(ls tech_deep_dive_*.html 2>/dev/null)
+        
+        if [ -n "$HTML_FILES" ]; then
+            mkdir -p "$HTML_DIR"
             print_info "Copying HTML files to public directory..."
-            cp -n "$HTML_DIR"/*.html "$PUBLIC_HTML_DIR/" 2>/dev/null || true
+            cp -n $HTML_FILES "$HTML_DIR/" 2>/dev/null || true
             print_success "HTML files copied successfully"
         fi
     else

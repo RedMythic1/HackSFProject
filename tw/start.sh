@@ -22,6 +22,7 @@ check_dependency() {
 
 check_dependency "node"
 check_dependency "npm"
+check_dependency "python3"
 
 # Ensure all npm dependencies are installed
 echo -e "${BLUE}Installing npm dependencies...${NC}"
@@ -29,8 +30,8 @@ npm install
 
 # Function to start the backend server
 start_backend() {
-  echo -e "${GREEN}Starting Node.js backend server...${NC}"
-  node backend.js &
+  echo -e "${GREEN}Starting Python Flask backend server...${NC}"
+  python3 server.py &
   BACKEND_PID=$!
   echo -e "${GREEN}Backend server started with PID: ${BACKEND_PID}${NC}"
 }

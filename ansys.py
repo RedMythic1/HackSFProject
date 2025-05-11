@@ -36,6 +36,14 @@ except ImportError:
     SELENIUM_AVAILABLE = False
     print("Selenium or WebDriver Manager not found. Install with 'pip install selenium webdriver-manager'")
 
+# Add embedding support
+try:
+    from sentence_transformers import SentenceTransformer
+    EMBEDDINGS_AVAILABLE = True
+except ImportError:
+    EMBEDDINGS_AVAILABLE = False
+    print("Sentence Transformers not found. Install with 'pip install sentence-transformers'")
+
 # Add PDF handling libraries
 try:
     import PyPDF2
@@ -61,6 +69,27 @@ _internals.LlamaSampler.__del__ = lambda self: None
 LLM_LOCK = threading.Lock()
 # Add print lock for thread safety
 PRINT_LOCK = threading.Lock()
+
+# Initialize embedding model (with lazy loading)
+EMBEDDING_MODEL = None
+EMBEDDING_LOCK = threading.Lock()
+
+def get_embedding_model():
+    global EMBEDDING_MODEL
+    if not EMBEDDINGS_AVAILABLE:
+        return None
+        
+    if EMBEDDING_MODEL is None:
+        with EMBEDDING_LOCK:
+            if EMBEDDING_MODEL is None:
+                try:
+                    safe_print("Initializing embedding model...")
+                    EMBEDDING_MODEL = SentenceTransformer('all-MiniLM-L6-v2')
+                    safe_print("Embedding model initialized successfully")
+                except Exception as e:
+                    safe_print(f"Error initializing embedding model: {e}")
+                    return None
+    return EMBEDDING_MODEL
 
 # Thread-safe print function
 def safe_print(*args, **kwargs):
@@ -443,10 +472,10 @@ def extract_content_safely(url):
 def summarize_content_safely(content, title=None, max_length=1500):
     """
     Safely summarize content with robust error handling
-    Returns a tuple of (summary, error_message)
+    Returns a tuple of (summary, error_message) or (summary, embedding, error_message) if embeddings are available
     """
     if not content:
-        return None, "No content provided for summarization"
+        return None, None, "No content provided for summarization" if EMBEDDINGS_AVAILABLE else None, "No content provided for summarization"
         
     try:
         # Create a dedicated summarizer
@@ -469,16 +498,37 @@ def summarize_content_safely(content, title=None, max_length=1500):
                 if title and not summary.startswith(title):
                     summary = f"{title}\n\n{summary}"
                 
-                return summary, None
+                # Generate embedding if available
+                embedding = None
+                if EMBEDDINGS_AVAILABLE:
+                    try:
+                        embedding_model = get_embedding_model()
+                        if embedding_model and summary:
+                            # Create embedding from the summary (limit to first 1000 chars for efficiency)
+                            embedding = embedding_model.encode(summary[:1000]).tolist()  # Convert to list for JSON serialization
+                            safe_print(f"Generated embedding vector of length {len(embedding)}")
+                    except Exception as e:
+                        safe_print(f"Error generating embedding: {e}")
+                
+                if EMBEDDINGS_AVAILABLE:
+                    return summary, embedding, None
+                else:
+                    return summary, None
             else:
-                return cleaned_content, "Content too short for summarization"
+                if EMBEDDINGS_AVAILABLE:
+                    return cleaned_content, None, "Content too short for summarization"
+                else:
+                    return cleaned_content, "Content too short for summarization"
         finally:
             # Always clean up resources
             summarizer.cleanup_resources(silent=True)
     except Exception as e:
         error_msg = f"Error during summarization: {str(e)}"
         safe_print(error_msg)
-        return None, error_msg
+        if EMBEDDINGS_AVAILABLE:
+            return None, None, error_msg
+        else:
+            return None, error_msg
 
 async def summarize_all_articles_async(articles):
     """
@@ -524,22 +574,32 @@ async def summarize_all_articles_async(articles):
             content, error = extract_content_safely(link)
             
             if content:
-                # Generate summary
-                summary, summary_error = summarize_content_safely(content, title)
+                # Generate summary and embedding if available
+                if EMBEDDINGS_AVAILABLE:
+                    summary, embedding, summary_error = summarize_content_safely(content, title)
+                else:
+                    summary, summary_error = summarize_content_safely(content, title)
+                    embedding = None
                 
                 if summary:
-                    # Store in memory cache
-                    ARTICLE_SUMMARY_CACHE[link] = {
+                    # Store in memory cache with embedding if available
+                    cache_data = {
                         'title': title,
                         'summary': summary,
                         'timestamp': time()
                     }
                     
+                    # Add embedding if available
+                    if embedding:
+                        cache_data['embedding'] = embedding
+                    
+                    ARTICLE_SUMMARY_CACHE[link] = cache_data
+                    
                     # Save to disk cache
                     with open(cache_path, 'w', encoding='utf-8') as f:
                         json.dump(ARTICLE_SUMMARY_CACHE[link], f)
                     
-                    safe_print(f"✓ Summarized: {title}")
+                    safe_print(f"✓ Summarized: {title}{' with embedding' if embedding else ''}")
                     new_summaries += 1
                 else:
                     safe_print(f"✗ Could not generate summary for {title}: {summary_error}")
@@ -812,7 +872,7 @@ def preprocess(articles, user_interests):
             title = normalize_title(title)
             
             # Extract subject using LLM or fallback
-            prompt = f"[INST] Analyze this title and tell me what the subject is. Perform this on {title}. DO NOT OUTPUT ANYTHING ELSE. [/INST]"
+            prompt = f"[INST] Extract ONLY the core subject from this title. For example, 'New Advancements in AI Research' should return 'AI Research'. Respond with the subject only, no additional words or explanations. Perform this on: {title}. [/INST]"
             llm = get_llama_model()
             if llm:
                 try:
@@ -879,7 +939,12 @@ def preprocess(articles, user_interests):
                 link_text = link_text[:500]
                 
             # Get the subject line using Llama
-            prompt = f"""[INST] Analyze this title and tell me what the subject is. Example: Altair at 50: Remembering the first Personal Computer -> Altair, First Personal computer. Perform this on {title}. DO NOT OUTPUT ANYTHING ELSE. NO THANK YOUs or confirmations. I just need the Subject line. [/INST]"""
+            prompt = f"""[INST] Extract ONLY the core subject from this title. Examples:
+'Altair at 50: Remembering the first Personal Computer' → 'Altair; Personal Computing'
+'New Study Shows Impact of Machine Learning on Healthcare' → 'Machine Learning; Healthcare'
+
+Respond with just the core subject(s), separated by semicolons if multiple. No phrases like 'This is' or 'The subject is'.
+For this title: {title} [/INST]"""
             
             # Use the global Llama model with lock
             llm = get_llama_model()
@@ -1080,18 +1145,21 @@ def generate_deep_dive_questions(article_data):
     llm = get_llama_model()
     if llm is not None:
         try:
-            # Use Llama to generate conceptual questions
+            # Use Llama to generate conceptual questions with improved context
             prompt = f"""[INST] Based on this article title: "{article_title}" and subject area: "{subject_line}", 
-            extract the fundamental concepts and generate two questions about basic principles or core concepts.
+            generate two focused conceptual questions that would help someone understand the fundamental principles involved.
             
-            For example, if the article is "Dimension 126 proves twisted shape of Kervaire's constant 1", 
-            generate questions like "What are 4+ dimensional shapes?" and "What is Kervaire's constant?"
+            Each question should:
+            1. Be specific yet broadly applicable (not overly technical)
+            2. Include just enough context in the question itself to stand alone
+            3. Focus on core concepts rather than peripheral details
             
-            Don't ask about the specific details in the title, but rather the underlying concepts and subjects.
+            For example, instead of "What is Y Combinator?" a better question with context would be 
+            "What is the concept of amicus curiae brief in legal proceedings?"
             
             Format your response as a numbered list with just the questions:
-            1. First question about a basic concept
-            2. Second question about a basic concept
+            1. First question with sufficient context
+            2. Second question with sufficient context
             [/INST]"""
             
             # Get the questions using Llama
@@ -1481,6 +1549,11 @@ Keep it under 150 words and make it engaging. [/INST]"""
             
             # Process each search result
             for i, result in enumerate(results):
+                # Skip the source display when url is None
+                if result.get('url') is None:
+                    blog.append(f"{result['summary']}\n")
+                    continue
+                    
                 # Special formatting for PDF sources
                 if result.get('is_pdf', False):
                     blog.append(f"**Source {i+1}**: 📄 [{result['url']}]({result['url']}) *(PDF)*")
@@ -1783,6 +1856,11 @@ async def main():
                 
                 # Process each search result
                 for i, result in enumerate(results):
+                    # Skip the source display when url is None
+                    if result.get('url') is None:
+                        blog.append(f"{result['summary']}\n")
+                        continue
+                        
                     # Special formatting for PDF sources
                     if result.get('is_pdf', False):
                         blog.append(f"**Source {i+1}**: 📄 [{result['url']}]({result['url']}) *(PDF)*")

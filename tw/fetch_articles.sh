@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# fetch_articles.sh - Script to fetch articles from HackerNews using ansys.py
-# This script replaces the Flask-based article fetching with a direct approach
+# fetch_articles.sh - Script to fetch articles from HackerNews using ansys_local.py
+# This script uses the local version of ansys.py to avoid external dependencies
 
 # Colors for better output
 RED='\033[0;31m'
@@ -11,9 +11,9 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-CACHE_DIR="$(pwd)/.cache"
+CACHE_DIR="$(pwd)/local_cache"
 HTML_DIR="$(pwd)/public/articles"
-ANSYS_PATH="$(dirname $(pwd))/ansys.py"
+ANSYS_PATH="$(pwd)/ansys_local.py"
 PROCESSED_IDS_FILE="${CACHE_DIR}/processed_article_ids.json"
 
 echo -e "${BLUE}=== HackerNews Article Fetcher ===${NC}"
@@ -25,14 +25,14 @@ echo -e "${BLUE}Ansys path: ${ANSYS_PATH}${NC}"
 mkdir -p "${CACHE_DIR}"
 mkdir -p "${HTML_DIR}"
 
-# Check if ansys.py exists
+# Check if ansys_local.py exists
 if [ ! -f "${ANSYS_PATH}" ]; then
-    echo -e "${RED}Error: ansys.py not found at ${ANSYS_PATH}${NC}"
-    echo -e "${YELLOW}Please make sure ansys.py is in the parent directory.${NC}"
+    echo -e "${RED}Error: ansys_local.py not found at ${ANSYS_PATH}${NC}"
+    echo -e "${YELLOW}Please make sure ansys_local.py is in the current directory.${NC}"
     exit 1
 fi
 
-# Function to run ansys.py with caching
+# Function to run ansys_local.py with caching
 run_ansys_cache() {
     echo -e "${GREEN}Starting article caching process...${NC}"
     
@@ -40,7 +40,7 @@ run_ansys_cache() {
     export ANSYS_NO_SCORE=1
     export ANSYS_PROCESSED_IDS_FILE="${PROCESSED_IDS_FILE}"
     
-    # Run ansys.py with --cache-only flag
+    # Run ansys_local.py with --cache-only flag
     python3 "${ANSYS_PATH}" --cache-only
     
     if [ $? -eq 0 ]; then
@@ -51,7 +51,7 @@ run_ansys_cache() {
     fi
 }
 
-# Function to run ansys.py with full processing
+# Function to run ansys_local.py with full processing
 run_ansys_full() {
     echo -e "${GREEN}Starting full article processing...${NC}"
     
@@ -68,10 +68,10 @@ run_ansys_full() {
     
     echo -e "${BLUE}Using interests: $(cat ${INTERESTS_FILE})${NC}"
     
-    # Set environment variables for ansys.py
+    # Set environment variables for ansys_local.py
     export ANSYS_PROCESSED_IDS_FILE="${PROCESSED_IDS_FILE}"
     
-    # Run ansys.py with the interests file
+    # Run ansys_local.py with the interests file
     cat "${INTERESTS_FILE}" | python3 "${ANSYS_PATH}"
     
     if [ $? -eq 0 ]; then
