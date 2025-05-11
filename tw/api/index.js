@@ -605,14 +605,28 @@ app.get('/api/article/:id', async (req, res) => {
   try {
     const articleId = req.params.id;
     
+    if (!articleId) {
+      return res.status(404).json({ 
+        status: 'error', 
+        message: 'Article ID is required'
+      });
+    }
+    
     // Use our server.js module
     const serverFunctions = require('./server');
     const result = serverFunctions.get_article_endpoint(articleId);
     
+    if (result.status === 'error') {
+      return res.status(404).json(result);
+    }
+    
     return res.json(result);
   } catch (error) {
     console.error('Error retrieving article:', error);
-    return res.status(500).json({ status: 'error', message: error.message });
+    return res.status(500).json({ 
+      status: 'error', 
+      message: error.message || 'An unexpected error occurred'
+    });
   }
 });
 

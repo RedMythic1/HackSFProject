@@ -24,8 +24,20 @@
       "dest": "/dist/bundle.js"
     },
     {
+      "src": "/article/(.*)",
+      "dest": "/dist/index.html"
+    },
+    {
       "src": "/(.*)",
       "dest": "/dist/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "status": 404,
+      "dest": "/dist/index.html"
     }
   ]
 } 

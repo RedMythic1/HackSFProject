@@ -210,6 +210,15 @@ class AppController {
             
             if (!articleDetail) {
                 this.articlesContainer.innerHTML = '<div class="error">Article not found</div>';
+                // Add a back button even when article is not found
+                const backButton = document.createElement('button');
+                backButton.textContent = 'Back to Articles';
+                backButton.className = 'back-button';
+                backButton.addEventListener('click', () => {
+                    const interests = this.interestsInput?.value || '';
+                    this.loadArticles(interests);
+                });
+                this.articlesContainer.appendChild(backButton);
                 return;
             }
             
@@ -217,6 +226,15 @@ class AppController {
         } catch (error) {
             console.error('Error loading article details:', error);
             this.articlesContainer.innerHTML = '<div class="error">Error loading article details. Please try again later.</div>';
+            // Add a back button even when there's an error
+            const backButton = document.createElement('button');
+            backButton.textContent = 'Back to Articles';
+            backButton.className = 'back-button';
+            backButton.addEventListener('click', () => {
+                const interests = this.interestsInput?.value || '';
+                this.loadArticles(interests);
+            });
+            this.articlesContainer.appendChild(backButton);
         }
     }
     
