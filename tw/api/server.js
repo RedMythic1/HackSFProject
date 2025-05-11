@@ -114,11 +114,19 @@ function extractArticleSummary(content) {
 function process_articles_endpoint(query) {
   try {
     // Find all final article files in the cache
+    console.log(`Looking for articles in CACHE_DIR: ${CACHE_DIR}`);
+    console.log(`Looking for articles in LOCAL_CACHE_DIR: ${LOCAL_CACHE_DIR}`);
+    
     const finalArticles = glob.sync(`${CACHE_DIR}/final_article_*.json`);
     const localFinalArticles = glob.sync(`${LOCAL_CACHE_DIR}/final_article_*.json`);
+    
+    console.log(`Found ${finalArticles.length} articles in CACHE_DIR`);
+    console.log(`Found ${localFinalArticles.length} articles in LOCAL_CACHE_DIR`);
+    
     const allFinalArticles = [...finalArticles, ...localFinalArticles];
     
     if (allFinalArticles.length === 0) {
+      console.warn("No articles found in either cache directory");
       return {
         status: "success",
         message: "No articles found",
@@ -129,15 +137,27 @@ function process_articles_endpoint(query) {
     // Extract and load article data
     const articleData = [];
     const uniqueTitles = new Set();
+    let errorCount = 0;
     
     for (const articlePath of allFinalArticles) {
       try {
-        const data = JSON.parse(fs.readFileSync(articlePath, 'utf-8'));
+        console.log(`Processing article: ${articlePath}`);
+        const fileContent = fs.readFileSync(articlePath, 'utf-8');
+        
+        // Try parsing the article content
+        let data;
+        try {
+          data = JSON.parse(fileContent);
+        } catch (parseError) {
+          console.error(`Error parsing article JSON ${articlePath}: ${parseError}`);
+          errorCount++;
+          continue;
+        }
         
         // Extract filename
         const filename = path.basename(articlePath);
         
-        // Extract timestamp
+        // Extract timestamp and ID
         const articleId = filename.replace('final_article_', '').replace('.json', '');
         
         // Get the first line as the title
@@ -156,22 +176,41 @@ function process_articles_endpoint(query) {
         // Normalize title
         title = normalizeArticleTitle(title);
         
+        // Create a subject (keywords or summary extract)
+        let subject = data.keywords || '';
+        if (!subject && content) {
+          // Extract a short snippet from content if no keywords
+          const contentWithoutTitle = content.replace(lines[0], '').trim();
+          const contentLines = contentWithoutTitle.split('\n');
+          for (const line of contentLines) {
+            if (line && !line.startsWith('#') && line.length > 10) {
+              subject = line.length > 100 ? line.substring(0, 100) + '...' : line;
+              break;
+            }
+          }
+        }
+        
         if (!uniqueTitles.has(title)) {
           uniqueTitles.add(title);
           articleData.push({
             id: articleId,
             title: title,
-            timestamp: data.timestamp || 0,
-            filename: filename
+            subject: subject,
+            score: 50, // Default score
+            timestamp: data.timestamp || Date.now(),
+            link: `https://news.ycombinator.com/item?id=${articleId}`
           });
         }
       } catch (error) {
         console.error(`Error loading article ${articlePath}: ${error}`);
+        errorCount++;
       }
     }
     
     // Sort by timestamp (newest first)
     articleData.sort((a, b) => b.timestamp - a.timestamp);
+    
+    console.log(`Processed ${articleData.length} unique articles with ${errorCount} errors`);
     
     return {
       status: "success",
@@ -197,11 +236,15 @@ function process_articles_endpoint(query) {
  */
 function get_article_endpoint(articleId) {
   try {
+    console.log(`Getting article details for ID: ${articleId}`);
+    
     // Sanitize article_id to ensure it doesn't contain path traversal
-    if (!articleId.match(/^[a-zA-Z0-9_]+$/)) {
+    if (!articleId || !articleId.match(/^[a-zA-Z0-9_]+$/)) {
+      console.warn(`Invalid article ID format: ${articleId}`);
       return {
-        status: "error",
-        message: "Invalid article ID format"
+        title: "Article Not Found",
+        link: "#",
+        summary: "The requested article could not be found. The ID format is invalid."
       };
     }
     
@@ -209,17 +252,41 @@ function get_article_endpoint(articleId) {
     const articlePath = path.join(CACHE_DIR, `final_article_${articleId}.json`);
     const localArticlePath = path.join(LOCAL_CACHE_DIR, `final_article_${articleId}.json`);
     
+    console.log(`Checking for article at: ${articlePath}`);
+    console.log(`Checking for article at: ${localArticlePath}`);
+    
     let articleData;
+    let sourcePath;
     
     if (fs.existsSync(articlePath)) {
+      console.log(`Article found in main cache: ${articlePath}`);
+      sourcePath = articlePath;
       articleData = JSON.parse(fs.readFileSync(articlePath, 'utf-8'));
     } else if (fs.existsSync(localArticlePath)) {
+      console.log(`Article found in local cache: ${localArticlePath}`);
+      sourcePath = localArticlePath;
       articleData = JSON.parse(fs.readFileSync(localArticlePath, 'utf-8'));
     } else {
-      return {
-        status: "error",
-        message: "Article not found"
-      };
+      console.warn(`Article not found for ID: ${articleId}`);
+      
+      // Try to find by partial ID match in filenames
+      console.log("Attempting to find article by partial ID match...");
+      const allArticles = [
+        ...glob.sync(`${CACHE_DIR}/final_article_*${articleId}*.json`),
+        ...glob.sync(`${LOCAL_CACHE_DIR}/final_article_*${articleId}*.json`)
+      ];
+      
+      if (allArticles.length > 0) {
+        console.log(`Found ${allArticles.length} potential matches by ID partial`);
+        sourcePath = allArticles[0]; // Take the first match
+        articleData = JSON.parse(fs.readFileSync(sourcePath, 'utf-8'));
+      } else {
+        return {
+          title: "Article Not Found",
+          link: "#",
+          summary: "The requested article could not be found in our database."
+        };
+      }
     }
     
     // Extract title and content
@@ -229,70 +296,36 @@ function get_article_endpoint(articleId) {
     // Extract title from content
     if (content) {
       const lines = content.split('\n');
-      if (lines.length > 0 && lines[0].startsWith('# ')) {
-        title = lines[0].substring(2).trim();
-      }
-    }
-    
-    // Find embedding if available
-    let embedding = null;
-    try {
-      // Create a hash of the article content to look up potential embedding
-      const contentHash = crypto.createHash('md5').update(content).digest('hex');
-      const embeddingPaths = glob.sync(`${CACHE_DIR}/summary_${contentHash}*.json`);
-      const localEmbeddingPaths = glob.sync(`${LOCAL_CACHE_DIR}/summary_${contentHash}*.json`);
-      
-      if (embeddingPaths.length > 0) {
-        const embeddingData = JSON.parse(fs.readFileSync(embeddingPaths[0], 'utf-8'));
-        embedding = embeddingData.embedding;
-      } else if (localEmbeddingPaths.length > 0) {
-        const embeddingData = JSON.parse(fs.readFileSync(localEmbeddingPaths[0], 'utf-8'));
-        embedding = embeddingData.embedding;
-      } else {
-        // Try to find a matching summary by comparing title
-        const summaryFiles = glob.sync(`${CACHE_DIR}/summary_*.json`);
-        const localSummaryFiles = glob.sync(`${LOCAL_CACHE_DIR}/summary_*.json`);
-        const allSummaryFiles = [...summaryFiles, ...localSummaryFiles];
-        
-        for (const summaryPath of allSummaryFiles) {
-          try {
-            const summaryData = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
-            const summaryTitle = summaryData.title || '';
-            if ('embedding' in summaryData && summaryTitle.toLowerCase() === title.toLowerCase()) {
-              embedding = summaryData.embedding;
-              console.log(`Found embedding for article by title match: ${title}`);
-              break;
-            }
-          } catch (error) {
-            console.error(`Error reading summary file ${summaryPath}: ${error}`);
-          }
+      if (lines.length > 0) {
+        if (lines[0].startsWith('# ')) {
+          title = lines[0].substring(2).trim();
+        } else {
+          title = lines[0].trim();
         }
       }
-    } catch (error) {
-      console.error(`Error finding embedding: ${error}`);
     }
     
-    // Build the response object
+    // Create a summary from the content
+    let summary = content;
+    if (content && content.length > 200) {
+      summary = extractArticleSummary(content);
+    }
+    
+    // Create response object
     const response = {
-      status: "success",
-      article: {
-        id: articleId,
-        title: title,
-        content: content,
-      }
+      title: title,
+      link: articleData.url || `https://news.ycombinator.com/item?id=${articleId}`,
+      summary: summary
     };
     
-    // Add embedding if available
-    if (embedding) {
-      response.article.embedding = embedding;
-    }
-    
+    console.log(`Returning article: "${title}"`);
     return response;
   } catch (error) {
-    console.error(`Error retrieving article ${articleId}: ${error}`);
+    console.error(`Error getting article by ID ${articleId}:`, error);
     return {
-      status: "error",
-      message: `Error retrieving article: ${error.message}`
+      title: "Error Loading Article",
+      link: "#",
+      summary: `An error occurred while loading the article: ${error.message}`
     };
   }
 }

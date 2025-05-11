@@ -590,14 +590,26 @@ app.post('/verify-email', (req, res) => {
 // Route: Get articles
 app.get('/api/articles', async (req, res) => {
   try {
-    // Use our server.js module
+    console.log('GET /api/articles - Processing request with query:', req.query);
+    
+    // Load the server module
     const serverFunctions = require('./server');
     const result = serverFunctions.process_articles_endpoint(req.query);
     
-    return res.json(result);
+    // Ensure we return an array format the frontend expects
+    if (Array.isArray(result)) {
+      console.log(`Returning ${result.length} articles`);
+      return res.json(result);
+    } else if (result && result.articles && Array.isArray(result.articles)) {
+      console.log(`Returning ${result.articles.length} articles (from object)`);
+      return res.json(result.articles);
+    } else {
+      console.log('No articles found or invalid format');
+      return res.json([]);
+    }
   } catch (error) {
     console.error('Error getting articles:', error);
-    return res.status(500).json({ status: 'error', message: error.message });
+    return res.status(500).json([]);
   }
 });
 
