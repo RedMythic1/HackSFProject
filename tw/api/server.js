@@ -387,13 +387,13 @@ async function process_articles_endpoint(query) {
     
     // First try to get articles from blob storage
     console.log("Looking for cached articles in blob storage");
-    const finalArticleFiles = await listBlobFiles('*.json');
+    const finalArticleFiles = await listBlobFiles('final_articles_*.json');
     console.log(`Found ${finalArticleFiles.length} final article files in blob storage`);
     
     if (finalArticleFiles.length > 0) {
       // We have cached articles, process them
       console.log(`Processing ${finalArticleFiles.length} articles from blob storage`);
-      
+      console.log(finalArticleFiles);
       const articles = [];
       for (const filePath of finalArticleFiles.slice(0, 20)) { // Limit to 20 articles for performance
         try {
