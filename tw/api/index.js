@@ -587,41 +587,17 @@ app.post('/verify-email', (req, res) => {
   }
 });
 
-// Endpoints
+// Route: Get articles
 app.get('/api/articles', async (req, res) => {
   try {
-    // Use cached articles or fetch new ones
-    const articles = CACHE.articles.length > 0 ? CACHE.articles : await fetchArticles();
+    // Use our server.js module
+    const serverFunctions = require('./server');
+    const result = serverFunctions.process_articles_endpoint(req.query);
     
-    // Get user interests from query params
-    const userInterests = req.query.interests || '';
-    
-    // Process and score articles
-    const processedArticles = articles.map((article, index) => {
-      const [title, link] = article;
-      
-      // Extract subject from title
-      const words = title.split(' ');
-      const subject = words.length > 3 ? words.slice(0, 3).join(' ') : title;
-      
-      // Score based on user interests
-      const score = scoreArticle(article, userInterests);
-      
-      return {
-        title,
-        link,
-        subject,
-        score
-      };
-    });
-    
-    // Sort by score
-    processedArticles.sort((a, b) => b.score - a.score);
-    
-    res.json(processedArticles);
+    return res.json(result);
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: 'Error processing articles' });
+    console.error('Error getting articles:', error);
+    return res.status(500).json({ status: 'error', message: error.message });
   }
 });
 
@@ -629,39 +605,14 @@ app.get('/api/article/:id', async (req, res) => {
   try {
     const articleId = req.params.id;
     
-    // Find article in cache
-    const article = CACHE.articles.find(([_, link]) => link.includes(articleId));
+    // Use our server.js module
+    const serverFunctions = require('./server');
+    const result = serverFunctions.get_article_endpoint(articleId);
     
-    if (!article) {
-      return res.status(404).json({ error: 'Article not found' });
-    }
-    
-    const [title, link] = article;
-    
-    // Check if we have a cached summary
-    if (CACHE.summaries[link]) {
-      return res.json({
-        title,
-        link,
-        summary: CACHE.summaries[link]
-      });
-    }
-    
-    // Extract and summarize content
-    const content = await extractContent(link);
-    const summary = summarizeContent(content);
-    
-    // Cache the summary
-    CACHE.summaries[link] = summary;
-    
-    res.json({
-      title,
-      link,
-      summary
-    });
+    return res.json(result);
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: 'Error retrieving article' });
+    console.error('Error retrieving article:', error);
+    return res.status(500).json({ status: 'error', message: error.message });
   }
 });
 
@@ -670,40 +621,17 @@ app.post('/api/analyze-interests', (req, res) => {
     const { interests } = req.body;
     
     if (!interests) {
-      return res.status(400).json({ error: 'No interests provided' });
+      return res.status(400).json({ status: 'error', message: 'No interests provided' });
     }
     
-    // Store interests in cache
-    CACHE.interests = interests;
+    // Use our server.js module
+    const serverFunctions = require('./server');
+    const result = serverFunctions.analyze_interests_endpoint(interests);
     
-    // Simple analysis
-    const interestTerms = interests.split(',').map(term => term.trim());
-    const analysis = {
-      count: interestTerms.length,
-      terms: interestTerms,
-      relevantArticles: []
-    };
-    
-    // Find relevant articles based on interests
-    if (CACHE.articles.length > 0) {
-      const scoredArticles = CACHE.articles.map(article => {
-        return {
-          title: article[0],
-          link: article[1],
-          score: scoreArticle(article, interests)
-        };
-      });
-      
-      // Get top 3 relevant articles
-      analysis.relevantArticles = scoredArticles
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3);
-    }
-    
-    res.json(analysis);
+    return res.json(result);
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: 'Error analyzing interests' });
+    console.error('Error analyzing interests:', error);
+    return res.status(500).json({ status: 'error', message: error.message });
   }
 });
 
