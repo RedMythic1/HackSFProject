@@ -277,6 +277,25 @@ function extractArticleSummary(content) {
   }
 }
 
+// Helper function to extract introduction from HTML content
+function extractHtmlIntroduction(htmlContent) {
+  try {
+    // Look for the Introduction marker
+    const introMarker = '#<h1>Introduction';
+    const startIdx = htmlContent.indexOf(introMarker);
+    if (startIdx === -1) return '';
+    // Find the end of the introduction section (next #<h1> or end of string)
+    const afterIntro = htmlContent.slice(startIdx + introMarker.length);
+    const endIdx = afterIntro.indexOf('#<h1>');
+    let introSection = endIdx !== -1 ? afterIntro.slice(0, endIdx) : afterIntro;
+    // Remove HTML tags and decode entities
+    introSection = introSection.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    return introSection;
+  } catch (e) {
+    return '';
+  }
+}
+
 // --- Demo Data Generator ---
 
 /**
@@ -398,7 +417,10 @@ async function process_articles_endpoint(query) {
     
     // First try to get articles from blob storage
     console.log("Looking for cached articles in blob storage");
-    const finalArticleFiles = await listBlobFiles('final_article_*.json');
+    const finalArticleFiles = [
+      ...(await listBlobFiles('final_article_*.json')),
+      ...(await listBlobFiles('final_article_*.html'))
+    ];
     console.log(`Found ${finalArticleFiles.length} final article files in blob storage`);
     
     if (finalArticleFiles.length > 0) {
@@ -417,34 +439,53 @@ async function process_articles_endpoint(query) {
           const filename = path.basename(filePath);
           const id = filename.replace('final_article_', '').replace('.json', '');
           
-          // Extract title from content
+          // Extract title and summary from content
           let title = 'Untitled Article';
           let summary = '';
           let subject = '';
           
-          if (articleData.content) {
-            // Extract title (first line with # prefix)
-            const contentLines = articleData.content.split('\n');
-            if (contentLines[0] && contentLines[0].startsWith('# ')) {
-              title = contentLines[0].substring(2);
+          if (filePath.endsWith('.html')) {
+            // HTML article: extract introduction as summary
+            summary = extractHtmlIntroduction(articleData.content || articleData.html || '');
+            // Try to extract title from HTML content (fallback to filename)
+            const match = (articleData.content || '').match(/<title>(.*?)<\/title>/i);
+            if (match) {
+              title = match[1];
+            } else {
+              title = filename.replace('final_article_', '').replace('.html', '');
             }
-            
-            // Try to extract summary from first few paragraphs
-            const paragraphs = articleData.content.split('\n\n').filter(p => p.trim() && !p.startsWith('#'));
-            if (paragraphs.length > 0) {
-              summary = paragraphs[0];
-              if (paragraphs.length > 1) {
-                summary += '\n\n' + paragraphs[1];
+            subject = title.split(':')[0];
+          } else {
+            // JSON/Markdown: use summary or intro if available
+            if (articleData.summary) {
+              summary = articleData.summary;
+            } else if (articleData.intro) {
+              summary = articleData.intro;
+            } else if (articleData.content) {
+              // fallback to first paragraph or content parsing
+              const paragraphs = articleData.content.split('\n\n').filter(p => p.trim() && !p.startsWith('#'));
+              if (paragraphs.length > 0) {
+                summary = paragraphs[0];
+                if (paragraphs.length > 1) {
+                  summary += '\n\n' + paragraphs[1];
+                }
               }
             }
-            
+            // Extract title from content
+            if (articleData.content) {
+              const contentLines = articleData.content.split('\n');
+              if (contentLines[0] && contentLines[0].startsWith('# ')) {
+                title = contentLines[0].substring(2);
+              }
+            }
             // Try to extract subject from content
-            const subjectMatch = articleData.content.match(/##\s+(.+?)\n/);
-            if (subjectMatch) {
-              subject = subjectMatch[1].replace(/subject|topic|about|:/gi, '').trim();
-            } else {
-              // Fallback to using part of the title
-              subject = title.split(':')[0];
+            if (articleData.content) {
+              const subjectMatch = articleData.content.match(/##\s+(.+?)\n/);
+              if (subjectMatch) {
+                subject = subjectMatch[1].replace(/subject|topic|about|:/gi, '').trim();
+              } else {
+                subject = title.split(':')[0];
+              }
             }
           }
           
@@ -490,7 +531,10 @@ async function get_homepage_articles_endpoint() {
     console.log('get_homepage_articles_endpoint: Retrieving articles from database');
     
     // Use listBlobFiles to get articles from Vercel Blob Storage
-    const articleFiles = await listBlobFiles('final_article_*.json');
+    const articleFiles = [
+      ...(await listBlobFiles('final_article_*.json')),
+      ...(await listBlobFiles('final_article_*.html'))
+    ];
     console.log(`Found ${articleFiles.length} article files: homepage test`);
     
     if (articleFiles.length === 0) {
@@ -568,12 +612,18 @@ async function get_article_endpoint(articleId) {
     console.log(`Getting article details for: ${articleId}`);
     
     // Search for this article in blob storage
-    const blobFiles = await listBlobFiles(`final_article_*${articleId}*.json`);
+    const blobFiles = [
+      ...(await listBlobFiles(`final_article_*${articleId}*.json`)),
+      ...(await listBlobFiles(`final_article_*${articleId}*.html`))
+    ];
     console.log(`Found ${blobFiles.length} matching blob files for article ID: ${articleId}`);
     
     if (blobFiles.length === 0) {
       // If not found directly, try listing all articles and finding by ID
-      const allBlobFiles = await listBlobFiles('final_article_*.json');
+      const allBlobFiles = [
+        ...(await listBlobFiles('final_article_*.json')),
+        ...(await listBlobFiles('final_article_*.html'))
+      ];
       console.log(`Searching through ${allBlobFiles.length} total articles for ID: ${articleId}`);
       
       for (const filePath of allBlobFiles) {
@@ -680,7 +730,10 @@ async function analyze_interests_endpoint(interests) {
     
     // Get all final articles from blob storage
     console.log("Fetching articles from Vercel Blob Storage");
-    const finalArticleFiles = await listBlobFiles('final_article_*.json');
+    const finalArticleFiles = [
+      ...(await listBlobFiles('final_article_*.json')),
+      ...(await listBlobFiles('final_article_*.html'))
+    ];
     console.log(`Found ${finalArticleFiles.length} final article files in blob storage`);
     
     if (finalArticleFiles.length === 0) {
