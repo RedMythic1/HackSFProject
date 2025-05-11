@@ -6,11 +6,19 @@
       "use": "@vercel/node"
     },
     {
+      "src": "api/server_handler.py",
+      "use": "@vercel/python"
+    },
+    {
       "src": "dist/**/*",
       "use": "@vercel/static"
     }
   ],
   "routes": [
+    {
+      "src": "/api/python/(.*)",
+      "dest": "/api/server_handler.py"
+    },
     {
       "src": "/api/(.*)",
       "dest": "/api/index.js"
@@ -68,6 +76,11 @@
     "api/index.js": {
       "memory": 1024,
       "maxDuration": 60
+    },
+    "api/server_handler.py": {
+      "memory": 1024,
+      "maxDuration": 60,
+      "runtime": "python3.9"
     }
   }
 } 
