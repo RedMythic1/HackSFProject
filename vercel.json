@@ -9,26 +9,19 @@
       "src": "tw/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist"
+        "distDir": "dist",
+        "outputDirectory": "tw/dist"
       }
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/tw/api/index.js"
-    },
-    {
-      "src": "/static/(.*)",
-      "dest": "/tw/dist/static/$1"
-    },
-    {
-      "src": "/bundle.js",
-      "dest": "/tw/dist/bundle.js"
+      "dest": "tw/api/index.js"
     },
     {
       "src": "/(.*)",
-      "dest": "/tw/dist/$1"
+      "dest": "tw/dist/$1"
     }
   ]
 } 
