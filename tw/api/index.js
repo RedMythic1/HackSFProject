@@ -16,16 +16,20 @@ const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-// Constants
-const CACHE_DIR = process.env.CACHE_DIR || path.join(process.cwd(), '.vercel', 'cache');
-const LOCAL_CACHE_DIR = process.env.LOCAL_CACHE_DIR || path.join(process.cwd(), 'local_cache');
+// Environment detection
+const isVercel = process.env.VERCEL === '1';
+console.log(`Running in ${isVercel ? 'Vercel' : 'local'} environment`);
+
+// Constants - always use /tmp for Vercel
+const CACHE_DIR = isVercel ? '/tmp/cache' : path.join(process.cwd(), '.vercel', 'cache');
+const LOCAL_CACHE_DIR = isVercel ? '/tmp/local_cache' : path.join(process.cwd(), 'local_cache');
 
 // Detailed logging of directories
 console.log(`API Server initialized with:
   CACHE_DIR: ${CACHE_DIR}
   LOCAL_CACHE_DIR: ${LOCAL_CACHE_DIR}
   Current working directory: ${process.cwd()}
-  Vercel environment: ${process.env.VERCEL === '1' ? 'Yes' : 'No'}`);
+  Vercel environment: ${isVercel ? 'Yes' : 'No'}`);
 
 // Cache for articles and summaries
 const CACHE = {
@@ -35,6 +39,7 @@ const CACHE = {
 };
 
 // Ensure cache directories exist
+let cacheDirsAvailable = false;
 try {
   if (!fs.existsSync(CACHE_DIR)) {
     fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -44,19 +49,35 @@ try {
     fs.mkdirSync(LOCAL_CACHE_DIR, { recursive: true });
     console.log(`Created LOCAL_CACHE_DIR: ${LOCAL_CACHE_DIR}`);
   }
-  
-  // List contents for debugging
-  if (fs.existsSync(LOCAL_CACHE_DIR)) {
-    const files = fs.readdirSync(LOCAL_CACHE_DIR);
-    console.log(`LOCAL_CACHE_DIR contains ${files.length} files`);
-    if (files.length > 0) {
-      console.log(`First 5 files: ${files.slice(0, 5).join(', ')}`);
-    }
-  }
-  
+  cacheDirsAvailable = true;
   console.log(`Cache directories initialized`);
 } catch (error) {
-  console.error('Error creating cache directories:', error);
+  console.warn('Error creating cache directories (normal in serverless environments):', error.message);
+}
+
+// Safe file read function with memory cache fallback
+function safeReadFile(filePath, defaultValue = null) {
+  try {
+    if (cacheDirsAvailable && fs.existsSync(filePath)) {
+      return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    }
+  } catch (error) {
+    console.warn(`Error reading file ${filePath}: ${error.message}`);
+  }
+  return defaultValue;
+}
+
+// Safe file write function with memory cache fallback
+function safeWriteFile(filePath, data) {
+  try {
+    if (cacheDirsAvailable) {
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+      return true;
+    }
+  } catch (error) {
+    console.warn(`Error writing file ${filePath}: ${error.message}`);
+  }
+  return false;
 }
 
 // Helper function to generate cache keys

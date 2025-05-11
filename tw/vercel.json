@@ -41,8 +41,6 @@
     }
   ],
   "env": {
-    "CACHE_DIR": "/tmp/cache",
-    "LOCAL_CACHE_DIR": "/tmp/local_cache",
     "NODE_ENV": "production",
     "VERCEL": "1"
   }
