@@ -388,15 +388,13 @@ const customRankingSystem = async (
         let vectorDistanceScore = 0;
         let cosineSimilarityScore = 0;
         
-        // Get article embedding (either from summary or title+subject)
+        // Get article embedding (from summary file only)
         let articleEmbedding: number[] = [];
         let embeddingSource = 'none';
-        
-        try {
-            if (article.id) {
-                // Try to load the summary file for this article
-                const summaryPath = `.cache/summary_${article.id}.json`;
-                console.log(`Attempting to load embedding from: ${summaryPath}`);
+        if (article.id) {
+            const summaryPath = `.cache/summary_${article.id}.json`;
+            console.log(`Attempting to load embedding from: ${summaryPath}`);
+            try {
                 const response = await fetch(summaryPath);
                 if (response.ok) {
                     const summaryData = await response.json();
@@ -410,69 +408,44 @@ const customRankingSystem = async (
                 } else {
                     console.log(`Failed to load embedding from file: ${response.status}`);
                 }
+            } catch (err) {
+                console.warn(`Error loading embedding for article id ${article.id}:`, err);
             }
-            
-            if (!articleEmbedding.length) {
-                // Fallback to generating embedding from title+subject
-                console.log(`Fallback: Generating new embedding from title+subject`);
-                const fallbackText = `${article.title}. ${article.subject || ''}`;
-                console.log(`Generating embedding for text: "${fallbackText}"`);
-                articleEmbedding = await generateEmbedding(fallbackText);
-                if (articleEmbedding.length) {
-                    embeddingSource = 'generated';
-                    console.log(`Successfully generated embedding (${articleEmbedding.length} dimensions)`);
-                } else {
-                    console.log(`Failed to generate embedding`);
+        }
+        if (!articleEmbedding.length) {
+            console.warn('No embedding found in summary file. Skipping vector similarity for this article.');
+        }
+        // Get interests embedding
+        console.log(`Generating embedding for user interests: "${userInterests}"`);
+        const interestsEmbedding = await generateEmbedding(userInterests);
+        console.log(`User interests embedding generated (${interestsEmbedding.length} dimensions)`);
+        if (articleEmbedding.length && interestsEmbedding.length) {
+            console.log(`Computing vector similarity between article (${embeddingSource}) and interests...`);
+            // Calculate cosine similarity (0-25 points)
+            const similarity = vectorSimilarity(articleEmbedding, interestsEmbedding);
+            console.log(`Cosine similarity: ${similarity.toFixed(2)} / 100`);
+            cosineSimilarityScore = (similarity / 100) * 25;
+            console.log(`Cosine similarity score: ${cosineSimilarityScore.toFixed(2)} / 25 points (${similarity.toFixed(2)}% × 0.25)`);
+            // Calculate vector distance (0-15 points)
+            if (articleEmbedding.length === interestsEmbedding.length) {
+                let sumSquaredDiff = 0;
+                for (let i = 0; i < articleEmbedding.length; i++) {
+                    const diff = articleEmbedding[i] - interestsEmbedding[i];
+                    sumSquaredDiff += diff * diff;
                 }
-            }
-            
-            // Get interests embedding
-            console.log(`Generating embedding for user interests: "${userInterests}"`);
-            const interestsEmbedding = await generateEmbedding(userInterests);
-            console.log(`User interests embedding generated (${interestsEmbedding.length} dimensions)`);
-            
-            if (articleEmbedding.length && interestsEmbedding.length) {
-                console.log(`Computing vector similarity between article (${embeddingSource}) and interests...`);
-                
-                // Calculate cosine similarity (0-25 points)
-                const similarity = vectorSimilarity(articleEmbedding, interestsEmbedding);
-                console.log(`Cosine similarity: ${similarity.toFixed(2)} / 100`);
-                cosineSimilarityScore = (similarity / 100) * 25;
-                console.log(`Cosine similarity score: ${cosineSimilarityScore.toFixed(2)} / 25 points (${similarity.toFixed(2)}% × 0.25)`);
-                
-                // Calculate vector distance (0-15 points)
-                // Lower distance = better match = higher score
-                if (articleEmbedding.length === interestsEmbedding.length) {
-                    // Calculate Euclidean distance between vectors
-                    let sumSquaredDiff = 0;
-                    for (let i = 0; i < articleEmbedding.length; i++) {
-                        const diff = articleEmbedding[i] - interestsEmbedding[i];
-                        sumSquaredDiff += diff * diff;
-                    }
-                    const distance = Math.sqrt(sumSquaredDiff);
-                    console.log(`Euclidean distance: ${distance.toFixed(4)}`);
-                    
-                    // Normalize distance to score (inversely related)
-                    // We expect most distances to be between 0-2 for normalized vectors
-                    const normalizedDistance = Math.min(2, distance);
-                    console.log(`Normalized distance: ${normalizedDistance.toFixed(4)} (capped at 2.0)`);
-                    vectorDistanceScore = 15 * (1 - (normalizedDistance / 2));
-                    console.log(`Vector distance score: ${vectorDistanceScore.toFixed(2)} / 15 points (15 × (1 - ${normalizedDistance.toFixed(2)}/2))`);
-                } else {
-                    console.log(`Vector dimensions don't match: ${articleEmbedding.length} vs ${interestsEmbedding.length} - Cannot calculate distance`);
-                }
-                
-                // Combine vector scores
-                vectorScore = cosineSimilarityScore + vectorDistanceScore;
-                console.log(`Combined vector score: ${vectorScore.toFixed(2)} / 40 points (${cosineSimilarityScore.toFixed(2)} + ${vectorDistanceScore.toFixed(2)})`);
+                const distance = Math.sqrt(sumSquaredDiff);
+                console.log(`Euclidean distance: ${distance.toFixed(4)}`);
+                const normalizedDistance = Math.min(2, distance);
+                console.log(`Normalized distance: ${normalizedDistance.toFixed(4)} (capped at 2.0)`);
+                vectorDistanceScore = 15 * (1 - (normalizedDistance / 2));
+                console.log(`Vector distance score: ${vectorDistanceScore.toFixed(2)} / 15 points (15 × (1 - ${normalizedDistance.toFixed(2)}/2))`);
             } else {
-                console.log(`Missing embeddings - Cannot calculate vector similarity`);
+                console.log(`Vector dimensions don't match: ${articleEmbedding.length} vs ${interestsEmbedding.length} - Cannot calculate distance`);
             }
-        } catch (err) {
-            console.warn(`Error calculating vector scores:`, err);
-            // Default vector score if we can't calculate it
-            vectorScore = 20;
-            console.log(`Using default vector score due to error: ${vectorScore} / 40 points`);
+            vectorScore = cosineSimilarityScore + vectorDistanceScore;
+            console.log(`Combined vector score: ${vectorScore.toFixed(2)} / 40 points (${cosineSimilarityScore.toFixed(2)} + ${vectorDistanceScore.toFixed(2)})`);
+        } else {
+            console.log(`Missing embeddings - Cannot calculate vector similarity`);
         }
         
         console.log(`\n----- SCORING COMPONENT 4: FRESHNESS FACTOR (0-10 points) -----`);
