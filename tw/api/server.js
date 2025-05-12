@@ -625,7 +625,7 @@ async function get_article_endpoint(articleId) {
     
     if (exactBlobFiles.length > 0) {
       console.log(`Found exact match for article ID: ${articleId}`);
-      const articlePath = `/tmp/final_article_${articleId}`;
+      const articlePath = `/articles/final_article_${articleId}`;
       console.log('Reading file:', articlePath);
       const articleData = await safeReadFile(articlePath);
       
