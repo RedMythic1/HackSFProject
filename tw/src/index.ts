@@ -52,6 +52,7 @@ interface Article {
     score: number;
     summary?: string;
     id?: string;
+    scoreComponents?: Record<string, string>;
 }
 
 interface ArticleDetail {
@@ -255,38 +256,69 @@ const customRankingSystem = async (
             return baseScore; // Default score if no interests
         }
         
-        // ---- 1. KEYWORD RELEVANCE (0-35 points) ----
+        // Split interest terms and normalize
         const interestTerms = userInterests.toLowerCase().split(/[\s,]+/).filter(term => term.length > 2);
-        const articleTextLower = `${article.title} ${article.subject || ''} ${article.summary || ''}`.toLowerCase();
+        if (interestTerms.length === 0) {
+            return baseScore; // No valid interest terms
+        }
         
-        // Count exact matches (highest value)
+        // Get article text for analysis
+        const articleSummary = article.summary || '';
+        const articleText = `${article.title} ${article.subject || ''} ${articleSummary}`.toLowerCase();
+        const articleSummaryLower = articleSummary.toLowerCase();
+        
+        // ---- 1. KEYWORD FREQUENCY IN SUMMARY (0-30 points) ----
+        let keywordFrequencyScore = 0;
+        if (articleSummaryLower.length > 0) {
+            let totalKeywordCount = 0;
+            let termCounts = new Map<string, number>();
+            
+            // Count each keyword occurrence in the summary
+            interestTerms.forEach(term => {
+                let count = 0;
+                let position = articleSummaryLower.indexOf(term);
+                
+                while (position !== -1) {
+                    count++;
+                    position = articleSummaryLower.indexOf(term, position + 1);
+                }
+                
+                termCounts.set(term, count);
+                totalKeywordCount += count;
+            });
+            
+            // Calculate percentage of keywords in the summary (words)
+            const summaryWordCount = articleSummaryLower.split(/\s+/).length;
+            const keywordPercentage = summaryWordCount > 0 ? 
+                (totalKeywordCount / summaryWordCount) * 100 : 0;
+                
+            // Log the percentage for debugging
+            console.log(`Keyword frequency for "${article.title}": ${keywordPercentage.toFixed(2)}% (${totalKeywordCount} occurrences in ${summaryWordCount} words)`);
+            
+            // Convert to score (max 30 points)
+            // We cap at 10% to avoid overweighting articles that just repeat keywords
+            keywordFrequencyScore = Math.min(30, keywordPercentage * 3);
+        }
+        
+        // ---- 2. EXACT MATCH SCORE (0-20 points) ----
+        let exactMatchScore = 0;
         let exactMatchCount = 0;
+        
+        // Count exact matches
         interestTerms.forEach(term => {
-            if (articleTextLower.includes(term)) {
+            if (articleText.includes(term)) {
                 exactMatchCount++;
             }
         });
         
-        // Count partial matches (lower value)
-        let partialMatchCount = 0;
-        interestTerms.forEach(term => {
-            // Check if any word in the article contains this term
-            const words = articleTextLower.split(/\s+/);
-            for (const word of words) {
-                if (word.includes(term) && word !== term) {
-                    partialMatchCount++;
-                    break; // Count each interest term only once for partial matches
-                }
-            }
-        });
+        // Calculate normalized exact match score
+        const normalizedExactMatches = exactMatchCount / interestTerms.length;
+        exactMatchScore = normalizedExactMatches * 20;
         
-        // Calculate keyword score (0-35 points)
-        const normalizedExactMatches = interestTerms.length > 0 ? exactMatchCount / interestTerms.length : 0;
-        const normalizedPartialMatches = interestTerms.length > 0 ? partialMatchCount / interestTerms.length : 0;
-        const keywordScore = (normalizedExactMatches * 30) + (normalizedPartialMatches * 5);
-        
-        // ---- 2. SEMANTIC RELEVANCE (0-40 points) ----
-        let semanticScore = 0;
+        // ---- 3. VECTOR SIMILARITY METRICS (0-40 points) ----
+        let vectorScore = 0;
+        let vectorDistanceScore = 0;
+        let cosineSimilarityScore = 0;
         
         // Get article embedding (either from summary or title+subject)
         let articleEmbedding: number[] = [];
@@ -313,37 +345,62 @@ const customRankingSystem = async (
             const interestsEmbedding = await generateEmbedding(userInterests);
             
             if (articleEmbedding.length && interestsEmbedding.length) {
-                // Convert similarity (0-100) to semantic score (0-40)
+                // Calculate cosine similarity (0-25 points)
                 const similarity = vectorSimilarity(articleEmbedding, interestsEmbedding);
-                semanticScore = (similarity / 100) * 40;
+                cosineSimilarityScore = (similarity / 100) * 25;
+                
+                // Calculate vector distance (0-15 points)
+                // Lower distance = better match = higher score
+                if (articleEmbedding.length === interestsEmbedding.length) {
+                    // Calculate Euclidean distance between vectors
+                    let sumSquaredDiff = 0;
+                    for (let i = 0; i < articleEmbedding.length; i++) {
+                        const diff = articleEmbedding[i] - interestsEmbedding[i];
+                        sumSquaredDiff += diff * diff;
+                    }
+                    const distance = Math.sqrt(sumSquaredDiff);
+                    
+                    // Normalize distance to score (inversely related)
+                    // We expect most distances to be between 0-2 for normalized vectors
+                    const normalizedDistance = Math.min(2, distance);
+                    vectorDistanceScore = 15 * (1 - (normalizedDistance / 2));
+                    
+                    console.log(`Vector distance for "${article.title}": ${distance.toFixed(4)}, Score: ${vectorDistanceScore.toFixed(2)}`);
+                }
+                
+                // Combine vector scores
+                vectorScore = cosineSimilarityScore + vectorDistanceScore;
             }
         } catch (err) {
-            console.warn(`Error calculating semantic score: ${err}`);
-            // Default semantic score if we can't calculate it
-            semanticScore = 20; // Neutral score
+            console.warn(`Error calculating vector scores: ${err}`);
+            // Default vector score if we can't calculate it
+            vectorScore = 20; // Neutral score
         }
         
-        // ---- 3. POPULARITY FACTOR (0-15 points) ----
-        // Simulate popularity with the article ID (in real system this would be view counts, etc.)
-        const popularityScore = article.id ? 
-            (parseInt(article.id.replace(/\D/g, '').slice(-4) || '0') % 15) : 
-            Math.floor(Math.random() * 15);
-        
         // ---- 4. FRESHNESS FACTOR (0-10 points) ----
-        // A random value here, but in a real system would be based on publish date
-        const freshnessScore = Math.floor(Math.random() * 10);
+        // A consistent value based on article ID to ensure the same article always gets the same freshness score
+        const freshnessScore = article.id ? 
+            (parseInt(article.id.replace(/\D/g, '').slice(-2) || '0') % 10) : 
+            Math.floor(Math.random() * 10);
         
         // ---- COMBINE SCORES ----
-        const finalScore = keywordScore + semanticScore + popularityScore + freshnessScore;
+        const finalScore = keywordFrequencyScore + exactMatchScore + vectorScore + freshnessScore;
         
-        // Log scoring breakdown for debugging
-        console.log(`Scoring breakdown for "${article.title}":`, {
-            keyword: keywordScore.toFixed(2),
-            semantic: semanticScore.toFixed(2),
-            popularity: popularityScore,
-            freshness: freshnessScore,
+        // Log all scoring components
+        const scoreBreakdown = {
+            keywordFrequency: keywordFrequencyScore.toFixed(2),
+            exactMatch: exactMatchScore.toFixed(2),
+            vectorTotal: vectorScore.toFixed(2),
+            cosineSimilarity: cosineSimilarityScore.toFixed(2),
+            vectorDistance: vectorDistanceScore.toFixed(2),
+            freshness: freshnessScore.toString(),
             final: finalScore.toFixed(2)
-        });
+        };
+        
+        console.log(`Scoring breakdown for "${article.title}":`, scoreBreakdown);
+        
+        // Store score components in the article object for display
+        article.scoreComponents = scoreBreakdown;
         
         // Ensure score is between 0-100
         return Math.min(100, Math.max(0, finalScore));
@@ -567,6 +624,21 @@ class AppController {
                                   article.score > 60 ? '<span class="tag moderate">Moderate Match</span>' :
                                   '<span class="tag low">Low Match</span>'}
                             </div>
+                            ${article.scoreComponents ? `
+                            <div class="score-details">
+                                <div class="score-component">
+                                    <span class="component-label">Keyword Frequency:</span>
+                                    <span class="component-value">${article.scoreComponents.keywordFrequency}</span>
+                                </div>
+                                <div class="score-component">
+                                    <span class="component-label">Exact Match:</span>
+                                    <span class="component-value">${article.scoreComponents.exactMatch}</span>
+                                </div>
+                                <div class="score-component">
+                                    <span class="component-label">Vector Similarity:</span>
+                                    <span class="component-value">${article.scoreComponents.vectorTotal}</span>
+                                </div>
+                            </div>` : ''}
                         </div>
                     </div>
                 </div>
