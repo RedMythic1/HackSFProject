@@ -249,44 +249,81 @@ const customRankingSystem = async (
     articleCollection: Article[]
 ): Promise<number> => {
     try {
+        console.log(`\n========== SCORING ARTICLE: "${article.title}" (ID: ${article.id || 'unknown'}) ==========`);
+        console.log(`Interest Terms: "${userInterests}"`);
+        
         // Base score (70-95 range)
         let baseScore = Math.floor(Math.random() * 25) + 70;
+        console.log(`Base score (if no interests): ${baseScore}`);
         
         if (!userInterests.trim()) {
+            console.log(`No interests provided - Using base score: ${baseScore}`);
             return baseScore; // Default score if no interests
         }
         
         // Split interest terms and normalize
         const interestTerms = userInterests.toLowerCase().split(/[\s,]+/).filter(term => term.length > 2);
+        console.log(`Parsed interest terms (${interestTerms.length}):`, interestTerms);
+        
         if (interestTerms.length === 0) {
+            console.log(`No valid interest terms after filtering - Using base score: ${baseScore}`);
             return baseScore; // No valid interest terms
         }
         
         // Load summary from .cache/summary_{article.id}.json if possible
         let articleSummary = '';
+        let summarySource = 'none';
+        
         if (article.id) {
             try {
                 const summaryPath = `.cache/summary_${article.id}.json`;
+                console.log(`ATTEMPTING TO LOAD SUMMARY FILE: ${summaryPath}`);
+                
                 const response = await fetch(summaryPath);
+                console.log(`Summary file response status:`, response.status, response.statusText);
+                
                 if (response.ok) {
                     const summaryData = await response.json();
+                    console.log(`Summary file raw data:`, summaryData);
+                    
                     if (summaryData.summary && typeof summaryData.summary === 'string') {
                         articleSummary = summaryData.summary;
+                        summarySource = 'cache file';
+                        console.log(`SUCCESS: Loaded summary from file (${articleSummary.length} chars)`);
+                        console.log(`Summary preview: "${articleSummary.substring(0, 100)}${articleSummary.length > 100 ? '...' : ''}"`);
+                    } else {
+                        console.warn(`File loaded but no valid summary found in data`);
                     }
+                } else {
+                    console.warn(`Failed to load summary file: ${response.status} ${response.statusText}`);
                 }
             } catch (err) {
-                console.warn(`Could not load summary for article id ${article.id}:`, err);
+                console.warn(`Error loading summary for article id ${article.id}:`, err);
             }
+        } else {
+            console.log(`No article ID available - Cannot load summary file`);
         }
+        
         if (!articleSummary && article.summary) {
             articleSummary = article.summary;
+            summarySource = 'article object';
+            console.log(`FALLBACK: Using summary from article object (${articleSummary.length} chars)`);
+            console.log(`Summary preview: "${articleSummary.substring(0, 100)}${articleSummary.length > 100 ? '...' : ''}"`);
+        } else if (!articleSummary) {
+            console.log(`WARNING: No summary available from any source!`);
         }
+        
+        console.log(`Final summary source: ${summarySource}`);
+        console.log(`Final summary length: ${articleSummary.length} characters`);
+        
         const articleText = `${article.title} ${article.subject || ''} ${articleSummary}`.toLowerCase();
         const articleSummaryLower = articleSummary.toLowerCase();
         
+        console.log(`\n----- SCORING COMPONENT 1: KEYWORD FREQUENCY IN SUMMARY (0-30 points) -----`);
         // ---- 1. KEYWORD FREQUENCY IN SUMMARY (0-30 points) ----
         let keywordFrequencyScore = 0;
         if (articleSummaryLower.length > 0) {
+            console.log(`Analyzing summary text (${articleSummaryLower.length} chars)`);
             let totalKeywordCount = 0;
             let termCounts = new Map<string, number>();
             
@@ -302,21 +339,28 @@ const customRankingSystem = async (
                 
                 termCounts.set(term, count);
                 totalKeywordCount += count;
+                console.log(`  Term "${term}": ${count} occurrences`);
             });
             
             // Calculate percentage of keywords in the summary (words)
             const summaryWordCount = articleSummaryLower.split(/\s+/).length;
+            console.log(`Summary word count: ${summaryWordCount} words`);
+            console.log(`Total keyword occurrences: ${totalKeywordCount}`);
+            
             const keywordPercentage = summaryWordCount > 0 ? 
                 (totalKeywordCount / summaryWordCount) * 100 : 0;
-                
-            // Log the percentage for debugging
-            console.log(`Keyword frequency for "${article.title}": ${keywordPercentage.toFixed(2)}% (${totalKeywordCount} occurrences in ${summaryWordCount} words)`);
+            
+            console.log(`Keyword percentage: ${keywordPercentage.toFixed(2)}%`);
             
             // Convert to score (max 30 points)
             // We cap at 10% to avoid overweighting articles that just repeat keywords
             keywordFrequencyScore = Math.min(30, keywordPercentage * 3);
+            console.log(`Keyword frequency score: ${keywordFrequencyScore.toFixed(2)} / 30 points (${keywordPercentage.toFixed(2)}% × 3, capped at 30)`);
+        } else {
+            console.log(`Empty summary - Keyword frequency score: 0 / 30 points`);
         }
         
+        console.log(`\n----- SCORING COMPONENT 2: EXACT MATCH SCORE (0-20 points) -----`);
         // ---- 2. EXACT MATCH SCORE (0-20 points) ----
         let exactMatchScore = 0;
         let exactMatchCount = 0;
@@ -325,13 +369,20 @@ const customRankingSystem = async (
         interestTerms.forEach(term => {
             if (articleText.includes(term)) {
                 exactMatchCount++;
+                console.log(`  Exact match found for "${term}"`);
+            } else {
+                console.log(`  No exact match for "${term}"`);
             }
         });
         
         // Calculate normalized exact match score
+        console.log(`Total exact matches: ${exactMatchCount} / ${interestTerms.length} terms`);
         const normalizedExactMatches = exactMatchCount / interestTerms.length;
+        console.log(`Normalized exact match score: ${normalizedExactMatches.toFixed(2)}`);
         exactMatchScore = normalizedExactMatches * 20;
+        console.log(`Exact match score: ${exactMatchScore.toFixed(2)} / 20 points (${normalizedExactMatches.toFixed(2)} × 20)`);
         
+        console.log(`\n----- SCORING COMPONENT 3: VECTOR SIMILARITY METRICS (0-40 points) -----`);
         // ---- 3. VECTOR SIMILARITY METRICS (0-40 points) ----
         let vectorScore = 0;
         let vectorDistanceScore = 0;
@@ -339,32 +390,55 @@ const customRankingSystem = async (
         
         // Get article embedding (either from summary or title+subject)
         let articleEmbedding: number[] = [];
+        let embeddingSource = 'none';
+        
         try {
             if (article.id) {
                 // Try to load the summary file for this article
                 const summaryPath = `.cache/summary_${article.id}.json`;
+                console.log(`Attempting to load embedding from: ${summaryPath}`);
                 const response = await fetch(summaryPath);
                 if (response.ok) {
                     const summaryData = await response.json();
                     if (summaryData.embedding && Array.isArray(summaryData.embedding)) {
                         articleEmbedding = summaryData.embedding;
+                        embeddingSource = 'cache file';
+                        console.log(`Successfully loaded embedding from file (${articleEmbedding.length} dimensions)`);
+                    } else {
+                        console.log(`No valid embedding found in summary file`);
                     }
+                } else {
+                    console.log(`Failed to load embedding from file: ${response.status}`);
                 }
             }
             
             if (!articleEmbedding.length) {
                 // Fallback to generating embedding from title+subject
+                console.log(`Fallback: Generating new embedding from title+subject`);
                 const fallbackText = `${article.title}. ${article.subject || ''}`;
+                console.log(`Generating embedding for text: "${fallbackText}"`);
                 articleEmbedding = await generateEmbedding(fallbackText);
+                if (articleEmbedding.length) {
+                    embeddingSource = 'generated';
+                    console.log(`Successfully generated embedding (${articleEmbedding.length} dimensions)`);
+                } else {
+                    console.log(`Failed to generate embedding`);
+                }
             }
             
             // Get interests embedding
+            console.log(`Generating embedding for user interests: "${userInterests}"`);
             const interestsEmbedding = await generateEmbedding(userInterests);
+            console.log(`User interests embedding generated (${interestsEmbedding.length} dimensions)`);
             
             if (articleEmbedding.length && interestsEmbedding.length) {
+                console.log(`Computing vector similarity between article (${embeddingSource}) and interests...`);
+                
                 // Calculate cosine similarity (0-25 points)
                 const similarity = vectorSimilarity(articleEmbedding, interestsEmbedding);
+                console.log(`Cosine similarity: ${similarity.toFixed(2)} / 100`);
                 cosineSimilarityScore = (similarity / 100) * 25;
+                console.log(`Cosine similarity score: ${cosineSimilarityScore.toFixed(2)} / 25 points (${similarity.toFixed(2)}% × 0.25)`);
                 
                 // Calculate vector distance (0-15 points)
                 // Lower distance = better match = higher score
@@ -376,32 +450,53 @@ const customRankingSystem = async (
                         sumSquaredDiff += diff * diff;
                     }
                     const distance = Math.sqrt(sumSquaredDiff);
+                    console.log(`Euclidean distance: ${distance.toFixed(4)}`);
                     
                     // Normalize distance to score (inversely related)
                     // We expect most distances to be between 0-2 for normalized vectors
                     const normalizedDistance = Math.min(2, distance);
+                    console.log(`Normalized distance: ${normalizedDistance.toFixed(4)} (capped at 2.0)`);
                     vectorDistanceScore = 15 * (1 - (normalizedDistance / 2));
-                    
-                    console.log(`Vector distance for "${article.title}": ${distance.toFixed(4)}, Score: ${vectorDistanceScore.toFixed(2)}`);
+                    console.log(`Vector distance score: ${vectorDistanceScore.toFixed(2)} / 15 points (15 × (1 - ${normalizedDistance.toFixed(2)}/2))`);
+                } else {
+                    console.log(`Vector dimensions don't match: ${articleEmbedding.length} vs ${interestsEmbedding.length} - Cannot calculate distance`);
                 }
                 
                 // Combine vector scores
                 vectorScore = cosineSimilarityScore + vectorDistanceScore;
+                console.log(`Combined vector score: ${vectorScore.toFixed(2)} / 40 points (${cosineSimilarityScore.toFixed(2)} + ${vectorDistanceScore.toFixed(2)})`);
+            } else {
+                console.log(`Missing embeddings - Cannot calculate vector similarity`);
             }
         } catch (err) {
-            console.warn(`Error calculating vector scores: ${err}`);
+            console.warn(`Error calculating vector scores:`, err);
             // Default vector score if we can't calculate it
-            vectorScore = 20; // Neutral score
+            vectorScore = 20;
+            console.log(`Using default vector score due to error: ${vectorScore} / 40 points`);
         }
         
+        console.log(`\n----- SCORING COMPONENT 4: FRESHNESS FACTOR (0-10 points) -----`);
         // ---- 4. FRESHNESS FACTOR (0-10 points) ----
         // A consistent value based on article ID to ensure the same article always gets the same freshness score
         const freshnessScore = article.id ? 
             (parseInt(article.id.replace(/\D/g, '').slice(-2) || '0') % 10) : 
             Math.floor(Math.random() * 10);
+        console.log(`Freshness score calculation: article.id=${article.id}, extracted digits=${article.id ? article.id.replace(/\D/g, '').slice(-2) : 'none'}`);
+        console.log(`Freshness score: ${freshnessScore} / 10 points`);
         
+        console.log(`\n----- FINAL SCORE CALCULATION -----`);
         // ---- COMBINE SCORES ----
         const finalScore = keywordFrequencyScore + exactMatchScore + vectorScore + freshnessScore;
+        console.log(`Final score breakdown:
+  - Keyword Frequency: ${keywordFrequencyScore.toFixed(2)} / 30
+  - Exact Match:      ${exactMatchScore.toFixed(2)} / 20
+  - Vector Similarity: ${vectorScore.toFixed(2)} / 40
+    - Cosine Similarity: ${cosineSimilarityScore.toFixed(2)} / 25
+    - Vector Distance:   ${vectorDistanceScore.toFixed(2)} / 15
+  - Freshness:        ${freshnessScore} / 10
+  ----------------------
+  TOTAL SCORE:        ${finalScore.toFixed(2)} / 100
+`);
         
         // Log all scoring components
         const scoreBreakdown = {
@@ -414,15 +509,17 @@ const customRankingSystem = async (
             final: finalScore.toFixed(2)
         };
         
-        console.log(`Scoring breakdown for "${article.title}":`, scoreBreakdown);
+        console.log(`Score components stored:`, scoreBreakdown);
         
         // Store score components in the article object for display
         article.scoreComponents = scoreBreakdown;
         
+        console.log(`\n----- SCORING COMPLETE -----`);
+        
         // Ensure score is between 0-100
         return Math.min(100, Math.max(0, finalScore));
     } catch (error) {
-        console.error('Error in custom ranking:', error);
+        console.error('ERROR IN RANKING SYSTEM:', error);
         return Math.floor(Math.random() * 25) + 70; // Fallback score
     }
 };
