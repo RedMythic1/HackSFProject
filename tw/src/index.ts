@@ -144,13 +144,6 @@ interface ZeroShotClassificationOutput {
     scores: number[];
 }
 
-// Calculate similarity between two vectors
-const vectorSimilarity = (vecV: number[], vecW: number[]): number => {
-    // Since we're no longer using vector similarity, return a neutral score
-    console.log('Vector similarity calculation skipped - using keyword matching only');
-    return 50; // Return neutral score
-};
-
 /**
  * Custom ranking system for articles - uses advanced similarity scoring
  * @param article Article to score
