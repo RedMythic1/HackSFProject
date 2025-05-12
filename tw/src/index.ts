@@ -484,15 +484,19 @@ class AppController {
             }
             console.log(`Fetched ${articles.length} articles, now scoring based on interests: ${interests || 'none'}`);
             
+            // Deduplicate articles by title
+            const uniqueArticles = this.deduplicateArticles(articles);
+            console.log(`Reduced to ${uniqueArticles.length} unique articles after deduplication`);
+            
             // Score all articles using the custom ranking system
-            const scoringPromises = articles.map(article => 
-                customRankingSystem(article, interests || '', articles)
+            const scoringPromises = uniqueArticles.map(article => 
+                customRankingSystem(article, interests || '', uniqueArticles)
             );
             
             const scores = await Promise.all(scoringPromises);
             
             // Apply scores to articles
-            const scoredArticles = articles.map((article, index) => ({
+            const scoredArticles = uniqueArticles.map((article, index) => ({
                 ...article,
                 score: Math.round(scores[index]) // Round to nearest integer for display
             }));
@@ -508,6 +512,20 @@ class AppController {
             console.error('Error loading articles:', error);
             this.articlesContainer.innerHTML = '<div class="error">Error loading articles. Please try again later.</div>';
         }
+    }
+    
+    // Helper method to deduplicate articles based on title
+    private deduplicateArticles(articles: Article[]): Article[] {
+        const uniqueTitles = new Set<string>();
+        return articles.filter(article => {
+            // Normalize title for comparison
+            const normalizedTitle = article.title.toLowerCase().trim();
+            if (uniqueTitles.has(normalizedTitle)) {
+                return false; // Skip duplicate
+            }
+            uniqueTitles.add(normalizedTitle);
+            return true;
+        });
     }
     
     private renderArticles(articles: Article[]): void {
@@ -540,6 +558,12 @@ class AppController {
             }
             
             console.log(`Rendering article: "${article.title}" (ID: ${articleId})`);
+            
+            // Prepare summary text
+            let summaryText = article.summary || '';
+            if (!summaryText || summaryText.trim() === '') {
+                summaryText = article.subject || 'No introduction available';
+            }
             
             const articleCard = document.createElement('div');
             articleCard.className = 'article-card';
@@ -577,10 +601,10 @@ class AppController {
                     </div>
                 </div>
                 <div class="article-body">
-                    <div class="article-subject">${this.escapeHtml(article.subject)}</div>
+                    <div class="article-subject">${this.escapeHtml(article.subject || '')}</div>
                     <div class="article-introduction">
                         <h4>Introduction</h4>
-                        <p>${this.truncateText(article.summary || 'No introduction available', 100)}</p>
+                        <p>${this.truncateText(summaryText, 150)}</p>
                     </div>
                     <a href="#" class="article-link" data-article-id="${articleId}">Read more</a>
                 </div>
@@ -608,7 +632,7 @@ class AppController {
         // Add a debug counter
         const debugInfo = document.createElement('div');
         debugInfo.className = 'debug-info';
-        debugInfo.textContent = `Displaying ${articles.length} articles`;
+        debugInfo.textContent = `Displaying ${articles.length} unique articles`;
         debugInfo.style.marginTop = '20px';
         debugInfo.style.fontSize = '12px';
         this.articlesContainer.appendChild(debugInfo);
