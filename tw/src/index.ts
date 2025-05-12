@@ -205,8 +205,8 @@ const scoreArticle = async (article: Article, userInterests: string): Promise<nu
         // Normalize keyword score: if all terms match, 100; if none, 0
         const keywordScore = interestTerms.length > 0 ? (keywordMatches / interestTerms.length) * 100 : 0;
 
-        // Combine scores: 50% vector, 50% keyword
-        const finalScore = 0.5 * vectorScore + 0.5 * keywordScore;
+        // Combine scores: 30% vector, 70% keyword
+        const finalScore = 0.3 * vectorScore + 0.7 * keywordScore;
         console.log(`Combined score for "${article.title}": vector=${vectorScore}, keyword=${keywordScore}, final=${finalScore}`);
         return finalScore;
     } catch (error) {
