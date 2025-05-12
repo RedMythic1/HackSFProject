@@ -119,87 +119,98 @@ const vectorSimilarity = (vecV: number[], vecW: number[]): number => {
         console.error("Invalid vector inputs");
         return 25; // Return minimal score rather than 0
     }
-    
     if (vecV.length !== vecW.length) {
         console.error(`Vector dimensions don't match: ${vecV.length} vs ${vecW.length}`);
         return 25; // Return minimal score rather than 0
     }
-    
-    // Make sure vectors have non-zero length
     if (vecV.length === 0 || vecW.length === 0) {
         console.error("Empty vectors");
         return 25; // Return minimal score rather than 0
     }
-    
-    // Check for NaN or Infinity values
     const hasInvalidValues = (vec: number[]) => vec.some(v => isNaN(v) || !isFinite(v));
     if (hasInvalidValues(vecV) || hasInvalidValues(vecW)) {
         console.error("Vectors contain NaN or Infinity values");
         return 25; // Return minimal score rather than 0
     }
-    
-    // Calculate dot product of v and w
-    let vDotW = 0;
-    // Calculate dot product of v with itself
-    let vDotV = 0;
-    // Calculate dot product of w with itself
-    let wDotW = 0;
-    
+    // Calculate dot products and magnitudes
+    let vDotW = 0, vDotV = 0, wDotW = 0;
     for (let i = 0; i < vecV.length; i++) {
         vDotW += vecV[i] * vecW[i];
         vDotV += vecV[i] * vecV[i];
         wDotW += vecW[i] * vecW[i];
     }
-    
-    // Guard against division by zero
     if (vDotV <= 0 || wDotW <= 0) {
         console.error("One of the vectors has zero magnitude");
-        return 25; // Return minimal score rather than 0
+        return 25;
     }
-    
-    // Calculate magnitudes
     const magnitudeV = Math.sqrt(vDotV);
     const magnitudeW = Math.sqrt(wDotW);
-    
-    // Calculate cosine similarity
+    // Cosine similarity
     const cosineSimilarity = vDotW / (magnitudeV * magnitudeW);
-    
-    // Direct linear scaling from cosine similarity (-1 to 1) to score (0 to 100)
-    const normalizedScore = (cosineSimilarity + 1) * 50;
-    
-    // Ensure the score is in the range [5, 100]
+    // Projection of w onto v: proj = (v . w) / (v . v) * v
+    // v - proj(w on v):
+    const scale = vDotW / vDotV;
+    let diffSquaredSum = 0;
+    for (let i = 0; i < vecV.length; i++) {
+        const projComponent = scale * vecV[i];
+        const diff = vecW[i] - projComponent;
+        diffSquaredSum += diff * diff;
+    }
+    const absDiff = Math.sqrt(diffSquaredSum);
+    // New denominator: (1 - abs(v - proj of w on v)^2)
+    const denom = 1 - Math.pow(absDiff, 2);
+    // Avoid division by zero or negative denominator
+    let adjustedSimilarity = cosineSimilarity;
+    if (denom > 0.00001) {
+        adjustedSimilarity = cosineSimilarity / denom;
+    } else {
+        console.warn("Denominator for adjusted similarity is too small or negative, using cosineSimilarity only");
+    }
+    // Linear scaling from [-1, 1] to [0, 100]
+    const normalizedScore = (adjustedSimilarity + 1) * 50;
     const finalScore = Math.max(5, Math.min(100, normalizedScore));
-    
     return finalScore;
 };
 
 // Article scoring function using embeddings
 const scoreArticle = async (article: Article, userInterests: string): Promise<number> => {
     try {
-        // Get user interests as text
         if (!userInterests.trim()) {
             return Math.floor(Math.random() * 25) + 70; // Default score if no interests
         }
-        
+
         // Generate embeddings for the article and user interests
         const articleText = `${article.title}. ${article.subject}`;
         const articleEmbedding = await generateEmbedding(articleText);
         const interestsEmbedding = await generateEmbedding(userInterests);
-        
-        // Check if we have valid embeddings
-        if (!articleEmbedding.length || !interestsEmbedding.length) {
+
+        // Vector similarity score (0-100)
+        let vectorScore = 0;
+        if (articleEmbedding.length && interestsEmbedding.length) {
+            vectorScore = vectorSimilarity(articleEmbedding, interestsEmbedding);
+        } else {
             console.warn("Could not generate embeddings, using fallback scoring");
-            return Math.floor(Math.random() * 25) + 70;
+            vectorScore = Math.floor(Math.random() * 25) + 70;
         }
-        
-        // Calculate similarity score
-        const score = vectorSimilarity(articleEmbedding, interestsEmbedding);
-        console.log(`Vector similarity score for "${article.title}": ${score}`);
-        
-        return score;
+
+        // Keyword matching score (0-100)
+        const interestTerms = userInterests.toLowerCase().split(/[\s,]+/).filter(term => term.length > 2);
+        const articleTextLower = `${article.title} ${article.subject}`.toLowerCase();
+        let keywordMatches = 0;
+        interestTerms.forEach(term => {
+            if (articleTextLower.includes(term)) {
+                keywordMatches++;
+            }
+        });
+        // Normalize keyword score: if all terms match, 100; if none, 0
+        const keywordScore = interestTerms.length > 0 ? (keywordMatches / interestTerms.length) * 100 : 0;
+
+        // Combine scores: 50% vector, 50% keyword
+        const finalScore = 0.5 * vectorScore + 0.5 * keywordScore;
+        console.log(`Combined score for "${article.title}": vector=${vectorScore}, keyword=${keywordScore}, final=${finalScore}`);
+        return finalScore;
     } catch (error) {
         console.error('Error scoring article:', error);
-        // Fallback to random score between 70-95 if scoring fails
         return Math.floor(Math.random() * 25) + 70;
     }
 };
