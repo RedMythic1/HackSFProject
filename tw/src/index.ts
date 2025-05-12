@@ -74,103 +74,22 @@ let embeddingModel: any = null;
 
 // Initialize embedding extraction pipeline
 const initEmbeddingModel = async (): Promise<void> => {
-    try {
-        console.log('Initializing embedding model...');
-        embeddingModel = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-        console.log('Embedding model initialized successfully');
-    } catch (error) {
-        console.error('Error initializing embedding model:', error);
-    }
+    // No longer needed, but keeping the function to avoid breaking existing calls
+    console.log('Embedding model initialization skipped - using keyword matching only');
 };
 
 // Generate embeddings for text input
 const generateEmbedding = async (text: string): Promise<number[]> => {
-    if (!embeddingModel) {
-        console.log('Embedding model not initialized, initializing now...');
-        await initEmbeddingModel();
-    }
-    
-    try {
-        // Limit input text length to avoid issues with very long texts
-        let inputText = text;
-        if (text.length > 2048) {
-            inputText = text.substring(0, 2048);
-            console.log(`Text truncated from ${text.length} to 2048 chars for embedding generation`);
-        }
-        
-        const result = await embeddingModel(inputText, {
-            pooling: 'mean',
-            normalize: true
-        });
-        
-        // Convert tensor to regular array
-        const embedding = Array.from(result.data).map(value => Number(value));
-        console.log(`Generated embedding with ${embedding.length} dimensions`);
-        return embedding;
-    } catch (error) {
-        console.error(`Error generating embedding: ${error}`);
-        return [];
-    }
+    // Return empty array since we're no longer using embeddings
+    console.log('Embedding generation skipped - using keyword matching only');
+    return [];
 };
 
 // Calculate similarity between two vectors
 const vectorSimilarity = (vecV: number[], vecW: number[]): number => {
-    // Make sure we have valid inputs
-    if (!vecV || !vecW || !Array.isArray(vecV) || !Array.isArray(vecW)) {
-        console.error("Invalid vector inputs");
-        return 25; // Return minimal score rather than 0
-    }
-    if (vecV.length !== vecW.length) {
-        console.error(`Vector dimensions don't match: ${vecV.length} vs ${vecW.length}`);
-        return 25; // Return minimal score rather than 0
-    }
-    if (vecV.length === 0 || vecW.length === 0) {
-        console.error("Empty vectors");
-        return 25; // Return minimal score rather than 0
-    }
-    const hasInvalidValues = (vec: number[]) => vec.some(v => isNaN(v) || !isFinite(v));
-    if (hasInvalidValues(vecV) || hasInvalidValues(vecW)) {
-        console.error("Vectors contain NaN or Infinity values");
-        return 25; // Return minimal score rather than 0
-    }
-    // Calculate dot products and magnitudes
-    let vDotW = 0, vDotV = 0, wDotW = 0;
-    for (let i = 0; i < vecV.length; i++) {
-        vDotW += vecV[i] * vecW[i];
-        vDotV += vecV[i] * vecV[i];
-        wDotW += vecW[i] * vecW[i];
-    }
-    if (vDotV <= 0 || wDotW <= 0) {
-        console.error("One of the vectors has zero magnitude");
-        return 25;
-    }
-    const magnitudeV = Math.sqrt(vDotV);
-    const magnitudeW = Math.sqrt(wDotW);
-    // Cosine similarity
-    const cosineSimilarity = vDotW / (magnitudeV * magnitudeW);
-    // Projection of w onto v: proj = (v . w) / (v . v) * v
-    // v - proj(w on v):
-    const scale = vDotW / vDotV;
-    let diffSquaredSum = 0;
-    for (let i = 0; i < vecV.length; i++) {
-        const projComponent = scale * vecV[i];
-        const diff = vecW[i] - projComponent;
-        diffSquaredSum += diff * diff;
-    }
-    const absDiff = Math.sqrt(diffSquaredSum);
-    // New denominator: (1 - abs(v - proj of w on v)^2)
-    const denom = 1 - Math.pow(absDiff, 2);
-    // Avoid division by zero or negative denominator
-    let adjustedSimilarity = cosineSimilarity;
-    if (denom > 0.00001) {
-        adjustedSimilarity = cosineSimilarity / denom;
-    } else {
-        console.warn("Denominator for adjusted similarity is too small or negative, using cosineSimilarity only");
-    }
-    // Linear scaling from [-1, 1] to [0, 100]
-    const normalizedScore = (adjustedSimilarity + 1) * 50;
-    const finalScore = Math.max(5, Math.min(100, normalizedScore));
-    return finalScore;
+    // Since we're no longer using vector similarity, return a neutral score
+    console.log('Vector similarity calculation skipped - using keyword matching only');
+    return 50; // Return neutral score
 };
 
 // Article scoring function using embeddings
@@ -237,7 +156,7 @@ const scoreArticle = async (article: Article, userInterests: string): Promise<nu
 };
 
 /**
- * Custom ranking system for articles - combines multiple signals for more accurate scoring
+ * Custom ranking system for articles - uses keyword matching only
  * @param article Article to score
  * @param userInterests User's specified interests
  * @param articleCollection Full collection of articles (for contextual ranking)
@@ -319,8 +238,8 @@ const customRankingSystem = async (
         const articleText = `${article.title} ${article.subject || ''} ${articleSummary}`.toLowerCase();
         const articleSummaryLower = articleSummary.toLowerCase();
         
-        console.log(`\n----- SCORING COMPONENT 1: KEYWORD FREQUENCY IN SUMMARY (0-30 points) -----`);
-        // ---- 1. KEYWORD FREQUENCY IN SUMMARY (0-30 points) ----
+        console.log(`\n----- SCORING COMPONENT 1: KEYWORD FREQUENCY IN SUMMARY (0-50 points) -----`);
+        // ---- 1. KEYWORD FREQUENCY IN SUMMARY (0-50 points) ----
         let keywordFrequencyScore = 0;
         if (articleSummaryLower.length > 0) {
             console.log(`Analyzing summary text (${articleSummaryLower.length} chars)`);
@@ -352,16 +271,16 @@ const customRankingSystem = async (
             
             console.log(`Keyword percentage: ${keywordPercentage.toFixed(2)}%`);
             
-            // Convert to score (max 30 points)
-            // We cap at 10% to avoid overweighting articles that just repeat keywords
-            keywordFrequencyScore = Math.min(30, keywordPercentage * 3);
-            console.log(`Keyword frequency score: ${keywordFrequencyScore.toFixed(2)} / 30 points (${keywordPercentage.toFixed(2)}% × 3, capped at 30)`);
+            // Convert to score (max 50 points)
+            // We cap at 15% to avoid overweighting articles that just repeat keywords
+            keywordFrequencyScore = Math.min(50, keywordPercentage * 3.33);
+            console.log(`Keyword frequency score: ${keywordFrequencyScore.toFixed(2)} / 50 points (${keywordPercentage.toFixed(2)}% × 3.33, capped at 50)`);
         } else {
-            console.log(`Empty summary - Keyword frequency score: 0 / 30 points`);
+            console.log(`Empty summary - Keyword frequency score: 0 / 50 points`);
         }
         
-        console.log(`\n----- SCORING COMPONENT 2: EXACT MATCH SCORE (0-20 points) -----`);
-        // ---- 2. EXACT MATCH SCORE (0-20 points) ----
+        console.log(`\n----- SCORING COMPONENT 2: EXACT MATCH SCORE (0-40 points) -----`);
+        // ---- 2. EXACT MATCH SCORE (0-40 points) ----
         let exactMatchScore = 0;
         let exactMatchCount = 0;
         
@@ -379,77 +298,11 @@ const customRankingSystem = async (
         console.log(`Total exact matches: ${exactMatchCount} / ${interestTerms.length} terms`);
         const normalizedExactMatches = exactMatchCount / interestTerms.length;
         console.log(`Normalized exact match score: ${normalizedExactMatches.toFixed(2)}`);
-        exactMatchScore = normalizedExactMatches * 20;
-        console.log(`Exact match score: ${exactMatchScore.toFixed(2)} / 20 points (${normalizedExactMatches.toFixed(2)} × 20)`);
+        exactMatchScore = normalizedExactMatches * 40;
+        console.log(`Exact match score: ${exactMatchScore.toFixed(2)} / 40 points (${normalizedExactMatches.toFixed(2)} × 40)`);
         
-        console.log(`\n----- SCORING COMPONENT 3: VECTOR SIMILARITY METRICS (0-40 points) -----`);
-        // ---- 3. VECTOR SIMILARITY METRICS (0-40 points) ----
-        let vectorScore = 0;
-        let vectorDistanceScore = 0;
-        let cosineSimilarityScore = 0;
-        
-        // Get article embedding (from summary file only)
-        let articleEmbedding: number[] = [];
-        let embeddingSource = 'none';
-        if (article.id) {
-            const summaryPath = `.cache/summary_${article.id}.json`;
-            console.log(`Attempting to load embedding from: ${summaryPath}`);
-            try {
-                const response = await fetch(summaryPath);
-                if (response.ok) {
-                    const summaryData = await response.json();
-                    if (summaryData.embedding && Array.isArray(summaryData.embedding)) {
-                        articleEmbedding = summaryData.embedding;
-                        embeddingSource = 'cache file';
-                        console.log(`Successfully loaded embedding from file (${articleEmbedding.length} dimensions)`);
-                    } else {
-                        console.log(`No valid embedding found in summary file`);
-                    }
-                } else {
-                    console.log(`Failed to load embedding from file: ${response.status}`);
-                }
-            } catch (err) {
-                console.warn(`Error loading embedding for article id ${article.id}:`, err);
-            }
-        }
-        if (!articleEmbedding.length) {
-            console.warn('No embedding found in summary file. Skipping vector similarity for this article.');
-        }
-        // Get interests embedding
-        console.log(`Generating embedding for user interests: "${userInterests}"`);
-        const interestsEmbedding = await generateEmbedding(userInterests);
-        console.log(`User interests embedding generated (${interestsEmbedding.length} dimensions)`);
-        if (articleEmbedding.length && interestsEmbedding.length) {
-            console.log(`Computing vector similarity between article (${embeddingSource}) and interests...`);
-            // Calculate cosine similarity (0-25 points)
-            const similarity = vectorSimilarity(articleEmbedding, interestsEmbedding);
-            console.log(`Cosine similarity: ${similarity.toFixed(2)} / 100`);
-            cosineSimilarityScore = (similarity / 100) * 25;
-            console.log(`Cosine similarity score: ${cosineSimilarityScore.toFixed(2)} / 25 points (${similarity.toFixed(2)}% × 0.25)`);
-            // Calculate vector distance (0-15 points)
-            if (articleEmbedding.length === interestsEmbedding.length) {
-                let sumSquaredDiff = 0;
-                for (let i = 0; i < articleEmbedding.length; i++) {
-                    const diff = articleEmbedding[i] - interestsEmbedding[i];
-                    sumSquaredDiff += diff * diff;
-                }
-                const distance = Math.sqrt(sumSquaredDiff);
-                console.log(`Euclidean distance: ${distance.toFixed(4)}`);
-                const normalizedDistance = Math.min(2, distance);
-                console.log(`Normalized distance: ${normalizedDistance.toFixed(4)} (capped at 2.0)`);
-                vectorDistanceScore = 15 * (1 - (normalizedDistance / 2));
-                console.log(`Vector distance score: ${vectorDistanceScore.toFixed(2)} / 15 points (15 × (1 - ${normalizedDistance.toFixed(2)}/2))`);
-            } else {
-                console.log(`Vector dimensions don't match: ${articleEmbedding.length} vs ${interestsEmbedding.length} - Cannot calculate distance`);
-            }
-            vectorScore = cosineSimilarityScore + vectorDistanceScore;
-            console.log(`Combined vector score: ${vectorScore.toFixed(2)} / 40 points (${cosineSimilarityScore.toFixed(2)} + ${vectorDistanceScore.toFixed(2)})`);
-        } else {
-            console.log(`Missing embeddings - Cannot calculate vector similarity`);
-        }
-        
-        console.log(`\n----- SCORING COMPONENT 4: FRESHNESS FACTOR (0-10 points) -----`);
-        // ---- 4. FRESHNESS FACTOR (0-10 points) ----
+        console.log(`\n----- SCORING COMPONENT 3: FRESHNESS FACTOR (0-10 points) -----`);
+        // ---- 3. FRESHNESS FACTOR (0-10 points) ----
         // A consistent value based on article ID to ensure the same article always gets the same freshness score
         const freshnessScore = article.id ? 
             (parseInt(article.id.replace(/\D/g, '').slice(-2) || '0') % 10) : 
@@ -459,13 +312,10 @@ const customRankingSystem = async (
         
         console.log(`\n----- FINAL SCORE CALCULATION -----`);
         // ---- COMBINE SCORES ----
-        const finalScore = keywordFrequencyScore + exactMatchScore + vectorScore + freshnessScore;
+        const finalScore = keywordFrequencyScore + exactMatchScore + freshnessScore;
         console.log(`Final score breakdown:
-  - Keyword Frequency: ${keywordFrequencyScore.toFixed(2)} / 30
-  - Exact Match:      ${exactMatchScore.toFixed(2)} / 20
-  - Vector Similarity: ${vectorScore.toFixed(2)} / 40
-    - Cosine Similarity: ${cosineSimilarityScore.toFixed(2)} / 25
-    - Vector Distance:   ${vectorDistanceScore.toFixed(2)} / 15
+  - Keyword Frequency: ${keywordFrequencyScore.toFixed(2)} / 50
+  - Exact Match:      ${exactMatchScore.toFixed(2)} / 40
   - Freshness:        ${freshnessScore} / 10
   ----------------------
   TOTAL SCORE:        ${finalScore.toFixed(2)} / 100
@@ -475,9 +325,6 @@ const customRankingSystem = async (
         const scoreBreakdown = {
             keywordFrequency: keywordFrequencyScore.toFixed(2),
             exactMatch: exactMatchScore.toFixed(2),
-            vectorTotal: vectorScore.toFixed(2),
-            cosineSimilarity: cosineSimilarityScore.toFixed(2),
-            vectorDistance: vectorDistanceScore.toFixed(2),
             freshness: freshnessScore.toString(),
             final: finalScore.toFixed(2)
         };
@@ -715,15 +562,15 @@ class AppController {
                             <div class="score-details">
                                 <div class="score-component">
                                     <span class="component-label">Keyword Frequency:</span>
-                                    <span class="component-value">${article.scoreComponents.keywordFrequency}</span>
+                                    <span class="component-value">${article.scoreComponents.keywordFrequency}/50</span>
                                 </div>
                                 <div class="score-component">
                                     <span class="component-label">Exact Match:</span>
-                                    <span class="component-value">${article.scoreComponents.exactMatch}</span>
+                                    <span class="component-value">${article.scoreComponents.exactMatch}/40</span>
                                 </div>
                                 <div class="score-component">
-                                    <span class="component-label">Vector Similarity:</span>
-                                    <span class="component-value">${article.scoreComponents.vectorTotal}</span>
+                                    <span class="component-label">Freshness:</span>
+                                    <span class="component-value">${article.scoreComponents.freshness}/10</span>
                                 </div>
                             </div>` : ''}
                         </div>
