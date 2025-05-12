@@ -2,6 +2,81 @@ import axios from 'axios';
 import { pipeline } from '@xenova/transformers';
 import { syncCache, getCachedArticle, getCachedSummary, getCachedSearch } from './utils/cacheSync';
 
+/**
+ * SimilarityScorer class provides a fully offline similarity scoring algorithm 
+ * for comparing strings on a scale of 0-100 with high accuracy.
+ */
+class SimilarityScorer {
+  static preprocess(text: string): string[] {
+    return text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, "")
+      .split(/\s+/)
+      .filter(Boolean);
+  }
+
+  static levenshteinSimilarity(a: string, b: string): number {
+    const m = a.length, n = b.length;
+    if (m === 0 || n === 0) return 0;
+
+    const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        dp[i][j] = Math.min(
+          dp[i - 1][j] + 1,
+          dp[i][j - 1] + 1,
+          dp[i - 1][j - 1] + cost
+        );
+      }
+    }
+
+    const distance = dp[m][n];
+    const maxLen = Math.max(m, n);
+    return 100 * (1 - distance / maxLen); // percentage
+  }
+
+  static jaccardSimilarity(aTokens: string[], bTokens: string[]): number {
+    const setA = new Set(aTokens);
+    const setB = new Set(bTokens);
+    const intersection = Array.from(setA).filter(x => setB.has(x)).length;
+    const union = Array.from(new Set([...aTokens, ...bTokens])).length;
+    return union === 0 ? 0 : (intersection / union) * 100;
+  }
+
+  static tokenOverlap(aTokens: string[], bTokens: string[]): number {
+    let match = 0;
+    for (const word of aTokens) {
+      if (bTokens.includes(word)) match++;
+    }
+    return aTokens.length === 0 ? 0 : (match / aTokens.length) * 100;
+  }
+
+  /**
+   * Computes a similarity score between a short string and a longer string.
+   * 
+   * @param small - The small string or query
+   * @param large - The larger content string
+   * @returns A number from 0 to 100 indicating similarity
+   */
+  static compute(small: string, large: string): number {
+    const aTokens = this.preprocess(small);
+    const bTokens = this.preprocess(large);
+    const smallClean = aTokens.join(" ");
+    const largeClean = bTokens.join(" ");
+
+    const lev = this.levenshteinSimilarity(smallClean, largeClean);
+    const jac = this.jaccardSimilarity(aTokens, bTokens);
+    const tok = this.tokenOverlap(aTokens, bTokens);
+
+    const score = 0.4 * lev + 0.3 * jac + 0.3 * tok;
+    return Math.round(score);
+  }
+}
+
 // Define the type for calculation log steps
 interface CalculationStep {
     step: string;
@@ -156,7 +231,7 @@ const scoreArticle = async (article: Article, userInterests: string): Promise<nu
 };
 
 /**
- * Custom ranking system for articles - uses enhanced keyword matching with contextual analysis
+ * Custom ranking system for articles - uses advanced similarity scoring
  * @param article Article to score
  * @param userInterests User's specified interests
  * @param articleCollection Full collection of articles for contextual ranking
@@ -240,105 +315,76 @@ const customRankingSystem = async (
         console.log(`Final summary source: ${summarySource}`);
         console.log(`Final summary length: ${articleSummary.length} characters`);
         
-        // Normalize text for analysis
-        const titleLower = article.title.toLowerCase();
-        const subjectLower = (article.subject || '').toLowerCase();
-        const articleSummaryLower = articleSummary.toLowerCase();
+        // Prepare article content for similarity scoring
+        const titleText = article.title;
+        const subjectText = article.subject || '';
         
-        // Combined text for broader matching
-        const articleText = `${titleLower} ${subjectLower} ${articleSummaryLower}`;
+        // Create full text representation for the article
+        const articleFullText = `${titleText} ${subjectText} ${articleSummary}`;
         
-        console.log(`\n----- SCORING COMPONENT 1: KEYWORD FREQUENCY & CONTEXT (0-50 points) -----`);
-        // ---- 1. KEYWORD FREQUENCY WITH CONTEXT WEIGHTING (0-50 points) ----
-        let keywordFrequencyScore = 0;
+        console.log(`\n----- SCORING COMPONENT 1: TEXT SIMILARITY (0-60 points) -----`);
+        // ---- 1. TEXT SIMILARITY SCORING (0-60 points) ----
+        let similarityScore = 0;
         
-        if (articleSummaryLower.length > 0) {
-            console.log(`Analyzing content with enhanced context weighting`);
-            let termScores = new Map<string, number>();
+        if (articleFullText.length > 0) {
+            console.log(`Computing text similarity using advanced methods...`);
             
-            // Context weights for different article parts
-            const titleWeight = 2.5;    // Title matches are most important
-            const subjectWeight = 1.5;  // Subject matches are fairly important
-            const summaryWeight = 1.0;  // Summary matches have standard weight
+            // Calculate similarity between user interests and article content
+            const rawSimilarity = SimilarityScorer.compute(userInterests, articleFullText);
+            console.log(`Raw similarity score: ${rawSimilarity} / 100`);
             
-            // Score each term individually
-            interestTerms.forEach(term => {
-                let totalScore = 0;
-                
-                // Count in title (with higher weight)
-                const titleCount = (titleLower.match(new RegExp(term, 'g')) || []).length;
-                const weightedTitleScore = titleCount * titleWeight;
-                
-                // Count in subject (with medium weight)
-                const subjectCount = (subjectLower.match(new RegExp(term, 'g')) || []).length;
-                const weightedSubjectScore = subjectCount * subjectWeight;
-                
-                // Count in summary (standard weight)
-                const summaryCount = (articleSummaryLower.match(new RegExp(term, 'g')) || []).length;
-                const weightedSummaryScore = summaryCount * summaryWeight;
-                
-                // Calculate total weighted score for this term
-                totalScore = weightedTitleScore + weightedSubjectScore + weightedSummaryScore;
-                termScores.set(term, totalScore);
-                
-                console.log(`  Term "${term}": ${totalScore.toFixed(2)} points (title: ${titleCount}×${titleWeight}, subject: ${subjectCount}×${subjectWeight}, summary: ${summaryCount}×${summaryWeight})`);
-            });
+            // Weight the similarity score (max 60 points)
+            similarityScore = (rawSimilarity / 100) * 60;
+            console.log(`Weighted similarity score: ${similarityScore.toFixed(2)} / 60 points`);
             
-            // Calculate total term score
-            let totalTermScore = Array.from(termScores.values()).reduce((sum, score) => sum + score, 0);
+            // Detailed similarity breakdown
+            const interestTokens = SimilarityScorer.preprocess(userInterests);
+            const articleTokens = SimilarityScorer.preprocess(articleFullText);
             
-            // Calculate word count for normalization
-            const wordCount = articleText.split(/\s+/).length;
-            console.log(`Article word count: ${wordCount} words`);
-            console.log(`Total weighted term score: ${totalTermScore.toFixed(2)}`);
+            // Calculate individual metrics for logging
+            const levSim = SimilarityScorer.levenshteinSimilarity(
+                interestTokens.join(" "), 
+                articleTokens.slice(0, 200).join(" ")  // Limit for performance
+            );
+            const jacSim = SimilarityScorer.jaccardSimilarity(interestTokens, articleTokens);
+            const tokSim = SimilarityScorer.tokenOverlap(interestTokens, articleTokens);
             
-            // Normalize score (with diminishing returns for very high counts)
-            const normalizedScore = Math.min(25, totalTermScore) * 2;
-            keywordFrequencyScore = normalizedScore;
-            
-            console.log(`Keyword frequency & context score: ${keywordFrequencyScore.toFixed(2)} / 50 points`);
+            console.log(`Similarity metrics breakdown:
+  - Levenshtein similarity: ${levSim.toFixed(2)}%
+  - Jaccard similarity:     ${jacSim.toFixed(2)}%
+  - Token overlap:          ${tokSim.toFixed(2)}%`);
         } else {
-            console.log(`Empty content - Keyword frequency score: 0 / 50 points`);
+            console.log(`Empty article content - Similarity score: 0 / 60 points`);
         }
         
-        console.log(`\n----- SCORING COMPONENT 2: SEMANTIC RELEVANCE (0-40 points) -----`);
-        // ---- 2. SEMANTIC RELEVANCE (0-40 points) ----
-        let semanticScore = 0;
-        let exactMatchCount = 0;
+        console.log(`\n----- SCORING COMPONENT 2: CONTEXTUAL RELEVANCE (0-30 points) -----`);
+        // ---- 2. CONTEXTUAL RELEVANCE (0-30 points) ----
+        let contextualScore = 0;
         
-        // Count exact phrase matches
-        for (const term of interestTerms) {
-            if (articleText.includes(term)) {
-                exactMatchCount++;
-                console.log(`  Exact match found for "${term}"`);
-            } else {
-                console.log(`  No exact match for "${term}"`);
-                
-                // Check for partial or related matches
-                const termWords = term.split(/\s+/);
-                if (termWords.length > 1) {
-                    const partialMatches = termWords.filter(word => articleText.includes(word));
-                    if (partialMatches.length > 0) {
-                        console.log(`    Partial match: ${partialMatches.length}/${termWords.length} words matched`);
-                        exactMatchCount += partialMatches.length / (termWords.length * 2); // Partial credit
-                    }
-                }
-            }
+        // Title weight is higher if user interests appear in the title
+        const titleImportance = userInterests.split(/\s+/).some(term => 
+            article.title.toLowerCase().includes(term.toLowerCase())
+        ) ? 2.0 : 1.0;
+        
+        if (titleImportance > 1.0) {
+            console.log(`Interest terms found in title: applying ${titleImportance}x title importance multiplier`);
         }
         
-        // Calculate normalized exact match score
-        console.log(`Total exact/partial matches: ${exactMatchCount.toFixed(2)} / ${interestTerms.length} terms`);
-        const normalizedMatches = exactMatchCount / interestTerms.length;
-        console.log(`Normalized match score: ${normalizedMatches.toFixed(2)}`);
+        // Calculate semantic similarity based on key parts with different weights
+        const titleSimilarity = SimilarityScorer.compute(userInterests, titleText) * titleImportance;
+        console.log(`Title similarity: ${(titleSimilarity / titleImportance).toFixed(2)}% (raw) × ${titleImportance} = ${titleSimilarity.toFixed(2)}%`);
         
-        // Scale to score range with a slight bonus for perfect matches
-        semanticScore = normalizedMatches * 38;
-        if (normalizedMatches >= 0.9) {
-            semanticScore += 2; // Bonus for near-perfect matches
-            console.log(`  Added bonus +2 points for high match ratio`);
-        }
+        const subjectSimilarity = subjectText ? 
+            SimilarityScorer.compute(userInterests, subjectText) : 0;
+        console.log(`Subject similarity: ${subjectSimilarity.toFixed(2)}%`);
         
-        console.log(`Semantic relevance score: ${semanticScore.toFixed(2)} / 40 points`);
+        // Weighted average of title and subject similarities
+        const weightedContextSimilarity = (titleSimilarity * 0.7) + (subjectSimilarity * 0.3);
+        console.log(`Weighted context similarity: ${weightedContextSimilarity.toFixed(2)}%`);
+        
+        // Scale to the 30-point scoring component
+        contextualScore = (weightedContextSimilarity / 100) * 30;
+        console.log(`Contextual relevance score: ${contextualScore.toFixed(2)} / 30 points`);
         
         console.log(`\n----- SCORING COMPONENT 3: FRESHNESS & UNIQUENESS (0-10 points) -----`);
         // ---- 3. FRESHNESS FACTOR WITH UNIQUENESS (0-10 points) ----
@@ -353,7 +399,7 @@ const customRankingSystem = async (
         
         // Uniqueness bonus: if article title contains uncommon words compared to other articles
         const allTitles = articleCollection.map(a => a.title.toLowerCase());
-        const titleWords = titleLower.split(/\s+/).filter(w => w.length > 4); // Only consider substantial words
+        const titleWords = titleText.toLowerCase().split(/\s+/).filter(w => w.length > 4); // Only consider substantial words
         
         let uncommonWordCount = 0;
         titleWords.forEach(word => {
@@ -377,19 +423,19 @@ const customRankingSystem = async (
         
         console.log(`\n----- FINAL SCORE CALCULATION -----`);
         // ---- COMBINE SCORES ----
-        const finalScore = keywordFrequencyScore + semanticScore + freshnessScore;
+        const finalScore = similarityScore + contextualScore + freshnessScore;
         console.log(`Final score breakdown:
-  - Keyword Frequency & Context: ${keywordFrequencyScore.toFixed(2)} / 50
-  - Semantic Relevance:         ${semanticScore.toFixed(2)} / 40
-  - Freshness & Uniqueness:     ${freshnessScore.toFixed(2)} / 10
+  - Text Similarity:         ${similarityScore.toFixed(2)} / 60
+  - Contextual Relevance:    ${contextualScore.toFixed(2)} / 30
+  - Freshness & Uniqueness:  ${freshnessScore.toFixed(2)} / 10
   ----------------------
-  TOTAL SCORE:                 ${finalScore.toFixed(2)} / 100
+  TOTAL SCORE:               ${finalScore.toFixed(2)} / 100
 `);
         
         // Log all scoring components
         const scoreBreakdown = {
-            keywordFrequency: keywordFrequencyScore.toFixed(2),
-            exactMatch: semanticScore.toFixed(2),
+            similarity: similarityScore.toFixed(2),
+            contextual: contextualScore.toFixed(2),
             freshness: freshnessScore.toFixed(2),
             final: finalScore.toFixed(2)
         };
@@ -693,11 +739,11 @@ class AppController {
                         <div style="font-size: 12px; color: #555;">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
                                 <span>Keywords:</span>
-                                <span>${article.scoreComponents.keywordFrequency}/50</span>
+                                <span>${article.scoreComponents.similarity}/60</span>
                             </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                                <span>Matches:</span>
-                                <span>${article.scoreComponents.exactMatch}/40</span>
+                                <span>Contextual:</span>
+                                <span>${article.scoreComponents.contextual}/30</span>
                             </div>
                             <div style="display: flex; justify-content: space-between;">
                                 <span>Freshness:</span>
