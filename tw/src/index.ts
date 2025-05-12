@@ -156,10 +156,10 @@ const scoreArticle = async (article: Article, userInterests: string): Promise<nu
 };
 
 /**
- * Custom ranking system for articles - uses keyword matching only
+ * Custom ranking system for articles - uses enhanced keyword matching with contextual analysis
  * @param article Article to score
  * @param userInterests User's specified interests
- * @param articleCollection Full collection of articles (for contextual ranking)
+ * @param articleCollection Full collection of articles for contextual ranking
  * @returns A score between 0-100
  */
 const customRankingSystem = async (
@@ -180,8 +180,13 @@ const customRankingSystem = async (
             return baseScore; // Default score if no interests
         }
         
-        // Split interest terms and normalize
-        const interestTerms = userInterests.toLowerCase().split(/[\s,]+/).filter(term => term.length > 2);
+        // Process interest terms
+        const interestTerms = userInterests
+            .toLowerCase()
+            .split(/[\s,]+/)
+            .filter(term => term.length > 2)
+            .map(term => term.trim());
+        
         console.log(`Parsed interest terms (${interestTerms.length}):`, interestTerms);
         
         if (interestTerms.length === 0) {
@@ -235,97 +240,157 @@ const customRankingSystem = async (
         console.log(`Final summary source: ${summarySource}`);
         console.log(`Final summary length: ${articleSummary.length} characters`);
         
-        const articleText = `${article.title} ${article.subject || ''} ${articleSummary}`.toLowerCase();
+        // Normalize text for analysis
+        const titleLower = article.title.toLowerCase();
+        const subjectLower = (article.subject || '').toLowerCase();
         const articleSummaryLower = articleSummary.toLowerCase();
         
-        console.log(`\n----- SCORING COMPONENT 1: KEYWORD FREQUENCY IN SUMMARY (0-50 points) -----`);
-        // ---- 1. KEYWORD FREQUENCY IN SUMMARY (0-50 points) ----
+        // Combined text for broader matching
+        const articleText = `${titleLower} ${subjectLower} ${articleSummaryLower}`;
+        
+        console.log(`\n----- SCORING COMPONENT 1: KEYWORD FREQUENCY & CONTEXT (0-50 points) -----`);
+        // ---- 1. KEYWORD FREQUENCY WITH CONTEXT WEIGHTING (0-50 points) ----
         let keywordFrequencyScore = 0;
+        
         if (articleSummaryLower.length > 0) {
-            console.log(`Analyzing summary text (${articleSummaryLower.length} chars)`);
-            let totalKeywordCount = 0;
-            let termCounts = new Map<string, number>();
+            console.log(`Analyzing content with enhanced context weighting`);
+            let termScores = new Map<string, number>();
             
-            // Count each keyword occurrence in the summary
+            // Context weights for different article parts
+            const titleWeight = 2.5;    // Title matches are most important
+            const subjectWeight = 1.5;  // Subject matches are fairly important
+            const summaryWeight = 1.0;  // Summary matches have standard weight
+            
+            // Score each term individually
             interestTerms.forEach(term => {
-                let count = 0;
-                let position = articleSummaryLower.indexOf(term);
+                let totalScore = 0;
                 
-                while (position !== -1) {
-                    count++;
-                    position = articleSummaryLower.indexOf(term, position + 1);
-                }
+                // Count in title (with higher weight)
+                const titleCount = (titleLower.match(new RegExp(term, 'g')) || []).length;
+                const weightedTitleScore = titleCount * titleWeight;
                 
-                termCounts.set(term, count);
-                totalKeywordCount += count;
-                console.log(`  Term "${term}": ${count} occurrences`);
+                // Count in subject (with medium weight)
+                const subjectCount = (subjectLower.match(new RegExp(term, 'g')) || []).length;
+                const weightedSubjectScore = subjectCount * subjectWeight;
+                
+                // Count in summary (standard weight)
+                const summaryCount = (articleSummaryLower.match(new RegExp(term, 'g')) || []).length;
+                const weightedSummaryScore = summaryCount * summaryWeight;
+                
+                // Calculate total weighted score for this term
+                totalScore = weightedTitleScore + weightedSubjectScore + weightedSummaryScore;
+                termScores.set(term, totalScore);
+                
+                console.log(`  Term "${term}": ${totalScore.toFixed(2)} points (title: ${titleCount}×${titleWeight}, subject: ${subjectCount}×${subjectWeight}, summary: ${summaryCount}×${summaryWeight})`);
             });
             
-            // Calculate percentage of keywords in the summary (words)
-            const summaryWordCount = articleSummaryLower.split(/\s+/).length;
-            console.log(`Summary word count: ${summaryWordCount} words`);
-            console.log(`Total keyword occurrences: ${totalKeywordCount}`);
+            // Calculate total term score
+            let totalTermScore = Array.from(termScores.values()).reduce((sum, score) => sum + score, 0);
             
-            const keywordPercentage = summaryWordCount > 0 ? 
-                (totalKeywordCount / summaryWordCount) * 100 : 0;
+            // Calculate word count for normalization
+            const wordCount = articleText.split(/\s+/).length;
+            console.log(`Article word count: ${wordCount} words`);
+            console.log(`Total weighted term score: ${totalTermScore.toFixed(2)}`);
             
-            console.log(`Keyword percentage: ${keywordPercentage.toFixed(2)}%`);
+            // Normalize score (with diminishing returns for very high counts)
+            const normalizedScore = Math.min(25, totalTermScore) * 2;
+            keywordFrequencyScore = normalizedScore;
             
-            // Convert to score (max 50 points)
-            // We cap at 15% to avoid overweighting articles that just repeat keywords
-            keywordFrequencyScore = Math.min(50, keywordPercentage * 3.33);
-            console.log(`Keyword frequency score: ${keywordFrequencyScore.toFixed(2)} / 50 points (${keywordPercentage.toFixed(2)}% × 3.33, capped at 50)`);
+            console.log(`Keyword frequency & context score: ${keywordFrequencyScore.toFixed(2)} / 50 points`);
         } else {
-            console.log(`Empty summary - Keyword frequency score: 0 / 50 points`);
+            console.log(`Empty content - Keyword frequency score: 0 / 50 points`);
         }
         
-        console.log(`\n----- SCORING COMPONENT 2: EXACT MATCH SCORE (0-40 points) -----`);
-        // ---- 2. EXACT MATCH SCORE (0-40 points) ----
-        let exactMatchScore = 0;
+        console.log(`\n----- SCORING COMPONENT 2: SEMANTIC RELEVANCE (0-40 points) -----`);
+        // ---- 2. SEMANTIC RELEVANCE (0-40 points) ----
+        let semanticScore = 0;
         let exactMatchCount = 0;
         
-        // Count exact matches
-        interestTerms.forEach(term => {
+        // Count exact phrase matches
+        for (const term of interestTerms) {
             if (articleText.includes(term)) {
                 exactMatchCount++;
                 console.log(`  Exact match found for "${term}"`);
             } else {
                 console.log(`  No exact match for "${term}"`);
+                
+                // Check for partial or related matches
+                const termWords = term.split(/\s+/);
+                if (termWords.length > 1) {
+                    const partialMatches = termWords.filter(word => articleText.includes(word));
+                    if (partialMatches.length > 0) {
+                        console.log(`    Partial match: ${partialMatches.length}/${termWords.length} words matched`);
+                        exactMatchCount += partialMatches.length / (termWords.length * 2); // Partial credit
+                    }
+                }
+            }
+        }
+        
+        // Calculate normalized exact match score
+        console.log(`Total exact/partial matches: ${exactMatchCount.toFixed(2)} / ${interestTerms.length} terms`);
+        const normalizedMatches = exactMatchCount / interestTerms.length;
+        console.log(`Normalized match score: ${normalizedMatches.toFixed(2)}`);
+        
+        // Scale to score range with a slight bonus for perfect matches
+        semanticScore = normalizedMatches * 38;
+        if (normalizedMatches >= 0.9) {
+            semanticScore += 2; // Bonus for near-perfect matches
+            console.log(`  Added bonus +2 points for high match ratio`);
+        }
+        
+        console.log(`Semantic relevance score: ${semanticScore.toFixed(2)} / 40 points`);
+        
+        console.log(`\n----- SCORING COMPONENT 3: FRESHNESS & UNIQUENESS (0-10 points) -----`);
+        // ---- 3. FRESHNESS FACTOR WITH UNIQUENESS (0-10 points) ----
+        let freshnessScore = 0;
+        
+        // Base freshness score from article ID (consistent value)
+        const baseFreshness = article.id ? 
+            (parseInt(article.id.replace(/\D/g, '').slice(-2) || '0') % 8) : 
+            Math.floor(Math.random() * 8);
+        
+        console.log(`Base freshness: ${baseFreshness} / 8`);
+        
+        // Uniqueness bonus: if article title contains uncommon words compared to other articles
+        const allTitles = articleCollection.map(a => a.title.toLowerCase());
+        const titleWords = titleLower.split(/\s+/).filter(w => w.length > 4); // Only consider substantial words
+        
+        let uncommonWordCount = 0;
+        titleWords.forEach(word => {
+            // Count how many other articles contain this word
+            const occurrenceCount = allTitles.filter(t => t.includes(word)).length;
+            
+            // If word appears in less than 20% of articles, consider it uncommon
+            if (occurrenceCount <= Math.max(1, Math.floor(articleCollection.length * 0.2))) {
+                uncommonWordCount++;
+                console.log(`  Uncommon word found: "${word}" (in ${occurrenceCount} articles)`);
             }
         });
         
-        // Calculate normalized exact match score
-        console.log(`Total exact matches: ${exactMatchCount} / ${interestTerms.length} terms`);
-        const normalizedExactMatches = exactMatchCount / interestTerms.length;
-        console.log(`Normalized exact match score: ${normalizedExactMatches.toFixed(2)}`);
-        exactMatchScore = normalizedExactMatches * 40;
-        console.log(`Exact match score: ${exactMatchScore.toFixed(2)} / 40 points (${normalizedExactMatches.toFixed(2)} × 40)`);
+        // Calculate uniqueness bonus (max +2 points)
+        const uniquenessBonus = Math.min(2, uncommonWordCount * 0.5);
+        console.log(`Uniqueness bonus: ${uniquenessBonus.toFixed(2)} points (${uncommonWordCount} uncommon words)`);
         
-        console.log(`\n----- SCORING COMPONENT 3: FRESHNESS FACTOR (0-10 points) -----`);
-        // ---- 3. FRESHNESS FACTOR (0-10 points) ----
-        // A consistent value based on article ID to ensure the same article always gets the same freshness score
-        const freshnessScore = article.id ? 
-            (parseInt(article.id.replace(/\D/g, '').slice(-2) || '0') % 10) : 
-            Math.floor(Math.random() * 10);
-        console.log(`Freshness score calculation: article.id=${article.id}, extracted digits=${article.id ? article.id.replace(/\D/g, '').slice(-2) : 'none'}`);
-        console.log(`Freshness score: ${freshnessScore} / 10 points`);
+        // Combine base freshness with uniqueness bonus
+        freshnessScore = baseFreshness + uniquenessBonus;
+        console.log(`Freshness & uniqueness score: ${freshnessScore.toFixed(2)} / 10 points`);
         
         console.log(`\n----- FINAL SCORE CALCULATION -----`);
         // ---- COMBINE SCORES ----
-        const finalScore = keywordFrequencyScore + exactMatchScore + freshnessScore;
+        const finalScore = keywordFrequencyScore + semanticScore + freshnessScore;
         console.log(`Final score breakdown:
-  - Keyword Frequency: ${keywordFrequencyScore.toFixed(2)} / 50
-  - Exact Match:      ${exactMatchScore.toFixed(2)} / 40
-  - Freshness:        ${freshnessScore} / 10
+  - Keyword Frequency & Context: ${keywordFrequencyScore.toFixed(2)} / 50
+  - Semantic Relevance:         ${semanticScore.toFixed(2)} / 40
+  - Freshness & Uniqueness:     ${freshnessScore.toFixed(2)} / 10
   ----------------------
-  TOTAL SCORE:        ${finalScore.toFixed(2)} / 100
+  TOTAL SCORE:                 ${finalScore.toFixed(2)} / 100
 `);
         
         // Log all scoring components
         const scoreBreakdown = {
             keywordFrequency: keywordFrequencyScore.toFixed(2),
-            exactMatch: exactMatchScore.toFixed(2),
-            freshness: freshnessScore.toString(),
+            exactMatch: semanticScore.toFixed(2),
+            freshness: freshnessScore.toFixed(2),
             final: finalScore.toFixed(2)
         };
         
@@ -534,6 +599,14 @@ class AppController {
         console.log(`Rendering ${articles.length} articles`);
         this.articlesContainer.innerHTML = '';
         
+        // Create a container for the article cards that uses CSS grid
+        const articlesGrid = document.createElement('div');
+        articlesGrid.className = 'articles-grid';
+        articlesGrid.style.display = 'grid';
+        articlesGrid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(300px, 1fr))';
+        articlesGrid.style.gap = '20px';
+        articlesGrid.style.padding = '10px';
+        
         articles.forEach(article => {
             // Extract article ID from link - Use article.id if available, otherwise extract from link
             let articleId;
@@ -565,59 +638,90 @@ class AppController {
                 summaryText = article.subject || 'No introduction available';
             }
             
+            // Format title to be more readable
+            let title = article.title;
+            if (title.toLowerCase().startsWith('deep dive:')) {
+                title = title.replace(/^deep dive:/i, '').trim();
+            }
+            
             const articleCard = document.createElement('div');
             articleCard.className = 'article-card';
+            articleCard.style.border = '1px solid #e0e0e0';
+            articleCard.style.borderRadius = '8px';
+            articleCard.style.overflow = 'hidden';
+            articleCard.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+            articleCard.style.backgroundColor = '#ffffff';
+            articleCard.style.transition = 'transform 0.2s, box-shadow 0.2s';
+            articleCard.style.height = '100%';
+            articleCard.style.display = 'flex';
+            articleCard.style.flexDirection = 'column';
+            
+            // Hover effect
+            articleCard.addEventListener('mouseenter', () => {
+                articleCard.style.transform = 'translateY(-5px)';
+                articleCard.style.boxShadow = '0 8px 15px rgba(0, 0, 0, 0.1)';
+            });
+            articleCard.addEventListener('mouseleave', () => {
+                articleCard.style.transform = 'translateY(0)';
+                articleCard.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+            });
+            
+            // Calculate badge color based on score
+            const getBadgeColor = (score: number) => {
+                if (score > 90) return '#4CAF50'; // Green for excellent
+                if (score > 75) return '#2196F3'; // Blue for good
+                if (score > 60) return '#FF9800'; // Orange for moderate
+                return '#9E9E9E'; // Grey for low
+            };
+            
+            const badgeColor = getBadgeColor(article.score);
+            
             articleCard.innerHTML = `
-                <div class="article-header">
-                    <h3 class="article-title">${this.escapeHtml(article.title)}</h3>
-                    <div class="score-container">
-                        <span class="article-score">Score: ${article.score}</span>
-                        <div class="score-breakdown">
-                            <div class="score-meter">
-                                <div class="relevance" style="width: ${Math.min(75, article.score)}%"></div>
+                <div class="article-header" style="padding: 15px; position: relative;">
+                    <div style="position: absolute; top: 15px; right: 15px; background-color: ${badgeColor}; color: white; padding: 5px 10px; border-radius: 12px; font-weight: bold; font-size: 14px;">
+                        ${article.score}
+                    </div>
+                    <h3 class="article-title" style="margin-top: 0; margin-bottom: 10px; font-size: 18px; color: #333; padding-right: 60px;">${this.escapeHtml(title)}</h3>
+                    <div class="article-subject" style="font-size: 14px; color: #666; margin-bottom: 15px;">${this.escapeHtml(article.subject || '')}</div>
+                    <div class="score-breakdown" style="background-color: #f9f9f9; border-radius: 5px; padding: 10px; margin-top: 10px; display: none;">
+                        <div style="margin-bottom: 8px;">
+                            <div style="height: 6px; background-color: #e0e0e0; border-radius: 3px; overflow: hidden;">
+                                <div style="height: 100%; width: ${Math.min(100, article.score)}%; background-color: ${badgeColor};"></div>
                             </div>
-                            <div class="score-tags">
-                                ${article.score > 90 ? '<span class="tag excellent">Excellent Match</span>' : 
-                                  article.score > 75 ? '<span class="tag good">Good Match</span>' : 
-                                  article.score > 60 ? '<span class="tag moderate">Moderate Match</span>' :
-                                  '<span class="tag low">Low Match</span>'}
-                            </div>
-                            ${article.scoreComponents ? `
-                            <div class="score-details">
-                                <div class="score-component">
-                                    <span class="component-label">Keyword Frequency:</span>
-                                    <span class="component-value">${article.scoreComponents.keywordFrequency}/50</span>
-                                </div>
-                                <div class="score-component">
-                                    <span class="component-label">Exact Match:</span>
-                                    <span class="component-value">${article.scoreComponents.exactMatch}/40</span>
-                                </div>
-                                <div class="score-component">
-                                    <span class="component-label">Freshness:</span>
-                                    <span class="component-value">${article.scoreComponents.freshness}/10</span>
-                                </div>
-                            </div>` : ''}
                         </div>
+                        ${article.scoreComponents ? `
+                        <div style="font-size: 12px; color: #555;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                <span>Keywords:</span>
+                                <span>${article.scoreComponents.keywordFrequency}/50</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                <span>Matches:</span>
+                                <span>${article.scoreComponents.exactMatch}/40</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Freshness:</span>
+                                <span>${article.scoreComponents.freshness}/10</span>
+                            </div>
+                        </div>` : ''}
+                        <div style="text-align: center; margin-top: 5px; font-size: 12px; color: #888; cursor: pointer;" class="toggle-details">Show less</div>
                     </div>
+                    <div style="text-align: center; margin-top: 5px; font-size: 12px; color: #888; cursor: pointer;" class="toggle-details">Show score details</div>
                 </div>
-                <div class="article-body">
-                    <div class="article-subject">${this.escapeHtml(article.subject || '')}</div>
-                    <div class="article-introduction">
-                        <h4>Introduction</h4>
-                        <p>${this.truncateText(summaryText, 150)}</p>
+                <div class="article-body" style="padding: 15px; border-top: 1px solid #eeeeee; flex-grow: 1; display: flex; flex-direction: column;">
+                    <div class="article-introduction" style="flex-grow: 1;">
+                        <p style="margin-top: 0; line-height: 1.5; color: #444; font-size: 14px;">${this.truncateText(summaryText, 150)}</p>
                     </div>
-                    <a href="#" class="article-link" data-article-id="${articleId}">Read more</a>
+                    <a href="#" class="article-link" data-article-id="${articleId}" style="display: inline-block; padding: 8px 15px; background-color: #2196F3; color: white; text-decoration: none; border-radius: 4px; text-align: center; margin-top: 15px; font-weight: 500; transition: background-color 0.2s;">Read more</a>
                 </div>
             `;
             
-            // Add click event to view article details - Log the actual ID being used
+            // Add click event to view article details
             const articleLink = articleCard.querySelector('.article-link') as HTMLAnchorElement;
             if (articleLink) {
                 articleLink.addEventListener('click', (e) => {
                     e.preventDefault();
-                    // Get the ID from the data attribute to ensure consistency
                     const clickedId = articleLink.getAttribute('data-article-id');
-                    console.log(`Article link clicked, ID from attribute: ${clickedId}, original ID: ${articleId}`);
                     if (clickedId) {
                         this.viewArticleDetails(clickedId);
                     } else {
@@ -626,15 +730,37 @@ class AppController {
                 });
             }
             
-            this.articlesContainer?.appendChild(articleCard);
+            // Add toggle for score details
+            const toggleElements = articleCard.querySelectorAll('.toggle-details');
+            if (toggleElements.length === 2) {
+                const showToggle = toggleElements[1] as HTMLElement;
+                const hideToggle = toggleElements[0] as HTMLElement;
+                const scoreBreakdown = articleCard.querySelector('.score-breakdown') as HTMLElement;
+                
+                showToggle.addEventListener('click', () => {
+                    scoreBreakdown.style.display = 'block';
+                    showToggle.style.display = 'none';
+                });
+                
+                hideToggle.addEventListener('click', () => {
+                    scoreBreakdown.style.display = 'none';
+                    showToggle.style.display = 'block';
+                });
+            }
+            
+            articlesGrid.appendChild(articleCard);
         });
+        
+        this.articlesContainer.appendChild(articlesGrid);
         
         // Add a debug counter
         const debugInfo = document.createElement('div');
         debugInfo.className = 'debug-info';
         debugInfo.textContent = `Displaying ${articles.length} unique articles`;
+        debugInfo.style.textAlign = 'center';
         debugInfo.style.marginTop = '20px';
         debugInfo.style.fontSize = '12px';
+        debugInfo.style.color = '#888';
         this.articlesContainer.appendChild(debugInfo);
     }
     
