@@ -347,54 +347,53 @@ class AppController {
 
         try {
             console.log(`Loading articles with interests: ${interests || 'none'}`);
-            
-            // Show loading message
             this.articlesContainer.innerHTML = '<div class="loading">Loading articles...</div>';
-            
-            // Fetch articles from API
             const articles = await this.apiService.getArticles(interests);
-            
             if (articles.length === 0) {
                 this.articlesContainer.innerHTML = '<div class="message">No articles found. Please try with different interests.</div>';
                 return;
             }
-            
             console.log(`Fetched ${articles.length} articles, now scoring based on interests: ${interests || 'none'}`);
-            
-            // Score articles if we have interests
             let scoredArticles = [...articles];
-            
             if (interests && interests.trim()) {
-                // Use the interests to score each article
-                console.log('Scoring articles using vector similarity...');
-                
-                const scoringPromises = articles.map(article => scoreArticle(article, interests));
-                const scores = await Promise.all(scoringPromises);
-                
-                // Apply the scores to the articles
-                scoredArticles = articles.map((article, index) => ({
-                    ...article,
-                    score: Math.round(scores[index])
-                }));
-                
-                console.log('Article scoring complete. Score range:', 
-                    Math.min(...scores).toFixed(1), 'to', 
-                    Math.max(...scores).toFixed(1));
+                // --- KEYWORD FIRST RANKING ---
+                // Calculate keyword scores for all articles
+                const interestTerms = interests.toLowerCase().split(/[\s,]+/).filter(term => term.length > 2);
+                scoredArticles = articles.map(article => {
+                    const articleTextLower = `${article.title} ${article.subject}`.toLowerCase();
+                    let keywordMatches = 0;
+                    interestTerms.forEach(term => {
+                        if (articleTextLower.includes(term)) {
+                            keywordMatches++;
+                        }
+                    });
+                    const keywordScore = interestTerms.length > 0 ? (keywordMatches / interestTerms.length) * 100 : 0;
+                    return { ...article, score: keywordScore };
+                });
+                // Sort by keyword score (descending)
+                scoredArticles.sort((a, b) => b.score - a.score);
+                // Take top 3 for vector reranking
+                const topKeywordArticles = scoredArticles.slice(0, 3);
+                const restArticles = scoredArticles.slice(3);
+                // Score top 3 by vector similarity
+                const vectorScores = await Promise.all(topKeywordArticles.map(article => scoreArticle(article, interests)));
+                const top3WithVector = topKeywordArticles.map((article, idx) => ({ ...article, score: vectorScores[idx] }));
+                // Sort top 3 by vector score (descending)
+                top3WithVector.sort((a, b) => b.score - a.score);
+                // Final list: top 3 (vector sorted) + rest (keyword sorted)
+                scoredArticles = [...top3WithVector, ...restArticles];
             } else {
                 // No interests provided, use default scoring
                 console.log('No interests provided, using default scoring');
                 scoredArticles = articles.map(article => ({
                     ...article,
-                    score: article.score || Math.floor(Math.random() * 30) + 70 // Random score between 70-99 if none provided
+                    score: article.score || Math.floor(Math.random() * 30) + 70
                 }));
             }
-            
             console.log(`Scored ${scoredArticles.length} articles`);
-            
             // Sort by score (highest first)
             scoredArticles.sort((a, b) => b.score - a.score);
             console.log("Articles sorted by score");
-            
             this.renderArticles(scoredArticles);
         } catch (error) {
             console.error('Error loading articles:', error);
