@@ -609,8 +609,14 @@ async function get_article_endpoint(articleId) {
       };
     }
     
-    console.log(`Getting article details for: ${articleId}`);
-    
+    // DEBUG LOGGING START
+    console.log('--- get_article_endpoint DEBUG ---');
+    console.log('Looking for article with ID:', articleId);
+    console.log('Current working directory:', process.cwd());
+    console.log('Trying exact match:', `final_article_${articleId}.json`);
+    console.log('Trying exact match:', `final_article_${articleId}.html`);
+    // DEBUG LOGGING END
+
     // First try exact match
     const exactBlobFiles = [
       ...(await listBlobFiles(`final_article_${articleId}.json`)),
@@ -620,6 +626,7 @@ async function get_article_endpoint(articleId) {
     if (exactBlobFiles.length > 0) {
       console.log(`Found exact match for article ID: ${articleId}`);
       const articlePath = exactBlobFiles[0];
+      console.log('Reading file:', articlePath);
       const articleData = await safeReadFile(articlePath);
       
       if (articleData) {
@@ -635,6 +642,9 @@ async function get_article_endpoint(articleId) {
       ...(await listBlobFiles(`final_article_*${articleId}*.html`))
     ];
     console.log(`Found ${partialBlobFiles.length} potential matching blob files for article ID: ${articleId}`);
+    if (partialBlobFiles.length > 0) {
+      console.log('Partial match files:', partialBlobFiles);
+    }
     
     if (partialBlobFiles.length === 0) {
       // If still no matches, list all articles and check each one
