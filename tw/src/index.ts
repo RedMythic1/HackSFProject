@@ -992,10 +992,5 @@ class AppController {
 
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize the embedding model when the app starts
-    initEmbeddingModel().then(() => {
-        console.log('Embedding model initialized on startup');
-    });
-    
     new AppController();
 }); 
