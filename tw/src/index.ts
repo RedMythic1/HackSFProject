@@ -179,21 +179,7 @@ const scoreArticle = async (article: Article, userInterests: string): Promise<nu
             return Math.floor(Math.random() * 25) + 70; // Default score if no interests
         }
 
-        // Generate embeddings for the article and user interests
-        const articleText = `${article.title}. ${article.subject}`;
-        const articleEmbedding = await generateEmbedding(articleText);
-        const interestsEmbedding = await generateEmbedding(userInterests);
-
-        // Vector similarity score (0-100)
-        let vectorScore = 0;
-        if (articleEmbedding.length && interestsEmbedding.length) {
-            vectorScore = vectorSimilarity(articleEmbedding, interestsEmbedding);
-        } else {
-            console.warn("Could not generate embeddings, using fallback scoring");
-            vectorScore = Math.floor(Math.random() * 25) + 70;
-        }
-
-        // Keyword matching score (0-100)
+        // --- KEYWORD SCORE (unchanged) ---
         const interestTerms = userInterests.toLowerCase().split(/[\s,]+/).filter(term => term.length > 2);
         const articleTextLower = `${article.title} ${article.subject}`.toLowerCase();
         let keywordMatches = 0;
@@ -202,10 +188,44 @@ const scoreArticle = async (article: Article, userInterests: string): Promise<nu
                 keywordMatches++;
             }
         });
-        // Normalize keyword score: if all terms match, 100; if none, 0
         const keywordScore = interestTerms.length > 0 ? (keywordMatches / interestTerms.length) * 100 : 0;
 
-        // Combine scores: 30% vector, 70% keyword
+        // --- VECTOR SCORE using summary embedding ---
+        let vectorScore = 0;
+        let articleEmbedding: number[] = [];
+        try {
+            if (article.id) {
+                // Try to load the summary file for this article
+                const summaryPath = `.cache/summary_${article.id}.json`;
+                const response = await fetch(summaryPath);
+                if (response.ok) {
+                    const summaryData = await response.json();
+                    if (summaryData.embedding && Array.isArray(summaryData.embedding)) {
+                        articleEmbedding = summaryData.embedding;
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn(`Could not load summary embedding for article id ${article.id}:`, err);
+        }
+
+        // Generate embedding for user interests
+        const interestsEmbedding = await generateEmbedding(userInterests);
+
+        if (articleEmbedding.length && interestsEmbedding.length) {
+            vectorScore = vectorSimilarity(articleEmbedding, interestsEmbedding);
+        } else {
+            // Fallback: use previous method (title+subject)
+            const fallbackText = `${article.title}. ${article.subject}`;
+            const fallbackEmbedding = await generateEmbedding(fallbackText);
+            if (fallbackEmbedding.length && interestsEmbedding.length) {
+                vectorScore = vectorSimilarity(fallbackEmbedding, interestsEmbedding);
+            } else {
+                vectorScore = Math.floor(Math.random() * 25) + 70;
+            }
+        }
+
+        // Combine scores: 30% vector, 70% keyword (or whatever logic is current)
         const finalScore = 0.3 * vectorScore + 0.7 * keywordScore;
         console.log(`Combined score for "${article.title}": vector=${vectorScore}, keyword=${keywordScore}, final=${finalScore}`);
         return finalScore;
