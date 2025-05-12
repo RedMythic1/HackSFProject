@@ -262,8 +262,25 @@ const customRankingSystem = async (
             return baseScore; // No valid interest terms
         }
         
-        // Get article text for analysis
-        const articleSummary = article.summary || '';
+        // Load summary from .cache/summary_{article.id}.json if possible
+        let articleSummary = '';
+        if (article.id) {
+            try {
+                const summaryPath = `.cache/summary_${article.id}.json`;
+                const response = await fetch(summaryPath);
+                if (response.ok) {
+                    const summaryData = await response.json();
+                    if (summaryData.summary && typeof summaryData.summary === 'string') {
+                        articleSummary = summaryData.summary;
+                    }
+                }
+            } catch (err) {
+                console.warn(`Could not load summary for article id ${article.id}:`, err);
+            }
+        }
+        if (!articleSummary && article.summary) {
+            articleSummary = article.summary;
+        }
         const articleText = `${article.title} ${article.subject || ''} ${articleSummary}`.toLowerCase();
         const articleSummaryLower = articleSummary.toLowerCase();
         
