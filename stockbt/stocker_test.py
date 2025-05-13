@@ -36,14 +36,15 @@ print(f"Initial balance set to ${initial_balance:,.2f}")
 # GPT-4 FREE (g4f) helper
 # -----------------------------------------------------------------------------
 
-def ask_llama(prompt):
+def ask_llama(prompt, temperature=0.7):
     """Ask a question to the GPT-4 Free backend via g4f."""
-    print("\nSending prompt to g4f ChatCompletion…")
+    print(f"\nSending prompt to g4f ChatCompletion with temperature={temperature}…")
     try:
         response = g4f.ChatCompletion.create(
-            model="gpt-o4",
+            model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             provider=g4f.Provider.PollinationsAI,
+            temperature=temperature
         )
         # g4f returns plain text (no dict like OpenAI)
         print("Received response:" + response)
@@ -157,7 +158,7 @@ def calculate_buy_and_hold_profit(close_prices, initial_balance=100000):
 # Core simulation runner with iterative improvement
 # -----------------------------------------------------------------------------
 
-def run_simulation(user_input, improvement_context="", iteration=1, max_iterations=5):
+def run_simulation(user_input, improvement_context="", iteration=1, max_iterations=5, max_error_attempts=10):
     print(f"\nStarting simulation iteration {iteration} with user input: {user_input[:100]}…")
 
     # Construct the prompt with improvement context if provided
@@ -269,6 +270,15 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
 **(Note:** The MANDATORY TRADING LOGIC above is a template. You **must** integrate it correctly within the `trading_strategy` function's loop, defining variables like `i`, `price_today`, `buy_price`, `sell_price` according to the user's strategy and the parameters from `get_user_params`. The comments indicate where your strategy-specific logic needs to fit.)
 
 **Final Check:** Ensure your output is only the two raw Python function definitions separated by a single blank line. No markdown, no comments outside the functions, no extra text.
+
+**Important Output Format Requirements:**
+- Your trading_strategy function may return its results in EITHER of these formats:
+  1. Standard tuple: (profit_loss, buy_points, sell_points, balance_over_time)
+  2. Dictionary format: {{'profit_loss': profit_amount, 'buy_points': [...], 'sell_points': [...], 'balance_over_time': [...]}}
+
+- The dictionary format is preferred as it's more explicit. For buy_points and sell_points, you can provide either:
+  * A list of (index, price) tuples
+  * A list of indices where trades occurred
 [/INST]"""
     else:
         prompt = f"""[INST]
@@ -375,6 +385,15 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
 **(Note:** The MANDATORY TRADING LOGIC above is a template. You **must** integrate it correctly within the `trading_strategy` function's loop, defining variables like `i`, `price_today`, `buy_price`, `sell_price` according to the user's strategy and the parameters from `get_user_params`. The comments indicate where your strategy-specific logic needs to fit.)
 
 **Final Check:** Ensure your output is only the two raw Python function definitions separated by a single blank line. No markdown, no comments outside the functions, no extra text.
+
+**Important Output Format Requirements:**
+- Your trading_strategy function may return its results in EITHER of these formats:
+  1. Standard tuple: (profit_loss, buy_points, sell_points, balance_over_time)
+  2. Dictionary format: {{'profit_loss': profit_amount, 'buy_points': [...], 'sell_points': [...], 'balance_over_time': [...]}}
+
+- The dictionary format is preferred as it's more explicit. For buy_points and sell_points, you can provide either:
+  * A list of (index, price) tuples
+  * A list of indices where trades occurred
 [/INST]"""
 
     attempts = 0
@@ -391,14 +410,23 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
     sell_points = []
     balance_over_time = []
 
+    # Temperature scaling parameters
+    base_temperature = 0.3  # Start with slightly higher temperature for more variation
+    max_temperature = 1.0
+    temperature_step = 0.1
+
     while not success:
         try:
             print(f"\n--- Attempt {attempts + 1} ---")
             current_prompt = error_prompt if attempts > 0 else prompt
+            
+            # Calculate temperature (increase with more attempts)
+            current_temperature = min(base_temperature + (temperature_step * (attempts // 2)), max_temperature)
+            print(f"Using temperature: {current_temperature}")
 
             if not response or attempts > 0:
                 print("Getting response from GPT…")
-                response = ask_llama(current_prompt)
+                response = ask_llama(current_prompt, temperature=current_temperature)
                 if response is None:
                     raise Exception("LLM failed to provide a response.")
 
@@ -486,6 +514,74 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                             # Extract balance from dictionary result
                             bb = result.get('balance', 0) - initial_balance
                             return bb, [], [], [initial_balance, initial_balance + bb]
+                        elif isinstance(result, dict) and ('buy_points' in result or 'sell_points' in result or 'buy' in result or 'sell' in result):
+                            # Handle dictionary with buy/sell points in various key formats
+                            print("Converting dictionary with buy/sell data...")
+                            
+                            # Extract buy points - check multiple possible keys
+                            buy_points = result.get('buy_points', result.get('buy', result.get('buys', result.get('buy_indices', []))))
+                            
+                            # Extract sell points - check multiple possible keys
+                            sell_points = result.get('sell_points', result.get('sell', result.get('sells', result.get('sell_indices', []))))
+                            
+                            # Make sure points are formatted as (index, price) tuples
+                            if buy_points and not isinstance(buy_points[0], tuple):
+                                formatted_buy_points = []
+                                for idx in buy_points:
+                                    if isinstance(idx, int) and 0 <= idx < len(close):
+                                        formatted_buy_points.append((idx, close[idx]))
+                                buy_points = formatted_buy_points
+                            
+                            if sell_points and not isinstance(sell_points[0], tuple):
+                                formatted_sell_points = []
+                                for idx in sell_points:
+                                    if isinstance(idx, int) and 0 <= idx < len(close):
+                                        formatted_sell_points.append((idx, close[idx]))
+                                sell_points = formatted_sell_points
+                            
+                            # Calculate approximate profit based on trades
+                            balance = initial_balance
+                            balance_over_time = [balance]
+                            shares = 0
+                            
+                            # Sort points by index for chronological processing
+                            buy_indices = [idx for idx, _ in buy_points] if buy_points and isinstance(buy_points[0], tuple) else buy_points
+                            sell_indices = [idx for idx, _ in sell_points] if sell_points and isinstance(sell_points[0], tuple) else sell_points
+                            
+                            all_indices = sorted(set(buy_indices + sell_indices))  # Use set to remove duplicates
+                            
+                            for idx in all_indices:
+                                if idx in buy_indices and shares == 0:
+                                    # Buy operation
+                                    buy_price = close[idx]
+                                    shares_to_buy = math.floor(balance / buy_price)
+                                    if shares_to_buy > 0:
+                                        balance -= shares_to_buy * buy_price
+                                        shares += shares_to_buy
+                                elif idx in sell_indices and shares > 0:
+                                    # Sell operation
+                                    sell_price = close[idx]
+                                    balance += shares * sell_price
+                                    shares = 0
+                                
+                                balance_over_time.append(balance + (shares * close[idx] if shares > 0 else 0))
+                            
+                            # Final liquidation if still holding shares
+                            if shares > 0:
+                                balance += shares * close[-1]
+                                
+                            bb = balance - initial_balance
+                            
+                            # Create standardized dictionary output format
+                            standardized_output = {
+                                'profit_loss': bb,
+                                'buy_points': buy_points,
+                                'sell_points': sell_points,
+                                'balance_over_time': balance_over_time
+                            }
+                            
+                            # Also return as regular expected tuple for backwards compatibility
+                            return bb, buy_points, sell_points, balance_over_time
                         elif isinstance(result, list):
                             # If we got a list of signals, convert to buy/sell points
                             print("Converting signal list to buy/sell points...")
@@ -571,7 +667,22 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
 
             # NEW validation: ensure the strategy executed at least one trade and bb is numeric
             if not buy_points or not sell_points:
-                raise Exception("Generated strategy did not execute any trades (buy/sell points empty). Please adjust parameters/logic.")
+                error_msg = "Generated strategy did not execute any trades (buy/sell points empty)."
+                if attempts < max_error_attempts - 1:  # If we have attempts left
+                    error_msg += " Please adjust parameters/logic to ensure trades are executed."
+                    raise Exception(error_msg)
+                else:  # On last attempt, return a basic buy-and-hold strategy
+                    print("Last attempt failed - falling back to basic buy-and-hold strategy")
+                    # Implement a basic buy-and-hold strategy
+                    buy_points = [(0, close[0])]
+                    sell_points = [(len(close)-1, close[-1])]
+                    shares = math.floor(initial_balance / close[0])
+                    final_balance = shares * close[-1]
+                    bb = final_balance - initial_balance
+                    balance_over_time = [initial_balance, final_balance]
+                    print("Implemented fallback buy-and-hold strategy")
+                    return bb, buy_points, sell_points, balance_over_time
+
             if not isinstance(bb, (int, float)):
                 raise Exception("Profit/loss (bb) is not numeric. Strategy must return a numeric P&L.")
 
@@ -583,6 +694,12 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
             error_traceback = traceback.format_exc()
             print(error_traceback)
             print("-------------------------------------------")
+
+            # Check if we've reached the maximum number of attempts
+            if attempts >= max_error_attempts:
+                print(f"\n!!! REACHED MAXIMUM ERROR ATTEMPTS ({max_error_attempts}) !!!")
+                print("Giving up on this iteration and returning empty results.")
+                return 0, [], [], [initial_balance, initial_balance]  # Return empty results
 
             response = None  # Clear previous response to force LLM call
 
@@ -634,15 +751,29 @@ Your response MUST consist of:
 - Output ONLY the complete code for both functions - no explanations, no markdown, no extra text.
 - DO NOT SKIP OR SUMMARIZE ANY PART OF THE CODE with comments like "... rest of function remains the same ..."
 - INCLUDE THE ENTIRE FUNCTION DEFINITIONS, not just the modified parts.
+
+**Important Output Format Requirements:**
+- Your trading_strategy function may return its results in EITHER of these formats:
+  1. Standard tuple: (profit_loss, buy_points, sell_points, balance_over_time)
+  2. Dictionary format: {{'profit_loss': profit_amount, 'buy_points': [...], 'sell_points': [...], 'balance_over_time': [...]}}
+
+- The dictionary format is preferred as it's more explicit. For buy_points and sell_points, you can provide either:
+  * A list of (index, price) tuples
+  * A list of indices where trades occurred
 [/INST]"""
             print(f"Attempting retry {attempts} to fix the error…")
 
     print("\nExecution successful. Generating plot…")
-    plot_results(close, buy_points, sell_points, balance_over_time)
+    
+    # Create a unique counter for this plot
+    from datetime import datetime
+    plot_counter = int(datetime.now().timestamp())
+    
+    plot_results(close, buy_points, sell_points, balance_over_time, counter=plot_counter, user_prompt=user_input[:50])
 
     return bb, buy_points, sell_points, balance_over_time
 
-def run_improved_simulation(user_input):
+def run_improved_simulation(user_input, max_error_attempts=10):
     """Run an iterative improvement process to achieve profit target."""
     print("\n=== STARTING ITERATIVE IMPROVEMENT PROCESS ===")
     
@@ -658,6 +789,10 @@ def run_improved_simulation(user_input):
     current_profit = 0
     improvement_context = ""
     
+    # Create a base counter for plots
+    from datetime import datetime
+    base_counter = int(datetime.now().timestamp())
+    
     while iteration <= max_iterations and current_profit < target_profit:
         print(f"\n--- IMPROVEMENT ITERATION {iteration}/{max_iterations} ---")
         
@@ -666,11 +801,18 @@ def run_improved_simulation(user_input):
             user_input, 
             improvement_context, 
             iteration,
-            max_iterations
+            max_iterations,
+            max_error_attempts
         )
         
         print(f"\nCurrent Profit: ${current_profit:.2f}")
         print(f"Target Profit: ${target_profit:.2f}")
+        
+        # Create a separate plot for this iteration, with the iteration number
+        plot_counter = base_counter + iteration
+        plot_results(close, buy_points, sell_points, balance_over_time, 
+                    counter=plot_counter, 
+                    user_prompt=f"iter{iteration}_{user_input[:40]}")
         
         if current_profit >= target_profit:
             print("\n=== TARGET PROFIT ACHIEVED! ===")
@@ -734,7 +876,7 @@ Based on the above analysis, implement these improvements in your trading strate
 # Plotting helper (unchanged)
 # -----------------------------------------------------------------------------
 
-def plot_results(close, buy_points, sell_points, balance_over_time):
+def plot_results(close, buy_points, sell_points, balance_over_time, counter=1, user_prompt=""):
     print("\nGenerating plot…")
     plt.figure(figsize=(18, 9), dpi=150)
 
@@ -782,9 +924,57 @@ def plot_results(close, buy_points, sell_points, balance_over_time):
     plt.legend()
 
     plt.tight_layout()
-    print("Saving plot…")
-    plt.savefig('stockbt/test_images/balance_over_time.png', dpi=150)
-    print("Plot saved as 'stockbt/test_images/balance_over_time.png'")
+    
+    # Create a valid filename from the user prompt (remove invalid filename characters)
+    safe_prompt = re.sub(r'[^\w\s-]', '', user_prompt)[:30]  # Limit to 30 chars
+    safe_prompt = re.sub(r'\s+', '_', safe_prompt).strip('-_')
+    
+    filename = f'stockbt/test_images/test_image_{counter}_{safe_prompt}.png'
+    print(f"Saving plot as '{filename}'…")
+    plt.savefig(filename, dpi=150)
+    print(f"Plot saved as '{filename}'")
+
+# -----------------------------------------------------------------------------
+# Prompt enhancement
+# -----------------------------------------------------------------------------
+
+def enhance_user_prompt(original_prompt):
+    """Enhance the user's trading strategy prompt using LLM."""
+    print("\n=== ENHANCING USER PROMPT ===")
+    print(f"Original prompt: {original_prompt[:100]}...")
+    
+    enhancement_prompt = f"""[INST]
+You are an expert trading strategy developer. Your task is to MINIMALLY refine the user's trading strategy while preserving ~90% of the original content.
+
+**Original Strategy:**
+{original_prompt}
+
+**Your Task:**
+1. Preserve approximately 90% of the original text
+2. Only fix grammatical errors and improve clarity
+3. Replace vague terms with more precise technical terminology where appropriate
+4. Add missing context ONLY when absolutely necessary (e.g., if "mia khalifa method" is mentioned, briefly define what this method entails in trading terms)
+5. DO NOT completely restructure or rewrite the strategy
+
+The user values their original ideas - your job is just to make minor improvements while keeping their intent intact.
+
+Provide ONLY the enhanced strategy description. DO NOT include explanations, introductions, or any text outside the improved strategy itself.
+[/INST]"""
+
+    try:
+        print("Getting enhanced prompt from LLM...")
+        enhanced_prompt = ask_llama(enhancement_prompt, temperature=0.5)  # Lower temperature for more conservative edits
+        
+        if enhanced_prompt and len(enhanced_prompt) > 50:  # Basic validation
+            print("Successfully enhanced the prompt.")
+            print(f"Enhanced prompt: {enhanced_prompt[:100]}...")
+            return enhanced_prompt
+        else:
+            print("Warning: Enhancement returned empty or very short result. Using original prompt.")
+            return original_prompt
+    except Exception as e:
+        print(f"Error enhancing prompt: {e}")
+        return original_prompt
 
 # -----------------------------------------------------------------------------
 # Simple CLI entry-point for quick testing
@@ -793,6 +983,15 @@ def plot_results(close, buy_points, sell_points, balance_over_time):
 if __name__ == "__main__":
     print("\nWaiting for user input…")
     user_input = input("Enter your trading strategy: ")
+    
+    # Enhance the user's prompt
+    enhanced_prompt = enhance_user_prompt(user_input)
+    
     print("Starting simulation with iterative improvement…")
-    run_improved_simulation(user_input)
+    print("\nUsing the following enhanced strategy:")
+    print("-" * 40)
+    print(enhanced_prompt)
+    print("-" * 40)
+    
+    run_improved_simulation(enhanced_prompt)
     print("Simulation complete!") 
