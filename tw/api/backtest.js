@@ -3,25 +3,28 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 
-// Path to the stocker.py script
-const stockerPath = path.join(__dirname, '..', '..', 'stockbt', 'stocker.py');
+// Path to the stocker_test.py script - use absolute path
+const stockerPath = path.resolve(__dirname, '..', '..', 'stockbt', 'stocker_test.py');
+const stockbtDir = path.resolve(__dirname, '..', '..', 'stockbt');
 
 /**
- * Run a backtest using the stocker.py script
+ * Run a backtest using the stocker_test.py script
  * @param {string} strategy - The trading strategy in plain English
  * @returns {Promise<Object>} - The backtest results
  */
 async function runBacktest(strategy) {
   return new Promise((resolve, reject) => {
     console.log(`Running backtest with strategy: ${strategy}`);
-    console.log(`Using stocker.py at: ${stockerPath}`);
+    console.log(`Using stocker_test.py at: ${stockerPath}`);
 
+    // Set working directory to stockbt dir to ensure relative paths work correctly
     const process = spawn('python3', [
       stockerPath,
-      '--strategy', strategy,
-      '--save-chart',
-      '--json-output'
-    ]);
+      strategy, // First argument is the strategy itself (positional)
+      '--json' // Use --json flag instead of --json-output for stocker_test.py
+    ], {
+      cwd: stockbtDir // Set working directory to ensure proper file paths
+    });
 
     let outputData = '';
     let errorData = '';
@@ -44,11 +47,15 @@ async function runBacktest(strategy) {
       }
 
       try {
+        // Extract only the JSON part from the output
+        const jsonMatch = outputData.match(/({[\s\S]*})/);
+        const jsonString = jsonMatch ? jsonMatch[0] : outputData;
+        
         // Try to parse the JSON output
-        const results = JSON.parse(outputData);
+        const results = JSON.parse(jsonString);
         resolve(results);
       } catch (error) {
-        console.error('Failed to parse stocker.py output:', error);
+        console.error('Failed to parse stocker_test.py output:', error);
         reject(new Error(`Failed to parse backtest results: ${error.message}`));
       }
     });
@@ -91,20 +98,20 @@ router.post('/api/backtest', async (req, res) => {
     
     // Extract chart image if available
     let chartImage = null;
-    if (backtestResults.chart_path) {
-      chartImage = await imageToBase64(backtestResults.chart_path);
+    if (backtestResults.image_path) {
+      chartImage = await imageToBase64(backtestResults.image_path);
     }
     
     res.json({
       status: 'success',
-      profit: backtestResults.profit_loss,
+      profit: backtestResults.profit || 0,
       trades: {
         count: backtestResults.buy_points?.length || 0,
         buys: backtestResults.buy_points || [],
         sells: backtestResults.sell_points || []
       },
-      balance_history: backtestResults.balance_over_time || [],
-      code: backtestResults.generated_code || '',
+      balance_history: backtestResults.balance_history || [],
+      code: backtestResults.code_path || '',
       image: chartImage
     });
   } catch (error) {

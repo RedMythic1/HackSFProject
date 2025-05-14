@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # start.sh - Script to start both frontend and backend services
 
@@ -41,6 +42,14 @@ check_dependency "python3"
 # Ensure all npm dependencies are installed
 echo -e "${BLUE}Installing npm dependencies...${NC}"
 npm install
+
+# Build the frontend
+echo "Building frontend assets..."
+npx webpack --mode production
+
+# Start the server
+echo "Starting server on port 3000..."
+node api/server.js
 
 # Function to start the backend server
 start_backend() {

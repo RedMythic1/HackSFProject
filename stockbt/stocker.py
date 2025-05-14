@@ -6,8 +6,18 @@ import llama_cpp._internals as _internals
 from llama_cpp import Llama
 import traceback
 import re
+import json
+import argparse
+import sys
 
 print("Initializing stocker.py...")
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Stock Trading Strategy Backtester')
+parser.add_argument('--strategy', type=str, help='Trading strategy in plain English')
+parser.add_argument('--save-chart', action='store_true', help='Save chart to file')
+parser.add_argument('--json-output', action='store_true', help='Output results as JSON')
+args = parser.parse_args()
 
 # Get the script's directory and construct absolute paths
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -383,12 +393,39 @@ def plot_results(close, buy_points, sell_points, balance_over_time):
     plt.legend()
 
     plt.tight_layout()
-    print("Saving plot...")
-    plt.savefig('stockbt/test_images/balance_over_time.png', dpi=150)
-    print("Plot saved as 'stockbt/test_images/balance_over_time.png'")
+    chart_path = os.path.join(test_images_dir, 'balance_over_time.png')
+    print(f"Saving plot to {chart_path}...")
+    plt.savefig(chart_path, dpi=150)
+    print(f"Plot saved as '{chart_path}'")
+    return chart_path
 
-print("\nWaiting for user input...")
-user_input = input("Enter your trading strategy: ")
-print("Starting simulation...")
-run_simulation(user_input)
-print("Simulation complete!")
+# Main execution logic - now handle command line args
+if __name__ == "__main__":
+    if args.strategy:
+        print(f"Running simulation with strategy from command line: {args.strategy}")
+        user_input = args.strategy
+    else:
+        print("\nWaiting for user input...")
+        user_input = input("Enter your trading strategy: ")
+    
+    print("Starting simulation...")
+    bb, buy_points, sell_points, balance_over_time = run_simulation(user_input)
+    
+    # Plot the results if needed
+    chart_path = None
+    if args.save_chart:
+        chart_path = plot_results(close, buy_points, sell_points, balance_over_time)
+    
+    # Output as JSON if requested
+    if args.json_output:
+        result = {
+            "profit_loss": float(bb) if isinstance(bb, (int, float)) else 0,
+            "buy_points": buy_points,
+            "sell_points": sell_points,
+            "balance_over_time": balance_over_time,
+            "chart_path": chart_path
+        }
+        print(json.dumps(result))
+    else:
+        print("Simulation complete!")
+        print(f"Profit/Loss: ${bb:,.2f}")
