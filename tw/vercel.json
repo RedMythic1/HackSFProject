@@ -58,7 +58,7 @@
     },
     {
       "src": "/api/backtest",
-      "dest": "/api/backtest.js",
+      "dest": "/api/backtest.py",
       "headers": {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS"

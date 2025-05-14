@@ -44,6 +44,18 @@ module.exports = {
   performance: {
     hints: false
   },
+  devServer: {
+    static: {
+      directory: path.join(__dirname, 'public'),
+    },
+    port: 8080,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      }
+    }
+  },
   optimization: {
     minimize: true,
     minimizer: [

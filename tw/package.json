@@ -7,9 +7,11 @@
     "node": ">=16.0.0"
   },
   "scripts": {
-    "start": "webpack serve --mode development",
+    "start": "npm run dev",
+    "start:frontend": "webpack serve --mode development",
+    "start:backend": "node api/server.js",
+    "dev": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
     "build": "webpack --mode production",
-    "dev": "webpack --mode development --watch",
     "vercel-build": "npm install && npm run build"
   },
   "dependencies": {
@@ -35,6 +37,7 @@
     "typescript": "^5.1.6",
     "webpack": "^5.88.2",
     "webpack-cli": "^5.1.4",
-    "webpack-dev-server": "^4.15.1"
+    "webpack-dev-server": "^4.15.1",
+    "concurrently": "^8.2.2"
   }
 }
