@@ -57,6 +57,14 @@
       "dest": "/api/vercel.js"
     },
     {
+      "src": "/api/backtest",
+      "dest": "/api/backtest.js",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS"
+      }
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/vercel.js"
     },
@@ -69,28 +77,32 @@
       "dest": "/dist/bundle.js"
     },
     {
-      "src": "/article/(.*)",
-      "dest": "/dist/index.html"
+      "src": "/backtesting.html",
+      "dest": "/dist/backtesting.html"
     },
     {
-      "src": "/(.*)",
-      "dest": "/dist/$1"
+      "src": "/backtesting.bundle.js",
+      "dest": "/dist/backtesting.bundle.js"
+    },
+    {
+      "src": "/backtesting",
+      "dest": "/dist/backtesting.html"
+    },
+    {
+      "src": "/article/(.*)",
+      "dest": "/dist/index.html"
     },
     {
       "handle": "filesystem"
     },
     {
       "src": "/(.*)",
-      "status": 404,
-      "dest": "/dist/index.html"
+      "dest": "/dist/$1"
     },
     {
-      "src": "/api/backtest",
-      "dest": "/api/backtest.js",
-      "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS"
-      }
+      "src": "/(.*)",
+      "status": 404,
+      "dest": "/dist/index.html"
     }
   ],
   "env": {

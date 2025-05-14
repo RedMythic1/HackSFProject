@@ -469,7 +469,7 @@
             display: inline-block;
             font-size: 0.85rem;
             border: 1px solid #eee;
-        }</style><script defer="defer" src="main.bundle.js"></script></head><body><header><div class="container"><h1>HackLens</h1></div><nav style="display:flex; gap:1rem; justify-content:center; margin-bottom:1rem;"><a href="index.html" class="nav-button active" id="home-tab">Home</a> <a href="backtesting.html" class="nav-button" id="backtest-tab">Backtesting</a></nav></header><div class="container"><main id="app"><div class="interest-form"><h2>What are your interests?</h2><p>Enter comma-separated topics to get personalized recommendations.</p><input id="interests-input" placeholder="e.g., AI, finance, health, programming"> <button id="submit-interests">Get Recommendations</button></div><div id="articles-section"><h2>Latest Articles</h2><div id="articles-container" class="articles-container"><div class="loading">Loading articles...</div></div></div><div id="not-found" class="not-found" style="display: none;"><h2>404: Page Not Found</h2><p>Sorry, the page you're looking for doesn't exist or has been moved.</p><button class="back-button" id="back-to-home">Back to Home</button></div><section id="backtest-section" style="display:none; width:100%; max-width:900px;"><div class="interest-form"><h2>Strategy Backtesting</h2><p>Enter your trading strategy description and run a quick backtest.</p><textarea id="strategy-input" rows="6" style="width:100%; padding:0.85rem; border:1px solid #ddd; border-radius:6px; font-size:1rem;"></textarea> <button id="run-backtest">Run Backtest</button><div id="backtest-status" style="margin-top:1rem; color:#2c3e50;"></div><div id="backtest-results" style="margin-top:2rem; text-align:left;"></div></div></section></main></div><script>// Check if we got a 404 error code from the server
+        }</style><script defer="defer" src="main.bundle.js"></script></head><body><header><div class="container"><h1>HackLens</h1></div><nav style="display:flex; gap:1rem; justify-content:center; margin-bottom:1rem;"><a href="index.html" class="nav-button active" id="home-tab">Home</a> <a href="#" class="nav-button" id="backtest-tab">Backtesting</a></nav></header><div class="container"><main id="app"><div class="interest-form"><h2>What are your interests?</h2><p>Enter comma-separated topics to get personalized recommendations.</p><input id="interests-input" placeholder="e.g., AI, finance, health, programming"> <button id="submit-interests">Get Recommendations</button></div><div id="articles-section"><h2>Latest Articles</h2><div id="articles-container" class="articles-container"><div class="loading">Loading articles...</div></div></div><div id="not-found" class="not-found" style="display: none;"><h2>404: Page Not Found</h2><p>Sorry, the page you're looking for doesn't exist or has been moved.</p><button class="back-button" id="back-to-home">Back to Home</button></div><section id="backtest-section" style="display:none; width:100%; max-width:900px;"><div class="interest-form"><h2>Strategy Backtesting</h2><p>Enter your trading strategy description and run a quick backtest.</p><textarea id="strategy-input" rows="6" style="width:100%; padding:0.85rem; border:1px solid #ddd; border-radius:6px; font-size:1rem;"></textarea> <button id="run-backtest">Run Backtest</button><div id="backtest-status" style="margin-top:1rem; color:#2c3e50;"></div><div id="backtest-results" style="margin-top:2rem; text-align:left;"></div></div></section></main></div><script>// Check if we got a 404 error code from the server
         document.addEventListener('DOMContentLoaded', function() {
             if (window.location.pathname !== '/' && 
                 window.location.pathname !== '/index.html' && 
@@ -508,15 +508,29 @@
 
         function showHome() {
             backtestSection.style.display = 'none';
+
+            // Update nav active state
+            homeTabButton.classList.add('active');
+            backtestTabButton.classList.remove('active');
         }
+
         function showBacktest() {
             backtestSection.style.display = 'block';
-            // Scroll into view
+            // Scroll into view so the user sees the section
             backtestSection.scrollIntoView({ behavior: 'smooth' });
+
+            // Update nav active state
+            homeTabButton.classList.remove('active');
+            backtestTabButton.classList.add('active');
         }
 
         homeTabButton.addEventListener('click', showHome);
-        backtestTabButton.addEventListener('click', showBacktest);
+        backtestTabButton.addEventListener('click', function(event) {
+            // Prevent the browser from following the link so we stay on the current
+            // page and simply reveal the Backtesting section.
+            event.preventDefault();
+            showBacktest();
+        });
 
         // Backtest handler
         document.getElementById('run-backtest').addEventListener('click', async () => {
