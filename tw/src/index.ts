@@ -514,11 +514,13 @@ class AppController {
                 const homeLink = document.createElement('a');
                 homeLink.href = 'index.html';
                 homeLink.className = 'nav-button active';
+                homeLink.id = 'home-tab';
                 homeLink.textContent = 'Home';
                 
                 const backtestLink = document.createElement('a');
                 backtestLink.href = 'backtesting.html';
                 backtestLink.className = 'nav-button';
+                backtestLink.id = 'backtest-tab';
                 backtestLink.textContent = 'Backtesting';
                 
                 // Add links to nav
