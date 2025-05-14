@@ -20,7 +20,8 @@ app.use(cors());
 app.use(express.json());
 
 // Import backtesting router
-const backtestRouter = require('./backtest');
+const backtestModule = require('./backtest');
+const backtestRouter = backtestModule(false); // Pass false to indicate it's not Vercel
 
 // Verify that the imported functions exist
 console.log(`Vercel Blob functions loaded:

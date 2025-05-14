@@ -2,12 +2,23 @@ import './style.css';
 import './backtesting.css';
 
 interface BacktestResult {
-    profit_loss: number;
-    buy_points: Array<[number, number]>;
-    sell_points: Array<[number, number]>;
-    balance_over_time: number[];
-    generated_code: string;
-    chart_url: string;
+    status: string;
+    profit_loss?: number;
+    profit?: number; // Alternative field name used by Node backend
+    buy_points?: Array<[number, number]>;
+    sell_points?: Array<[number, number]>;
+    balance_over_time?: number[];
+    balance_history?: number[]; // Alternative field name used by Node backend
+    generated_code?: string;
+    code?: string; // Alternative field used by Node backend
+    chart_url?: string;
+    image?: string; // Alternative field used by Node backend
+    trades?: {
+        count: number;
+        buys: Array<[number, number]>;
+        sells: Array<[number, number]>;
+    };
+    error?: string;
 }
 
 class BacktestingController {
@@ -95,49 +106,82 @@ class BacktestingController {
         
         // Update profit/loss
         if (this.profitLossValue) {
+            // Handle different response formats (serverless vs node)
+            const profitValue = result.profit_loss ?? result.profit ?? 0;
+            
             const formattedProfitLoss = new Intl.NumberFormat('en-US', {
                 style: 'currency',
                 currency: 'USD'
-            }).format(result.profit_loss);
+            }).format(profitValue);
             
             this.profitLossValue.textContent = formattedProfitLoss;
             this.profitLossValue.className = 'result-value ' + 
-                (result.profit_loss >= 0 ? 'positive' : 'negative');
+                (profitValue >= 0 ? 'positive' : 'negative');
         }
         
         // Update trades count
         if (this.tradesCount) {
-            const totalTrades = result.buy_points.length;
+            // Get trades count from different possible response formats
+            let totalTrades = 0;
+            if (result.trades && result.trades.count) {
+                totalTrades = result.trades.count;
+            } else if (result.buy_points) {
+                totalTrades = result.buy_points.length;
+            }
+            
             this.tradesCount.textContent = totalTrades.toString();
         }
         
         // Update success rate
         if (this.successRate) {
             let successfulTrades = 0;
+            let buyPoints = result.buy_points;
+            let sellPoints = result.sell_points;
+            
+            // Handle different response formats
+            if (result.trades) {
+                buyPoints = result.trades.buys;
+                sellPoints = result.trades.sells; 
+            }
             
             // Count trades where sell price > buy price
-            for (let i = 0; i < Math.min(result.buy_points.length, result.sell_points.length); i++) {
-                if (result.sell_points[i][1] > result.buy_points[i][1]) {
-                    successfulTrades++;
+            if (buyPoints && sellPoints) {
+                for (let i = 0; i < Math.min(buyPoints.length, sellPoints.length); i++) {
+                    if (sellPoints[i][1] > buyPoints[i][1]) {
+                        successfulTrades++;
+                    }
                 }
             }
             
-            const rate = result.buy_points.length > 0 
-                ? Math.round((successfulTrades / result.buy_points.length) * 100) 
+            const buyPointsLength = buyPoints?.length || 0;
+            const rate = buyPointsLength > 0 
+                ? Math.round((successfulTrades / buyPointsLength) * 100) 
                 : 0;
                 
             this.successRate.textContent = `${rate}%`;
         }
         
         // Update chart
-        if (this.chartImage && result.chart_url) {
-            this.chartImage.src = result.chart_url;
-            this.chartImage.style.display = 'block';
+        if (this.chartImage) {
+            // Handle different chart URL field names
+            const chartUrl = result.chart_url || result.image;
+            
+            if (chartUrl) {
+                this.chartImage.src = chartUrl;
+                this.chartImage.style.display = 'block';
+            } else {
+                this.chartImage.style.display = 'none';
+            }
         }
         
         // Update generated code
-        if (this.generatedCode && result.generated_code) {
-            this.generatedCode.textContent = result.generated_code;
+        if (this.generatedCode) {
+            // Handle different code field names
+            const codeContent = result.generated_code || result.code || '';
+            
+            if (codeContent) {
+                this.generatedCode.textContent = codeContent;
+            }
         }
     }
     
