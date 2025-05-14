@@ -8,6 +8,19 @@ const { glob } = require('glob');
 const axios = require('axios');
 const { JSDOM } = require('jsdom');
 const { put, list, head } = require('@vercel/blob');
+const express = require('express');
+const cors = require('cors');
+
+// Initialize Express app
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Middleware setup
+app.use(cors());
+app.use(express.json());
+
+// Import backtesting router
+const backtestRouter = require('./backtest');
 
 // Verify that the imported functions exist
 console.log(`Vercel Blob functions loaded:
@@ -883,10 +896,73 @@ async function analyze_interests_endpoint(interests) {
   }
 }
 
-// Export functions for the API
-module.exports = {
-  get_homepage_articles_endpoint,
-  get_article_endpoint,
-  process_articles_endpoint,
-  analyze_interests_endpoint
-}; 
+// Setup API routes
+app.get('/api/articles', async (req, res) => {
+  try {
+    const { interests } = req.query;
+    const result = await process_articles_endpoint(interests);
+    res.json(result);
+  } catch (error) {
+    console.error('Error in /api/articles:', error);
+    res.status(500).json({ error: 'Failed to process articles', details: error.message });
+  }
+});
+
+app.get('/api/article/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'Article ID is required' });
+    }
+    
+    const result = await get_article_endpoint(id);
+    res.json(result);
+  } catch (error) {
+    console.error('Error in /api/article/:id:', error);
+    res.status(500).json({ error: 'Failed to get article', details: error.message });
+  }
+});
+
+app.post('/api/analyze-interests', async (req, res) => {
+  try {
+    const { interests } = req.body;
+    if (!interests) {
+      return res.status(400).json({ error: 'Interests parameter is required' });
+    }
+    
+    const result = await analyze_interests_endpoint(interests);
+    res.json(result);
+  } catch (error) {
+    console.error('Error in /api/analyze-interests:', error);
+    res.status(500).json({ error: 'Failed to analyze interests', details: error.message });
+  }
+});
+
+app.post('/api/log', (req, res) => {
+  try {
+    const { message, level = 'info', source = 'unknown' } = req.body;
+    
+    if (!message) {
+      return res.status(400).json({ status: 'error', message: 'Missing log message' });
+    }
+    
+    // Log to console
+    console.log(`[${new Date().toISOString()}] [${level.toUpperCase()}] [${source}] ${message}`);
+    
+    res.json({ status: 'success' });
+  } catch (error) {
+    console.error('Error in /api/log:', error);
+    res.status(500).json({ error: 'Failed to log message', details: error.message });
+  }
+});
+
+// Mount the backtesting router
+app.use(backtestRouter);
+
+// Start the server
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
+
+// Export Express app for serverless environments
+module.exports = app; 

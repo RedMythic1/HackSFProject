@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Backtesting - HackLens</title>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Stock Backtesting</h1>
+            <nav class="main-nav">
+                <a href="index.html" class="nav-link">Back to Articles</a>
+            </nav>
+        </header>
+        
+        <main>
+            <section class="strategy-form-section">
+                <h2>Enter Your Trading Strategy</h2>
+                <p>Describe your trading strategy in plain English. Our system will convert it to code and run a backtest on historical data.</p>
+                
+                <div class="strategy-form">
+                    <textarea id="strategy-input" rows="6" placeholder="Example: Buy when the price drops below the 10-day moving average and sell when it rises above the 20-day moving average"></textarea>
+                    <button id="run-backtest-btn">Run Backtest</button>
+                </div>
+            </section>
+            
+            <section class="results-section" id="results-section">
+                <div id="loading-indicator" style="display: none;">
+                    <p>Running backtest, please wait...</p>
+                    <div class="spinner"></div>
+                </div>
+                
+                <div id="results-container" style="display: none;">
+                    <h2>Backtest Results</h2>
+                    
+                    <div class="results-summary">
+                        <div class="result-card">
+                            <h3>Total Profit/Loss</h3>
+                            <div id="profit-loss-value" class="result-value">$0.00</div>
+                        </div>
+                        
+                        <div class="result-card">
+                            <h3>Number of Trades</h3>
+                            <div id="trades-count" class="result-value">0</div>
+                        </div>
+                        
+                        <div class="result-card">
+                            <h3>Success Rate</h3>
+                            <div id="success-rate" class="result-value">0%</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h3>Performance Chart</h3>
+                        <div id="chart-area">
+                            <img id="chart-image" src="" alt="Performance Chart">
+                        </div>
+                    </div>
+                    
+                    <div class="code-container">
+                        <h3>Generated Trading Strategy Code</h3>
+                        <pre id="generated-code" class="code-block"></pre>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <footer>
+            <p>&copy; 2023 HackLens - Stock Backtesting Tool</p>
+        </footer>
+    </div>
+</body>
+</html> 

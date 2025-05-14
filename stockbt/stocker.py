@@ -9,11 +9,16 @@ import re
 
 print("Initializing stocker.py...")
 
-# Create test_images folder if it doesn't exist
-os.makedirs('stockbt/test_images', exist_ok=True)
-print("Created test_images directory")
+# Get the script's directory and construct absolute paths
+script_dir = os.path.dirname(os.path.abspath(__file__))
+test_images_dir = os.path.join(script_dir, 'test_images')
+datasets_dir = os.path.join(script_dir, 'datasets')
 
-file_path = 'stockbt/datasets/test.csv'
+# Create test_images folder if it doesn't exist
+os.makedirs(test_images_dir, exist_ok=True)
+print(f"Created test_images directory at {test_images_dir}")
+
+file_path = os.path.join(datasets_dir, 'test.csv')
 print(f"Loading data from {file_path}")
 data = pd.read_csv(file_path)
 close = data['Close']

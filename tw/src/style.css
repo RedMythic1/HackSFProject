@@ -272,4 +272,30 @@ h2.section-title {
   text-align: center;
   padding: 30px;
   color: #7f8c8d;
+}
+
+/* Navigation buttons */
+.nav-button {
+  display: inline-block;
+  padding: 8px 20px;
+  background-color: #f5f7fa;
+  color: #3498db;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: 600;
+  transition: all 0.2s;
+  margin: 0 5px;
+  border: 1px solid #e0e6ed;
+}
+
+.nav-button:hover {
+  background-color: #edf2f7;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.nav-button.active {
+  background-color: #3498db;
+  color: white;
+  border-color: #3498db;
 } 

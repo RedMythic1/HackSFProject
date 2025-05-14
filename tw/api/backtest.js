@@ -1,81 +1,119 @@
 const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const express = require('express');
 
-module.exports = async (req, res) => {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed, use POST' });
-  }
+// Path to the stocker.py script
+const stockerPath = path.join(__dirname, '..', '..', 'stockbt', 'stocker.py');
 
-  let body = '';
-  req.on('data', chunk => {
-    body += chunk.toString();
-  });
+/**
+ * Run a backtest using the stocker.py script
+ * @param {string} strategy - The trading strategy in plain English
+ * @returns {Promise<Object>} - The backtest results
+ */
+async function runBacktest(strategy) {
+  return new Promise((resolve, reject) => {
+    console.log(`Running backtest with strategy: ${strategy}`);
+    console.log(`Using stocker.py at: ${stockerPath}`);
 
-  req.on('end', () => {
-    try {
-      const { strategy } = JSON.parse(body || '{}');
-      if (!strategy || typeof strategy !== 'string') {
-        return res.status(400).json({ error: 'Missing "strategy" in request body' });
+    const process = spawn('python3', [
+      stockerPath,
+      '--strategy', strategy,
+      '--save-chart',
+      '--json-output'
+    ]);
+
+    let outputData = '';
+    let errorData = '';
+
+    process.stdout.on('data', (data) => {
+      outputData += data.toString();
+      console.log(`Stocker stdout: ${data}`);
+    });
+
+    process.stderr.on('data', (data) => {
+      errorData += data.toString();
+      console.error(`Stocker stderr: ${data}`);
+    });
+
+    process.on('close', (code) => {
+      console.log(`Stocker process exited with code ${code}`);
+      
+      if (code !== 0) {
+        return reject(new Error(`Backtest failed with code ${code}: ${errorData}`));
       }
 
-      // Spawn the Python backtesting script
-      const pyProcess = spawn('python3', ['stockbt/stocker_test.py', strategy, '--json'], {
-        cwd: process.cwd(),
-        env: { ...process.env, PYTHONUNBUFFERED: '1' }
-      });
-
-      let pyOutput = '';
-      let pyError = '';
-
-      pyProcess.stdout.on('data', data => {
-        pyOutput += data.toString();
-      });
-
-      pyProcess.stderr.on('data', data => {
-        pyError += data.toString();
-      });
-
-      pyProcess.on('close', code => {
-        if (code !== 0) {
-          console.error('Python process exited with code', code, pyError);
-          return res.status(500).json({ error: 'Backtest failed', details: pyError });
-        }
-
-        // The Python script prints JSON as the last line
-        let resultJson;
-        try {
-          const lines = pyOutput.trim().split('\n');
-          resultJson = JSON.parse(lines[lines.length - 1]);
-        } catch (err) {
-          console.error('Failed parsing Python output', err, pyOutput);
-          return res.status(500).json({ error: 'Failed to parse results' });
-        }
-
-        const fs = require('fs');
-        const path = require('path');
-
-        // Embed code content
-        let codeContent = '';
-        if (resultJson.code_path && fs.existsSync(resultJson.code_path)) {
-          codeContent = fs.readFileSync(resultJson.code_path, 'utf8');
-        }
-
-        // Embed image as base64
-        let imageBase64 = '';
-        if (resultJson.image_path && fs.existsSync(resultJson.image_path)) {
-          const imgBuffer = fs.readFileSync(resultJson.image_path);
-          imageBase64 = `data:image/png;base64,${imgBuffer.toString('base64')}`;
-        }
-
-        return res.status(200).json({
-          profit: resultJson.profit,
-          code: codeContent,
-          image: imageBase64,
-          buy_points: resultJson.buy_points,
-          sell_points: resultJson.sell_points
-        });
-      });
-    } catch (err) {
-      return res.status(400).json({ error: 'Invalid JSON body', details: err.message });
-    }
+      try {
+        // Try to parse the JSON output
+        const results = JSON.parse(outputData);
+        resolve(results);
+      } catch (error) {
+        console.error('Failed to parse stocker.py output:', error);
+        reject(new Error(`Failed to parse backtest results: ${error.message}`));
+      }
+    });
   });
-}; 
+}
+
+/**
+ * Convert image path to base64
+ * @param {string} imagePath - Path to the image file
+ * @returns {Promise<string>} - Base64 encoded image
+ */
+async function imageToBase64(imagePath) {
+  try {
+    const imageBuffer = await fs.promises.readFile(imagePath);
+    const base64Image = `data:image/png;base64,${imageBuffer.toString('base64')}`;
+    return base64Image;
+  } catch (error) {
+    console.error(`Error reading image file: ${error.message}`);
+    return null;
+  }
+}
+
+// Define API endpoint for running backtests
+const router = express.Router();
+
+router.post('/api/backtest', async (req, res) => {
+  try {
+    const { strategy } = req.body;
+    
+    if (!strategy) {
+      return res.status(400).json({ 
+        status: 'error', 
+        error: 'Missing strategy parameter' 
+      });
+    }
+
+    console.log(`Received backtest request with strategy: ${strategy}`);
+    
+    const backtestResults = await runBacktest(strategy);
+    
+    // Extract chart image if available
+    let chartImage = null;
+    if (backtestResults.chart_path) {
+      chartImage = await imageToBase64(backtestResults.chart_path);
+    }
+    
+    res.json({
+      status: 'success',
+      profit: backtestResults.profit_loss,
+      trades: {
+        count: backtestResults.buy_points?.length || 0,
+        buys: backtestResults.buy_points || [],
+        sells: backtestResults.sell_points || []
+      },
+      balance_history: backtestResults.balance_over_time || [],
+      code: backtestResults.generated_code || '',
+      image: chartImage
+    });
+  } catch (error) {
+    console.error('Backtest API error:', error);
+    res.status(500).json({ 
+      status: 'error', 
+      error: error.message 
+    });
+  }
+});
+
+module.exports = router; 

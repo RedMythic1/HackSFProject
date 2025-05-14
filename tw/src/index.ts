@@ -487,8 +487,48 @@ class AppController {
         this.interestsInput = document.getElementById('interests-input') as HTMLInputElement;
         this.submitButton = document.getElementById('submit-interests');
         
+        // Add navigation to backtesting page
+        this.addNavigation();
+        
         this.initEventListeners();
         this.loadArticles();
+    }
+    
+    private addNavigation(): void {
+        // Get the header element
+        const header = document.querySelector('header');
+        
+        if (header) {
+            // Check if navigation already exists
+            let nav = header.querySelector('nav');
+            
+            if (!nav) {
+                // Create a new navigation element
+                nav = document.createElement('nav');
+                nav.style.display = 'flex';
+                nav.style.gap = '1rem';
+                nav.style.justifyContent = 'center';
+                nav.style.marginBottom = '1rem';
+                
+                // Create links
+                const homeLink = document.createElement('a');
+                homeLink.href = 'index.html';
+                homeLink.className = 'nav-button active';
+                homeLink.textContent = 'Home';
+                
+                const backtestLink = document.createElement('a');
+                backtestLink.href = 'backtesting.html';
+                backtestLink.className = 'nav-button';
+                backtestLink.textContent = 'Backtesting';
+                
+                // Add links to nav
+                nav.appendChild(homeLink);
+                nav.appendChild(backtestLink);
+                
+                // Add nav to header
+                header.appendChild(nav);
+            }
+        }
     }
     
     private initEventListeners(): void {
