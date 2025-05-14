@@ -26,6 +26,14 @@
       "dest": "/tw/dist/bundle.js"
     },
     {
+      "src": "/main.bundle.js",
+      "dest": "/tw/dist/main.bundle.js"
+    },
+    {
+      "src": "/backtesting.bundle.js",
+      "dest": "/tw/dist/backtesting.bundle.js"
+    },
+    {
       "src": "/article/(.*)",
       "dest": "/tw/dist/index.html"
     },
