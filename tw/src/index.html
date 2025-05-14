@@ -484,6 +484,10 @@
         <div class="container">
             <h1>HackLens</h1>
         </div>
+        <nav style="display:flex; gap:1rem; justify-content:center; margin-bottom:1rem;">
+            <button id="home-tab">Home</button>
+            <button id="backtest-tab">Backtesting</button>
+        </nav>
     </header>
     
     <div class="container">
@@ -509,6 +513,18 @@
                 <p>Sorry, the page you're looking for doesn't exist or has been moved.</p>
                 <button class="back-button" id="back-to-home">Back to Home</button>
             </div>
+
+            <!-- Backtesting Section -->
+            <section id="backtest-section" style="display:none; width:100%; max-width:900px;">
+                <div class="interest-form">
+                    <h2>Strategy Backtesting</h2>
+                    <p>Enter your trading strategy description and run a quick backtest.</p>
+                    <textarea id="strategy-input" rows="6" style="width:100%; padding:0.85rem; border:1px solid #ddd; border-radius:6px; font-size:1rem;"></textarea>
+                    <button id="run-backtest">Run Backtest</button>
+                    <div id="backtest-status" style="margin-top:1rem; color:#2c3e50;"></div>
+                    <div id="backtest-results" style="margin-top:2rem; text-align:left;"></div>
+                </div>
+            </section>
         </main>
     </div>
     
@@ -542,6 +558,73 @@
                         });
                     }
                 }
+            }
+        });
+
+        // Tab switching
+        const homeTabButton = document.getElementById('home-tab');
+        const backtestTabButton = document.getElementById('backtest-tab');
+        const backtestSection = document.getElementById('backtest-section');
+        const mainContent = document.querySelector('main');
+
+        function showHome() {
+            backtestSection.style.display = 'none';
+        }
+        function showBacktest() {
+            backtestSection.style.display = 'block';
+            // Scroll into view
+            backtestSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        homeTabButton.addEventListener('click', showHome);
+        backtestTabButton.addEventListener('click', showBacktest);
+
+        // Backtest handler
+        document.getElementById('run-backtest').addEventListener('click', async () => {
+            const strategy = document.getElementById('strategy-input').value.trim();
+            const statusEl = document.getElementById('backtest-status');
+            const resultsEl = document.getElementById('backtest-results');
+            if (!strategy) {
+              alert('Please enter a trading strategy');
+              return;
+            }
+            statusEl.textContent = 'Running backtest...';
+            resultsEl.innerHTML = '';
+
+            try {
+              const res = await fetch('/api/backtest', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ strategy })
+              });
+              if (!res.ok) {
+                  const err = await res.json();
+                  throw new Error(err.error || 'Backtest failed');
+              }
+              const data = await res.json();
+              statusEl.textContent = `Best Profit: ${data.profit}`;
+
+              // Image (base64)
+              if (data.image) {
+                 const img = document.createElement('img');
+                 img.src = data.image;
+                 img.style.maxWidth = '100%';
+                 img.style.borderRadius = '8px';
+                 resultsEl.appendChild(img);
+              }
+
+              // Code
+              if (data.code) {
+                 const pre = document.createElement('pre');
+                 pre.textContent = data.code;
+                 pre.style.whiteSpace = 'pre-wrap';
+                 pre.style.background = '#f5f7fa';
+                 pre.style.padding = '1rem';
+                 pre.style.borderRadius = '8px';
+                 resultsEl.appendChild(pre);
+              }
+            } catch (err) {
+                statusEl.textContent = 'Error: ' + err.message;
             }
         });
     </script>

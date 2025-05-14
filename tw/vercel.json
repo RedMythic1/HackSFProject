@@ -14,6 +14,14 @@
       "use": "@vercel/node"
     },
     {
+      "src": "api/backtest.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/backtest.py",
+      "use": "@vercel/python"
+    },
+    {
       "src": "dist/**",
       "use": "@vercel/static"
     }
@@ -75,6 +83,14 @@
       "src": "/(.*)",
       "status": 404,
       "dest": "/dist/index.html"
+    },
+    {
+      "src": "/api/backtest",
+      "dest": "/api/backtest.js",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS"
+      }
     }
   ],
   "env": {

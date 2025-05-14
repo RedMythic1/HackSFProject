@@ -5,12 +5,19 @@ import os
 import traceback
 import re
 import g4f
+import argparse
+import json
+import sys
 
 print("Initializing stocker_test.py with g4f (GPT-4 Free)…")
 
 # Create test_images folder if it doesn't exist
 os.makedirs('stockbt/test_images', exist_ok=True)
 print("Created test_images directory")
+
+# Create generated_code folder if it doesn't exist
+os.makedirs('stockbt/generated_code', exist_ok=True)
+print("Created generated_code directory")
 
 file_path = 'stockbt/datasets/test.csv'
 print(f"Loading data from {file_path}")
@@ -438,6 +445,25 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                 function_name_input_code = parts["function_name_input_code"]
                 print(f"Extracted function names: {function_name_code} and {function_name_input_code}")
 
+                # Save the generated code to text files
+                # Create a unique identifier based on timestamp
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                
+                # Clean up the user input for filename
+                safe_user_input = re.sub(r'[^\w\s-]', '', user_input[:30])
+                safe_user_input = re.sub(r'\s+', '_', safe_user_input).strip('-_')
+                
+                # Store code information to be saved later if this is the best strategy
+                code_info = {
+                    'timestamp': timestamp,
+                    'iteration': iteration,
+                    'safe_user_input': safe_user_input,
+                    'code': code,
+                    'input_code': input_code,
+                    'user_input': user_input
+                }
+
                 # Validate that get_user_params does not attempt to prompt the user.
                 if re.search(r'\binput\s*\(', input_code):
                     raise Exception("Detected forbidden user prompt (input()) in get_user_params. This function must run autonomously without requiring user interaction.")
@@ -769,9 +795,8 @@ Your response MUST consist of:
     from datetime import datetime
     plot_counter = int(datetime.now().timestamp())
     
-    plot_results(close, buy_points, sell_points, balance_over_time, counter=plot_counter, user_prompt=user_input[:50])
-
-    return bb, buy_points, sell_points, balance_over_time
+    # Don't save the plot yet - return the data so the caller can decide whether to save it
+    return bb, buy_points, sell_points, balance_over_time, code_info
 
 def run_improved_simulation(user_input, max_error_attempts=10):
     """Run an iterative improvement process to achieve profit target."""
@@ -793,11 +818,15 @@ def run_improved_simulation(user_input, max_error_attempts=10):
     from datetime import datetime
     base_counter = int(datetime.now().timestamp())
     
+    # Keep track of best strategy
+    best_profit = float('-inf')
+    best_strategy_data = None
+    
     while iteration <= max_iterations and current_profit < target_profit:
         print(f"\n--- IMPROVEMENT ITERATION {iteration}/{max_iterations} ---")
         
         # Run simulation with current context
-        current_profit, buy_points, sell_points, balance_over_time = run_simulation(
+        current_profit, buy_points, sell_points, balance_over_time, code_info = run_simulation(
             user_input, 
             improvement_context, 
             iteration,
@@ -808,11 +837,18 @@ def run_improved_simulation(user_input, max_error_attempts=10):
         print(f"\nCurrent Profit: ${current_profit:.2f}")
         print(f"Target Profit: ${target_profit:.2f}")
         
-        # Create a separate plot for this iteration, with the iteration number
-        plot_counter = base_counter + iteration
-        plot_results(close, buy_points, sell_points, balance_over_time, 
-                    counter=plot_counter, 
-                    user_prompt=f"iter{iteration}_{user_input[:40]}")
+        # Update best strategy if current one is better
+        if current_profit > best_profit:
+            print(f"New best strategy found! Profit: ${current_profit:.2f}")
+            best_profit = current_profit
+            best_strategy_data = {
+                'profit': current_profit,
+                'buy_points': buy_points,
+                'sell_points': sell_points,
+                'balance_over_time': balance_over_time,
+                'code_info': code_info,
+                'iteration': iteration
+            }
         
         if current_profit >= target_profit:
             print("\n=== TARGET PROFIT ACHIEVED! ===")
@@ -870,7 +906,47 @@ Based on the above analysis, implement these improvements in your trading strate
             
         iteration += 1
     
-    return current_profit, buy_points, sell_points, balance_over_time
+    # After all iterations, save only the best strategy's code and image
+    if best_strategy_data:
+        print(f"\n=== SAVING BEST STRATEGY (Profit: ${best_strategy_data['profit']:.2f}) ===")
+        
+        # Save the best strategy code
+        code_info = best_strategy_data['code_info']
+        strategy_filename = f"stockbt/generated_code/best_strategy_{code_info['timestamp']}_{code_info['safe_user_input']}.txt"
+        
+        with open(strategy_filename, 'w') as f:
+            f.write(f"# BEST Trading Strategy - Iteration {code_info['iteration']}\n")
+            f.write(f"# User Prompt: {code_info['user_input'][:200]}...\n")
+            f.write(f"# Profit: ${best_strategy_data['profit']:.2f}\n\n")
+            f.write("# Strategy Function:\n")
+            f.write(code_info['code'])
+            f.write("\n\n# Parameters Function:\n")
+            f.write(code_info['input_code'])
+        
+        print(f"Saved best strategy code to {strategy_filename}")
+        
+        # Generate and save the best strategy plot
+        plot_counter = base_counter + 1000  # Use a different counter range for the best
+        plot_results(
+            close, 
+            best_strategy_data['buy_points'], 
+            best_strategy_data['sell_points'], 
+            best_strategy_data['balance_over_time'],
+            counter=plot_counter,
+            user_prompt=f"BEST_{code_info['safe_user_input']}"
+        )
+        
+        best_image_path = f"stockbt/test_images/test_image_{plot_counter}_BEST_{code_info['safe_user_input']}.png"
+    else:
+        strategy_filename = ""
+        best_image_path = ""
+    
+    return (best_profit,
+            best_strategy_data['buy_points'] if best_strategy_data else [],
+            best_strategy_data['sell_points'] if best_strategy_data else [],
+            best_strategy_data['balance_over_time'] if best_strategy_data else [],
+            strategy_filename,
+            best_image_path)
 
 # -----------------------------------------------------------------------------
 # Plotting helper (unchanged)
@@ -981,17 +1057,35 @@ Provide ONLY the enhanced strategy description. DO NOT include explanations, int
 # -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("\nWaiting for user input…")
-    user_input = input("Enter your trading strategy: ")
-    
-    # Enhance the user's prompt
-    enhanced_prompt = enhance_user_prompt(user_input)
-    
+    parser = argparse.ArgumentParser(description="Run backtest simulation.")
+    parser.add_argument("strategy", nargs="?", default="", help="Trading strategy description")
+    parser.add_argument("--json", action="store_true", help="Return results as JSON on stdout")
+    args = parser.parse_args()
+
+    if args.strategy:
+        user_input_raw = args.strategy
+    else:
+        print("Waiting for user input…")
+        user_input_raw = input("Enter your trading strategy: ")
+
+    # Enhance the user's prompt conservatively
+    enhanced_prompt = enhance_user_prompt(user_input_raw)
+
     print("Starting simulation with iterative improvement…")
-    print("\nUsing the following enhanced strategy:")
-    print("-" * 40)
-    print(enhanced_prompt)
-    print("-" * 40)
-    
-    run_improved_simulation(enhanced_prompt)
-    print("Simulation complete!") 
+    best_profit, buy_pts, sell_pts, bal_hist, code_path, img_path = run_improved_simulation(enhanced_prompt)
+    print("Simulation complete!")
+
+    if args.json:
+        summary = {
+            "profit": best_profit,
+            "code_path": code_path,
+            "image_path": img_path,
+            "buy_points": buy_pts[:10],  # sample
+            "sell_points": sell_pts[:10]  # sample
+        }
+        print(json.dumps(summary))
+    else:
+        print(f"Best Profit: {best_profit}")
+        print(f"Code saved to: {code_path}")
+        print(f"Image saved to: {img_path}")
+        sys.exit(0) 
