@@ -964,5 +964,10 @@ app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
 
-// Export Express app for serverless environments
-module.exports = app; 
+// Export both the app and the required server functions
+module.exports = {
+  app,
+  process_articles_endpoint,
+  get_article_endpoint,
+  analyze_interests_endpoint
+}; 

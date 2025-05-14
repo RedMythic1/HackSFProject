@@ -101,169 +101,128 @@ const DEMO_ARTICLES = [
 
 // Fallback route handlers
 app.get('/api/articles', async (req, res) => {
-  console.log('[vercel.js] Fallback: GET /api/articles');
-  
-  // Try to get articles from blob storage first
   try {
-    const { blobs } = await list({ prefix: BLOB_ARTICLE_PREFIX });
-    console.log(`[vercel.js] Found ${blobs.length} articles in blob storage`);
+    console.log('[vercel.js] Handling GET /api/articles');
     
-    if (blobs.length > 0) {
-      const articles = [];
-      
-      for (const blob of blobs.slice(0, 10)) { // Limit to 10 articles for performance
-        try {
-          const content = await blob.text();
-          const data = JSON.parse(content);
-          const id = path.basename(blob.pathname).replace(`${BLOB_ARTICLE_PREFIX}`, '').replace('.json', '');
-          
-          // Extract title and subject from content
-          let title = 'Untitled Article';
-          let subject = '';
-          
-          if (data.content) {
-            const lines = data.content.split('\n');
-            if (lines[0]) {
-              title = lines[0].startsWith('# ') ? lines[0].substring(2) : lines[0];
-            }
-            
-            // Get first non-title paragraph as subject
-            for (let i = 1; i < lines.length; i++) {
-              if (lines[i] && !lines[i].startsWith('#') && lines[i].length > 10) {
-                subject = lines[i].length > 100 ? lines[i].substring(0, 100) + '...' : lines[i];
-                break;
-              }
-            }
-          }
-          
-          articles.push({
-            id,
-            title,
-            subject,
-            score: 0,
-            timestamp: data.timestamp || Date.now(),
-            link: `https://news.ycombinator.com/item?id=${id}`
-          });
-        } catch (error) {
-          console.warn(`[vercel.js] Error processing blob: ${error.message}`);
-        }
-      }
-      
-      if (articles.length > 0) {
-        articles.sort((a, b) => b.timestamp - a.timestamp);
-        return res.json(articles);
-      }
+    // Import the server module with exported functions
+    const serverModule = require('./server');
+    console.log('Available server functions:', Object.keys(serverModule));
+    
+    // Call the process_articles_endpoint function
+    const result = await serverModule.process_articles_endpoint(req.query);
+    
+    // Ensure we return the array format the frontend expects
+    if (Array.isArray(result)) {
+      console.log(`Returning ${result.length} articles from process_articles_endpoint`);
+      return res.json(result);
+    } else if (result && result.articles && Array.isArray(result.articles)) {
+      console.log(`Returning ${result.articles.length} articles from result object`);
+      return res.json(result.articles);
+    } else {
+      console.log('No articles found or invalid format, returning demo articles');
+      return res.json(DEMO_ARTICLES);
     }
   } catch (error) {
-    console.warn(`[vercel.js] Error accessing blob storage: ${error.message}`);
+    console.error('[vercel.js] Error in /api/articles:', error);
+    return res.json(DEMO_ARTICLES); // Fallback to demo articles on error
   }
-  
-  // Fall back to demo articles
-  res.json(DEMO_ARTICLES);
 });
 
 app.get('/api/article/:id', async (req, res) => {
-  const { id } = req.params;
-  console.log(`[vercel.js] Fallback: GET /api/article/${id}`);
-  
-  // Check for demo articles first
-  if (id.startsWith('demo')) {
-    const demoArticle = DEMO_ARTICLES.find(a => a.id === id);
-    if (demoArticle) {
-      return res.json({
-        status: 'success',
-        article: {
-          id: demoArticle.id,
-          title: demoArticle.title,
-          link: demoArticle.link,
-          summary: demoArticle.subject,
-          content: `# ${demoArticle.title}\n\n${demoArticle.subject}\n\nThis is a demo article provided as a fallback in Vercel deployment.`,
-          timestamp: demoArticle.timestamp
-        }
-      });
-    }
-  }
-  
-  // Try to get from blob storage
   try {
-    const blobKey = `${BLOB_ARTICLE_PREFIX}${id}.json`;
-    console.log(`[vercel.js] Looking for article in blob storage: ${blobKey}`);
+    const { id } = req.params;
+    console.log(`[vercel.js] Handling GET /api/article/${id}`);
     
-    const blob = await get(blobKey);
-    if (blob) {
-      const content = await blob.text();
-      const data = JSON.parse(content);
-      
-      // Extract title and summary
-      let title = 'Untitled Article';
-      let summary = '';
-      
-      if (data.content) {
-        const lines = data.content.split('\n');
-        if (lines[0]) {
-          title = lines[0].startsWith('# ') ? lines[0].substring(2) : lines[0];
-        }
-        
-        // Get first non-title paragraph as summary
-        for (let i = 1; i < lines.length; i++) {
-          if (lines[i] && !lines[i].startsWith('#') && lines[i].length > 10) {
-            summary = lines[i].length > 200 ? lines[i].substring(0, 200) + '...' : lines[i];
-            break;
+    // Check for demo articles first (quick fallback)
+    if (id && id.startsWith('demo')) {
+      const demoArticle = DEMO_ARTICLES.find(a => a.id === id);
+      if (demoArticle) {
+        return res.json({
+          status: 'success',
+          article: {
+            id: demoArticle.id,
+            title: demoArticle.title,
+            link: demoArticle.link,
+            summary: demoArticle.subject,
+            content: `# ${demoArticle.title}\n\n${demoArticle.subject}\n\nThis is a demo article provided as a fallback in Vercel deployment.`,
+            timestamp: demoArticle.timestamp
           }
-        }
+        });
       }
-      
-      return res.json({
-        status: 'success',
-        article: {
-          id,
-          title,
-          link: data.url || `https://news.ycombinator.com/item?id=${id}`,
-          summary,
-          content: data.content || '',
-          timestamp: data.timestamp || Date.now()
-        }
-      });
     }
+    
+    // Import the server module with exported functions
+    const serverModule = require('./server');
+    console.log('Available server functions:', Object.keys(serverModule));
+    
+    // Call the get_article_endpoint function
+    const result = await serverModule.get_article_endpoint(id);
+    
+    if (result && (result.status === 'success' || result.article)) {
+      return res.json(result);
+    }
+    
+    // No article found
+    return res.status(404).json({
+      status: 'error',
+      message: 'Article not found'
+    });
   } catch (error) {
-    console.warn(`[vercel.js] Error getting article from blob storage: ${error.message}`);
+    console.error(`[vercel.js] Error in /api/article/${req.params.id}:`, error);
+    return res.status(500).json({ 
+      status: 'error', 
+      message: error.message || 'Failed to fetch article'
+    });
   }
-  
-  // No article found
-  return res.status(404).json({
-    status: 'error',
-    message: 'Article not found'
-  });
 });
 
-app.post('/api/analyze-interests', (req, res) => {
-  const { interests } = req.body;
-  console.log(`[vercel.js] Fallback: POST /api/analyze-interests with ${interests || 'no'} interests`);
-  
-  if (!interests) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'No interests provided'
+app.post('/api/analyze-interests', async (req, res) => {
+  try {
+    const { interests } = req.body;
+    console.log(`[vercel.js] Handling POST /api/analyze-interests with ${interests || 'no'} interests`);
+    
+    if (!interests) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'No interests provided'
+      });
+    }
+    
+    // Import the server module with exported functions
+    const serverModule = require('./server');
+    console.log('Available server functions:', Object.keys(serverModule));
+    
+    // Call the analyze_interests_endpoint function
+    const result = await serverModule.analyze_interests_endpoint(interests);
+    
+    if (result && (result.status === 'success' || result.articles)) {
+      return res.json(result);
+    }
+    
+    // Simple fallback scoring based on interests if function fails
+    const interestsList = interests.split(',').map(i => i.trim().toLowerCase());
+    const scoredArticles = DEMO_ARTICLES.map(article => {
+      let score = 50; // Base score
+      interestsList.forEach(interest => {
+        if (article.title.toLowerCase().includes(interest) || 
+            article.subject.toLowerCase().includes(interest)) {
+          score += 10;
+        }
+      });
+      return { ...article, score: Math.min(score, 100) };
+    });
+    
+    // Sort by score
+    scoredArticles.sort((a, b) => b.score - a.score);
+    
+    return res.json(scoredArticles);
+  } catch (error) {
+    console.error('[vercel.js] Error in /api/analyze-interests:', error);
+    return res.status(500).json({ 
+      status: 'error', 
+      message: error.message || 'Failed to analyze interests'
     });
   }
-  
-  // Simple scoring based on interests
-  const interestsList = interests.split(',').map(i => i.trim().toLowerCase());
-  const scoredArticles = DEMO_ARTICLES.map(article => {
-    let score = 50; // Base score
-    interestsList.forEach(interest => {
-      if (article.title.toLowerCase().includes(interest) || 
-          article.subject.toLowerCase().includes(interest)) {
-        score += 10;
-      }
-    });
-    return { ...article, score: Math.min(score, 100) };
-  });
-  
-  // Sort by score
-  scoredArticles.sort((a, b) => b.score - a.score);
-  
-  return res.json(scoredArticles);
 });
 
 // Helper function to convert file path to blob key

@@ -152,7 +152,13 @@ class BacktestingController {
         
         if (this.runBacktestBtn) {
             this.runBacktestBtn.setAttribute('disabled', show.toString());
-            this.runBacktestBtn.textContent = show ? 'Running...' : 'Run Backtest';
+            if (show) {
+                this.runBacktestBtn.textContent = 'Running...';
+                this.runBacktestBtn.classList.add('disabled');
+            } else {
+                this.runBacktestBtn.textContent = 'Run Backtest';
+                this.runBacktestBtn.classList.remove('disabled');
+            }
         }
     }
 }

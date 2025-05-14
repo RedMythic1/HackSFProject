@@ -718,8 +718,12 @@ app.get('/api/articles', async (req, res) => {
     const localFinalArticles = await listBlobFiles(`final_article_*.json`);
     console.log(`Found ${localFinalArticles.length} final article files in blob storage`);
 
+    // Import server module with its exported functions
+    const serverModule = require('./server');
+    const serverFunctions = serverModule;
+    console.log('Available server functions:', Object.keys(serverModule));
+    
     // Load the server module
-    const serverFunctions = require('./server');
     const result = await serverFunctions.process_articles_endpoint(req.query);
     
     // Ensure we return an array format the frontend expects
@@ -754,8 +758,12 @@ app.get('/api/article/:id', async (req, res) => {
     
     console.log(`GET /api/article/${articleId} - Getting article details`);
     
-    // Use our server.js module
-    const serverFunctions = require('./server');
+    // Import server module with its exported functions
+    const serverModule = require('./server');
+    const serverFunctions = serverModule;
+    console.log('Available server functions:', Object.keys(serverModule));
+    
+    // Load the server module
     const result = await serverFunctions.get_article_endpoint(articleId);
     
     if (result.status === 'error') {
@@ -780,8 +788,12 @@ app.post('/api/analyze-interests', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'No interests provided' });
     }
     
-    // Use our server.js module
-    const serverFunctions = require('./server');
+    // Import server module with its exported functions
+    const serverModule = require('./server');
+    const serverFunctions = serverModule;
+    console.log('Available server functions:', Object.keys(serverModule));
+    
+    // Load the server module
     const result = await serverFunctions.analyze_interests_endpoint(interests);
     
     return res.json(result);

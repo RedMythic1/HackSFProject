@@ -488,7 +488,7 @@
         </div>
         <nav style="display:flex; gap:1rem; justify-content:center; margin-bottom:1rem;">
             <a href="index.html" class="nav-button active" id="home-tab">Home</a>
-            <a href="backtesting.html" class="nav-button" id="backtest-tab">Backtesting</a>
+            <a href="#" class="nav-button" id="backtest-tab">Backtesting</a>
         </nav>
     </header>
     
@@ -571,15 +571,29 @@
 
         function showHome() {
             backtestSection.style.display = 'none';
+
+            // Update nav active state
+            homeTabButton.classList.add('active');
+            backtestTabButton.classList.remove('active');
         }
+
         function showBacktest() {
             backtestSection.style.display = 'block';
-            // Scroll into view
+            // Scroll into view so the user sees the section
             backtestSection.scrollIntoView({ behavior: 'smooth' });
+
+            // Update nav active state
+            homeTabButton.classList.remove('active');
+            backtestTabButton.classList.add('active');
         }
 
         homeTabButton.addEventListener('click', showHome);
-        backtestTabButton.addEventListener('click', showBacktest);
+        backtestTabButton.addEventListener('click', function(event) {
+            // Prevent the browser from following the link so we stay on the current
+            // page and simply reveal the Backtesting section.
+            event.preventDefault();
+            showBacktest();
+        });
 
         // Backtest handler
         document.getElementById('run-backtest').addEventListener('click', async () => {
