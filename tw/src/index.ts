@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { pipeline } from '@xenova/transformers';
 import { syncCache, getCachedArticle, getCachedSummary, getCachedSearch } from './utils/cacheSync';
+import './style.css';
 
 /**
  * SimilarityScorer class provides a fully offline similarity scoring algorithm 
@@ -556,172 +557,119 @@ class AppController {
     private renderArticles(articles: Article[]): void {
         if (!this.articlesContainer) return;
         
-        console.log(`Rendering ${articles.length} articles`);
+        // Clear existing content
         this.articlesContainer.innerHTML = '';
         
-        // Create a container for the article cards that uses CSS grid
-        const articlesGrid = document.createElement('div');
-        articlesGrid.className = 'articles-grid';
-        articlesGrid.style.display = 'grid';
-        articlesGrid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(300px, 1fr))';
-        articlesGrid.style.gap = '20px';
-        articlesGrid.style.padding = '10px';
+        if (!articles || articles.length === 0) {
+            this.articlesContainer.innerHTML = '<div class="no-results">No articles found. Try adjusting your interests.</div>';
+            return;
+        }
         
+        // Display article count
+        const articleCountEl = document.createElement('div');
+        articleCountEl.className = 'article-count';
+        articleCountEl.textContent = `Displaying ${articles.length} unique articles`;
+        this.articlesContainer.appendChild(articleCountEl);
+        
+        // Render each article
         articles.forEach(article => {
-            // Extract article ID from link - Use article.id if available, otherwise extract from link
-            let articleId;
+            const card = document.createElement('div');
+            card.className = 'article-card';
+            card.dataset.id = article.id || '';
             
-            // Check if the article already has an id property
-            if ('id' in article && article.id) {
-                articleId = article.id;
-            } else {
-                // Extract from link - making this more robust
-                const linkParts = article.link.split('/');
-                articleId = linkParts[linkParts.length - 1]; // Get the last part of the link
+            // Add score badge
+            const scoreClass = this.getScoreClass(article.score);
+            const scoreBadge = document.createElement('div');
+            scoreBadge.className = `score-badge ${scoreClass}`;
+            scoreBadge.textContent = article.score.toString();
+            card.appendChild(scoreBadge);
+            
+            // Add title
+            const title = document.createElement('h3');
+            title.className = 'article-title';
+            title.textContent = article.title;
+            card.appendChild(title);
+            
+            // Add subject if available
+            if (article.subject) {
+                const subject = document.createElement('div');
+                subject.className = 'article-subject';
+                subject.textContent = article.subject;
+                card.appendChild(subject);
+            }
+            
+            // Add summary if available
+            if (article.summary) {
+                const summary = document.createElement('div');
+                summary.className = 'article-summary';
+                summary.innerHTML = this.formatSummary(
+                    this.truncateText(article.summary, 200)
+                );
+                card.appendChild(summary);
+            }
+            
+            // Add score components if available
+            if (article.scoreComponents) {
+                const scoreDetails = document.createElement('div');
+                scoreDetails.className = 'score-details';
                 
-                // If the link doesn't contain a valid ID, generate one from the title
-                if (!articleId || articleId === '#') {
-                    // Make a slug from title + random numbers to ensure uniqueness
-                    const titleSlug = article.title
-                        .toLowerCase()
-                        .replace(/[^a-z0-9]+/g, '-')
-                        .replace(/(^-|-$)/g, '');
-                    articleId = `${titleSlug}-${Date.now().toString().slice(-6)}`;
-                }
-            }
-            
-            console.log(`Rendering article: "${article.title}" (ID: ${articleId})`);
-            
-            // Prepare summary text
-            let summaryText = article.summary || '';
-            if (!summaryText || summaryText.trim() === '') {
-                summaryText = article.subject || 'No introduction available';
-            }
-            
-            // Format title to be more readable
-            let title = article.title;
-            if (title.toLowerCase().startsWith('deep dive:')) {
-                title = title.replace(/^deep dive:/i, '').trim();
-            }
-            
-            const articleCard = document.createElement('div');
-            articleCard.className = 'article-card';
-            articleCard.style.border = '1px solid #e0e0e0';
-            articleCard.style.borderRadius = '8px';
-            articleCard.style.overflow = 'hidden';
-            articleCard.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
-            articleCard.style.backgroundColor = '#ffffff';
-            articleCard.style.transition = 'transform 0.2s, box-shadow 0.2s';
-            articleCard.style.height = '100%';
-            articleCard.style.display = 'flex';
-            articleCard.style.flexDirection = 'column';
-            
-            // Hover effect
-            articleCard.addEventListener('mouseenter', () => {
-                articleCard.style.transform = 'translateY(-5px)';
-                articleCard.style.boxShadow = '0 8px 15px rgba(0, 0, 0, 0.1)';
-            });
-            articleCard.addEventListener('mouseleave', () => {
-                articleCard.style.transform = 'translateY(0)';
-                articleCard.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
-            });
-            
-            // Calculate badge color based on score
-            const getBadgeColor = (score: number) => {
-                if (score > 90) return '#4CAF50'; // Green for excellent
-                if (score > 75) return '#2196F3'; // Blue for good
-                if (score > 60) return '#FF9800'; // Orange for moderate
-                return '#9E9E9E'; // Grey for low
-            };
-            
-            const badgeColor = getBadgeColor(article.score);
-            
-            articleCard.innerHTML = `
-                <div class="article-header" style="padding: 15px; position: relative;">
-                    <div style="position: absolute; top: 15px; right: 15px; background-color: ${badgeColor}; color: white; padding: 5px 10px; border-radius: 12px; font-weight: bold; font-size: 14px;">
-                        ${article.score}
-                    </div>
-                    <h3 class="article-title" style="margin-top: 0; margin-bottom: 10px; font-size: 18px; color: #333; padding-right: 60px;">${this.escapeHtml(title)}</h3>
-                    <div class="article-subject" style="font-size: 14px; color: #666; margin-bottom: 15px;">${this.escapeHtml(article.subject || '')}</div>
-                    <div class="score-breakdown" style="background-color: #f9f9f9; border-radius: 5px; padding: 10px; margin-top: 10px; display: none;">
-                        <div style="margin-bottom: 8px;">
-                            <div style="height: 6px; background-color: #e0e0e0; border-radius: 3px; overflow: hidden;">
-                                <div style="height: 100%; width: ${Math.min(100, article.score)}%; background-color: ${badgeColor};"></div>
-                            </div>
-                        </div>
-                        ${article.scoreComponents ? `
-                        <div style="font-size: 12px; color: #555;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                                <span>Keywords:</span>
-                                <span>${article.scoreComponents.similarity}/60</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                                <span>Contextual:</span>
-                                <span>${article.scoreComponents.contextual}/30</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between;">
-                                <span>Freshness:</span>
-                                <span>${article.scoreComponents.freshness}/10</span>
-                            </div>
-                        </div>` : ''}
-                        <div style="text-align: center; margin-top: 5px; font-size: 12px; color: #888; cursor: pointer;" class="toggle-details">Show less</div>
-                    </div>
-                    <div style="text-align: center; margin-top: 5px; font-size: 12px; color: #888; cursor: pointer;" class="toggle-details">Show score details</div>
-                </div>
-                <div class="article-body" style="padding: 15px; border-top: 1px solid #eeeeee; flex-grow: 1; display: flex; flex-direction: column;">
-                    <div class="article-introduction" style="flex-grow: 1;">
-                        <p style="margin-top: 0; line-height: 1.5; color: #444; font-size: 14px;">${this.truncateText(summaryText, 150)}</p>
-                    </div>
-                    <a href="#" class="article-link" data-article-id="${articleId}" style="display: inline-block; padding: 8px 15px; background-color: #2196F3; color: white; text-decoration: none; border-radius: 4px; text-align: center; margin-top: 15px; font-weight: 500; transition: background-color 0.2s;">Read more</a>
-                </div>
-            `;
-            
-            // Add click event to view article details
-            const articleLink = articleCard.querySelector('.article-link') as HTMLAnchorElement;
-            if (articleLink) {
-                articleLink.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const clickedId = articleLink.getAttribute('data-article-id');
-                    if (clickedId) {
-                        this.viewArticleDetails(clickedId);
-                    } else {
-                        console.error('Missing article ID in data attribute');
+                const detailsList = document.createElement('ul');
+                
+                // Fix the TS2531 error by adding a null check for scoreDetails
+                const scoreDetailsButton = document.createElement('button');
+                scoreDetailsButton.className = 'score-details-btn';
+                scoreDetailsButton.textContent = 'Show score details';
+                scoreDetailsButton.addEventListener('click', () => {
+                    if (scoreDetails && scoreDetails.classList) {
+                        scoreDetails.classList.toggle('visible');
+                        scoreDetailsButton.textContent = 
+                            scoreDetails.classList.contains('visible') ? 
+                            'Hide score details' : 'Show score details';
                     }
                 });
-            }
-            
-            // Add toggle for score details
-            const toggleElements = articleCard.querySelectorAll('.toggle-details');
-            if (toggleElements.length === 2) {
-                const showToggle = toggleElements[1] as HTMLElement;
-                const hideToggle = toggleElements[0] as HTMLElement;
-                const scoreBreakdown = articleCard.querySelector('.score-breakdown') as HTMLElement;
                 
-                showToggle.addEventListener('click', () => {
-                    scoreBreakdown.style.display = 'block';
-                    showToggle.style.display = 'none';
+                // Add score breakdown
+                Object.entries(article.scoreComponents).forEach(([key, value]) => {
+                    const item = document.createElement('li');
+                    const label = key.charAt(0).toUpperCase() + key.slice(1);
+                    item.innerHTML = `<strong>${label}:</strong> ${value}`;
+                    detailsList.appendChild(item);
                 });
                 
-                hideToggle.addEventListener('click', () => {
-                    scoreBreakdown.style.display = 'none';
-                    showToggle.style.display = 'block';
-                });
+                scoreDetails.appendChild(detailsList);
+                card.appendChild(scoreDetailsButton);
+                card.appendChild(scoreDetails);
             }
             
-            articlesGrid.appendChild(articleCard);
+            // Add view button
+            const viewButton = document.createElement('button');
+            viewButton.className = 'view-article-btn';
+            viewButton.textContent = 'View Article';
+            viewButton.addEventListener('click', () => {
+                if (article.id) {
+                    this.viewArticleDetails(article.id);
+                }
+            });
+            card.appendChild(viewButton);
+            
+            // Add the card to the container
+            this.articlesContainer.appendChild(card);
         });
         
-        this.articlesContainer.appendChild(articlesGrid);
-        
-        // Add a debug counter
-        const debugInfo = document.createElement('div');
-        debugInfo.className = 'debug-info';
-        debugInfo.textContent = `Displaying ${articles.length} unique articles`;
-        debugInfo.style.textAlign = 'center';
-        debugInfo.style.marginTop = '20px';
-        debugInfo.style.fontSize = '12px';
-        debugInfo.style.color = '#888';
-        this.articlesContainer.appendChild(debugInfo);
+        // Add click listeners to each article card for expanding
+        const cards = document.querySelectorAll('.article-card');
+        cards.forEach(card => {
+            card.addEventListener('click', (e) => {
+                // Fix the TS2531 error by adding a null check for card and e.target
+                if (card && card.classList && e.target) {
+                    const target = e.target as HTMLElement;
+                    const isButton = target.tagName === 'BUTTON';
+                    if (!isButton) {
+                        card.classList.toggle('expanded');
+                    }
+                }
+            });
+        });
     }
     
     private async viewArticleDetails(articleId: string): Promise<void> {
@@ -901,6 +849,13 @@ class AppController {
         });
         
         return tempDiv.innerHTML;
+    }
+
+    private getScoreClass(score: number): string {
+        if (score > 90) return 'high-score';
+        if (score > 75) return 'medium-score';
+        if (score > 60) return 'low-score';
+        return 'no-score';
     }
 }
 

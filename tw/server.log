@@ -1,1 +1,10 @@
-/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python: can't open file '/Users/avneh/Code/HackSFProject/tw/server.py': [Errno 2] No such file or directory
+Vercel Blob functions loaded:
+  put: Yes
+  list: Yes
+  head: Yes
+Current working directory: /Users/avneh/Code/HackSFProject/tw
+VERCEL env var: undefined
+Running in local environment
+Using storage:
+  Using Vercel Blob Storage: Yes
+  Current working directory: /Users/avneh/Code/HackSFProject/tw
