@@ -1,0 +1,3 @@
+numpy
+scipy
+g4f

@@ -14,10 +14,6 @@
       "use": "@vercel/node"
     },
     {
-      "src": "api/backtest.js",
-      "use": "@vercel/node"
-    },
-    {
       "src": "dist/**",
       "use": "@vercel/static"
     }
@@ -54,7 +50,7 @@
     },
     {
       "src": "/api/backtest",
-      "dest": "/api/backtest.js",
+      "dest": "/api/vercel.js",
       "methods": ["POST", "OPTIONS"],
       "headers": {
         "Access-Control-Allow-Origin": "*",

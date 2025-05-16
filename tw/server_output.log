@@ -1,0 +1,27 @@
+Vercel Blob functions loaded:
+    put: Yes
+    list: Yes
+    head: Yes
+Current working directory: /Users/avneh/Code/HackSFProject/tw
+VERCEL env var: undefined
+Running in local environment
+Using storage:
+  Using Vercel Blob Storage: No
+  Current working directory: /Users/avneh/Code/HackSFProject/tw
+Server running on port 3000
+API is available at http://localhost:3000/api
+Received backtest request with strategy: Buy when price goes up by 1% and sell when it goes up by another 2%
+Using Python script at: /Users/avneh/Code/HackSFProject/tw/api/backtest.py
+Backtest stdout (b09b1583): 
+=== STARTING ITERATIVE IMPROVEMENT PROCESS ===
+Loading data from /Users/avneh/Code/HackSFProject/tw/api/datasets/test.csv
+Error during simulation: [Errno 2] No such file or directory: '/Users/avneh/Code/HackSFProject/tw/api/datasets/test.csv'
+Traceback (most recent call last):
+  File "/Users/avneh/Code/HackSFProject/tw/api/backtest.py", line 903, in run_improved_simulation
+    with open(file_path, 'r') as csvfile:
+         ~~~~^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/avneh/Code/HackSFProject/tw/api/datasets/test.csv'
+
+{"status": "error", "error": "[Errno 2] No such file or directory: '/Users/avneh/Code/HackSFProject/tw/api/datasets/test.csv'"}
+
+Backtest process (b09b1583) exited with code 0

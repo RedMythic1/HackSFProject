@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { pipeline } from '@xenova/transformers';
 import { syncCache, getCachedArticle, getCachedSummary, getCachedSearch } from './utils/cacheSync';
 import './style.css';
 

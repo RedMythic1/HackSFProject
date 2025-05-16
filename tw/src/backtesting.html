@@ -57,8 +57,18 @@
                     <div class="chart-container">
                         <h3>Performance Chart</h3>
                         <div id="chart-area">
-                            <img id="chart-image" src="" alt="Performance Chart">
+                            <div class="price-chart-container">
+                                <canvas id="price-chart"></canvas>
+                            </div>
+                            <div class="balance-chart-container">
+                                <canvas id="balance-chart"></canvas>
+                            </div>
                         </div>
+                    </div>
+                    
+                    <div class="log-container">
+                        <h3>Backtest Logs:</h3>
+                        <pre id="backtestLogOutput"></pre>
                     </div>
                     
                     <div class="code-container">
@@ -73,5 +83,8 @@
             <p>&copy; 2023 HackLens - Stock Backtesting Tool</p>
         </footer>
     </div>
+
+    <script src="backtesting.js"></script>
+    <!-- <script src="helpers.js"></script> -->
 </body>
 </html> 
