@@ -114,4 +114,16 @@ This will upload all JSON files from the `.cache` directory to Vercel Blob Stora
 
 - If you encounter storage issues, make sure your BLOB_READ_WRITE_TOKEN is set correctly.
 - Check the `server.log` and `frontend.log` files for detailed error information.
-- Verify that @vercel/blob package is installed with `npm list @vercel/blob`. 
+- Verify that @vercel/blob package is installed with `npm list @vercel/blob`.
+
+# Client-Side Chart Rendering
+
+To optimize deployment size for Vercel, chart generation has been moved from the server to the client:
+
+1. Chart.js is used for rendering interactive price and balance charts in the browser
+2. The backend API returns raw data (prices, buy/sell points, balances) instead of generating images
+3. No matplotlib dependency on the server, reducing deployment size
+4. Responsive charts that work across all devices
+5. Interactive tooltips for better user experience
+
+This approach reduces server load and Vercel deployment size while providing a better user experience. 

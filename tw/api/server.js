@@ -7,26 +7,55 @@ const crypto = require('crypto');
 const { glob } = require('glob');
 const axios = require('axios');
 const { JSDOM } = require('jsdom');
-const { put, list, head } = require('@vercel/blob');
 const express = require('express');
 const cors = require('cors');
+const { spawn } = require('child_process');
+const { v4: uuidv4 } = require('uuid');
+const WebSocket = require('ws');
+const http = require('http');
+const { 엄마APITESTER } = require('./test-exports.js');
+
+// Define a log file path (same as in backtest.py for combined logging)
+const LIVE_LOG_FILE_PATH = path.join(__dirname, 'backtest_live.log');
+
+// Helper function for server-side logging
+function logServerMessage(message, level = 'INFO') {
+  const timestamp = new Date().toISOString();
+  const logEntry = `[${timestamp}] [SERVER.JS] [${level.toUpperCase()}] ${message}`;
+  console.log(logEntry); // Log to server console
+  try {
+    fs.appendFileSync(LIVE_LOG_FILE_PATH, logEntry + '\n'); // Append to live log file
+  } catch (e) {
+    console.error(`[SERVER.JS] [ERROR] Failed to append to live log file: ${e.message}`);
+  }
+}
 
 // Initialize Express app
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Create HTTP server
+const server = http.createServer(app);
+
+// Create WebSocket server
+const wss = new WebSocket.Server({ server });
+
 // Middleware setup
 app.use(cors());
 app.use(express.json());
 
-// Import backtesting router
-const backtestRouter = require('./backtest');
-
-// Verify that the imported functions exist
-console.log(`Vercel Blob functions loaded:
-  put: ${typeof put === 'function' ? 'Yes' : 'No'}
-  list: ${typeof list === 'function' ? 'Yes' : 'No'}
-  head: ${typeof head === 'function' ? 'Yes' : 'No'}`);
+// Safe import for Vercel Blob Storage
+let blobStorage = { put: null, list: null, head: null };
+try {
+  blobStorage = require('@vercel/blob');
+  console.log(`Vercel Blob functions loaded:
+    put: ${typeof blobStorage.put === 'function' ? 'Yes' : 'No'}
+    list: ${typeof blobStorage.list === 'function' ? 'Yes' : 'No'}
+    head: ${typeof blobStorage.head === 'function' ? 'Yes' : 'No'}`);
+} catch (error) {
+  console.warn(`Failed to load @vercel/blob: ${error.message}`);
+  console.warn('Will fall back to in-memory storage only');
+}
 
 // More robust environment detection
 const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true' || process.cwd().includes('/var/task');
@@ -42,7 +71,7 @@ const BLOB_SEARCH_PREFIX = 'articles/search_';
 
 // Log the actual paths being used
 console.log(`Using storage:
-  Using Vercel Blob Storage: Yes
+  Using Vercel Blob Storage: ${isVercel ? 'Yes' : 'No'}
   Current working directory: ${process.cwd()}`);
 
 // In-memory cache for all environments as fallback
@@ -69,7 +98,7 @@ async function safeReadFile(filePath, defaultValue = null) {
     console.log(`Attempting to read from blob storage: ${blobKey}`);
     try {
       // First check if the blob exists
-      const blobMetadata = await head(blobKey);
+      const blobMetadata = await blobStorage.head(blobKey);
       if (blobMetadata) {
         // If it exists, fetch its content
         const response = await fetch(blobMetadata.url);
@@ -98,7 +127,7 @@ async function safeWriteFile(filePath, data) {
     
     console.log(`Writing to blob storage: ${blobKey}`);
     try {
-      const { url } = await put(blobKey, JSON.stringify(data, null, 2), { 
+      const { url } = await blobStorage.put(blobKey, JSON.stringify(data, null, 2), { 
         access: 'public',
         contentType: 'application/json'
       });
@@ -182,7 +211,7 @@ async function listBlobFiles(pattern) {
       return [];
     }
     
-    const { blobs } = await list({ prefix });
+    const { blobs } = await blobStorage.list({ prefix });
     console.log(`Found ${blobs.length} blobs with prefix ${prefix}`);
     
     // Process each blob to handle duplicate prefixes
@@ -896,8 +925,131 @@ async function analyze_interests_endpoint(interests) {
   }
 }
 
+// Backtest API endpoint
+app.post('/api/backtest', async (req, res) => {
+  logServerMessage('Received request for /api/backtest');
+  try {
+    const { strategy } = req.body;
+    
+    if (!strategy) {
+      logServerMessage('Strategy not provided in request body', 'WARN');
+      return res.status(400).json({ 
+        status: 'error', 
+        error: 'Trading strategy is required'
+      });
+    }
+    
+    logServerMessage(`Strategy received: ${strategy.substring(0, 100)}${strategy.length > 100 ? '...' : ''}`);
+    
+    const backtestId = uuidv4().substring(0, 8);
+    logServerMessage(`Generated backtest ID: ${backtestId}`);
+    
+    const scriptPath = path.join(__dirname, 'backtest.py');
+    logServerMessage(`Python script path: ${scriptPath}`);
+    
+    process.env.BACKTEST_USE_TEST_DATASET = '1';
+    logServerMessage(`Set BACKTEST_USE_TEST_DATASET=1`);
+
+    const pythonArgs = [scriptPath, '--json', strategy];
+    logServerMessage(`Spawning python3 process with args: ${JSON.stringify(pythonArgs)}`, 'DEBUG');
+    
+    const pythonProcess = spawn('python3', pythonArgs);
+    
+    let outputData = '';
+    let errorData = '';
+    
+    pythonProcess.stdout.on('data', (data) => {
+      const dataStr = data.toString();
+      outputData += dataStr;
+      logServerMessage(`Python stdout (${backtestId}): ${dataStr.substring(0, 200)}${dataStr.length > 200 ? '...' : ''}`, 'DEBUG');
+    });
+    
+    pythonProcess.stderr.on('data', (data) => {
+      const dataStr = data.toString();
+      errorData += dataStr;
+      logServerMessage(`Python stderr (${backtestId}): ${dataStr.substring(0, 200)}${dataStr.length > 200 ? '...' : ''}`, 'ERROR');
+    });
+    
+    pythonProcess.on('close', (code) => {
+      logServerMessage(`Python process (${backtestId}) exited with code ${code}`);
+      
+      if (code !== 0) {
+        logServerMessage(`Backtest failed with code ${code}. Error data: ${errorData}`, 'ERROR');
+        return res.status(500).json({
+          status: 'error',
+          error: `Backtest failed with error: ${errorData || 'Unknown error'}`
+        });
+      }
+      
+      try {
+        logServerMessage(`Attempting to parse JSON from Python output. Length: ${outputData.length}`, 'DEBUG');
+        const jsonMatch = outputData.match(/\{.*\}/s);
+        if (!jsonMatch) {
+          logServerMessage(`No valid JSON found in Python output. Output preview: ${outputData.substring(0, 500)}${outputData.length > 500 ? '...' : ''}`, 'ERROR');
+          return res.status(500).json({
+            status: 'error',
+            error: 'Could not parse backtest results from Python script'
+          });
+        }
+        
+        const resultJsonString = jsonMatch[0];
+        logServerMessage(`Successfully extracted JSON string from Python output. Length: ${resultJsonString.length}`, 'DEBUG');
+        const resultJson = JSON.parse(resultJsonString);
+        logServerMessage('Successfully parsed JSON from Python output.', 'DEBUG');
+        
+        resultJson.status = resultJson.status || 'success';
+        
+        logServerMessage(`Sending response to client for backtest ${backtestId}: ${JSON.stringify(resultJson).substring(0,200)}...`, "DEBUG");
+        res.json(resultJson);
+      } catch (parseError) {
+        logServerMessage(`Error parsing Python output JSON: ${parseError.message}. Raw output preview: ${outputData.substring(0, 500)}${outputData.length > 500 ? '...' : ''}`, 'ERROR');
+        res.status(500).json({
+          status: 'error',
+          error: 'Failed to parse backtest results: ' + parseError.message
+        });
+      }
+    });
+    
+    pythonProcess.on('error', (err) => {
+      logServerMessage(`Failed to start Python process (${backtestId}): ${err.message}`, 'ERROR');
+      res.status(500).json({
+        status: 'error',
+        error: `Failed to start backtesting process: ${err.message}`
+      });
+    });
+
+  } catch (error) {
+    logServerMessage(`Critical error in /api/backtest endpoint: ${error.message}\nStack: ${error.stack}`, 'ERROR');
+    res.status(500).json({
+      status: 'error',
+      error: error.message || 'An unexpected error occurred in the backtest endpoint'
+    });
+  }
+});
+
+// New endpoint to get backtest logs
+app.get('/api/backtest-logs', (req, res) => {
+  logServerMessage('Received request for /api/backtest-logs');
+  const logFilePath = path.join(__dirname, 'backtest_live.log');
+  logServerMessage(`Attempting to read log file: ${logFilePath}`, 'DEBUG');
+  fs.readFile(logFilePath, 'utf8', (err, data) => {
+    if (err) {
+      logServerMessage(`Error reading log file: ${err.message}`, 'ERROR');
+      if (err.code === 'ENOENT') {
+        logServerMessage('Log file not found (ENOENT). Sending appropriate message to client.', 'WARN');
+        return res.status(200).send('Log file not yet created or backtest not run yet.');
+      }
+      return res.status(500).send('Error reading log file');
+    }
+    logServerMessage(`Successfully read log file. Length: ${data.length}. Sending to client.`, 'DEBUG');
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(data);
+  });
+});
+
 // Setup API routes
 app.get('/api/articles', async (req, res) => {
+  logServerMessage('Received request for /api/articles', 'INFO');
   try {
     const { interests } = req.query;
     const result = await process_articles_endpoint(interests);
@@ -909,8 +1061,9 @@ app.get('/api/articles', async (req, res) => {
 });
 
 app.get('/api/article/:id', async (req, res) => {
+  const { id } = req.params;
+  logServerMessage(`Received request for /api/article/${id}`, 'INFO');
   try {
-    const { id } = req.params;
     if (!id) {
       return res.status(400).json({ error: 'Article ID is required' });
     }
@@ -924,6 +1077,7 @@ app.get('/api/article/:id', async (req, res) => {
 });
 
 app.post('/api/analyze-interests', async (req, res) => {
+  logServerMessage('Received request for /api/analyze-interests', 'INFO');
   try {
     const { interests } = req.body;
     if (!interests) {
@@ -939,35 +1093,37 @@ app.post('/api/analyze-interests', async (req, res) => {
 });
 
 app.post('/api/log', (req, res) => {
+  // This endpoint is called by the frontend logger, avoid recursive logging here
+  // or ensure it doesn't write to the same live log file if it causes issues.
+  // For now, it just console.logs as per its original design.
   try {
     const { message, level = 'info', source = 'unknown' } = req.body;
-    
     if (!message) {
       return res.status(400).json({ status: 'error', message: 'Missing log message' });
     }
-    
-    // Log to console
-    console.log(`[${new Date().toISOString()}] [${level.toUpperCase()}] [${source}] ${message}`);
-    
+    console.log(`[CLIENT LOG] [${source}] [${level.toUpperCase()}] ${message}`); // Distinguish client logs
     res.json({ status: 'success' });
   } catch (error) {
-    console.error('Error in /api/log:', error);
+    console.error('[SERVER.JS] [ERROR] Error in /api/log endpoint:', error);
     res.status(500).json({ error: 'Failed to log message', details: error.message });
   }
 });
 
-// Mount the backtesting router
-app.use(backtestRouter);
+// Serve static files from the 'src' directory
+app.use(express.static(path.join(__dirname, '../src/')));
 
-// Start the server
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+// Set up port configuration
+const PORT = process.env.PORT || 3000;
 
-// Export both the app and the required server functions
-module.exports = {
-  app,
-  process_articles_endpoint,
-  get_article_endpoint,
-  analyze_interests_endpoint
-}; 
+// Start the server if this is not being imported
+if (require.main === module) {
+  server.listen(PORT, () => { // Make sure to use server.listen for WebSocket compatibility
+    logServerMessage(`Server running on port ${PORT}. Main module.`);
+    logServerMessage(`API is available at http://localhost:${PORT}/api`);
+  });
+} else {
+  logServerMessage('Server.js loaded as a module, not starting listener independently.', 'DEBUG');
+}
+
+// Export for Vercel.js - ONLY THE APP
+module.exports = app; 
