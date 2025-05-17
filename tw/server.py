@@ -6,9 +6,11 @@ import os
 import sys
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import glob
-import numpy as np
+import random  # Replace numpy with random
+import math
+import re
 
 # Set up logging
 logging.basicConfig(
@@ -33,7 +35,19 @@ MEMORY_CACHE = {
 
 # Directory setup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CACHE_DIR = os.path.join(BASE_DIR, 'article_cache')
+
+# Check if running on Fly.io with volume
+if os.path.exists('/data'):
+    # Use Fly.io volume paths
+    CACHE_DIR = '/data/article_cache'
+    DATASETS_DIR = '/data/datasets'
+    logger.info(f"Using Fly.io volume paths: CACHE_DIR={CACHE_DIR}, DATASETS_DIR={DATASETS_DIR}")
+else:
+    # Use local paths
+    CACHE_DIR = os.path.join(BASE_DIR, 'article_cache')
+    DATASETS_DIR = os.path.join(BASE_DIR, 'datasets')
+    logger.info(f"Using local paths: CACHE_DIR={CACHE_DIR}, DATASETS_DIR={DATASETS_DIR}")
+
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 def extract_id_from_filename(filename):
@@ -282,22 +296,57 @@ def backtest():
         strategy_description = data['strategy']
         logger.info(f"Received backtest request with strategy: {strategy_description[:100]}...")
         
-        # Generate simulated stock data (in a real app, you'd fetch real market data)
-        # Generate 100 days of simulated stock data with some randomness and a general trend
-        days = 100
-        base_price = 100.0
-        volatility = 0.02
-        trend = 0.001
+        # Check if stock symbol is mentioned in the strategy
+        stock_pattern = r'\b[A-Z]{1,5}\b'  # Pattern to match stock symbols (1-5 uppercase letters)
+        stock_matches = re.findall(stock_pattern, strategy_description)
         
-        # Generate random walk for stock prices
-        np.random.seed(42)  # For reproducible results
-        daily_returns = np.random.normal(trend, volatility, days)
-        price_series = base_price * np.cumprod(1 + daily_returns)
+        price_series = None
+        dates = None
         
-        # Generate date labels (last 100 days)
-        end_date = datetime.now()
-        dates = [(end_date - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days)]
-        dates.reverse()  # Oldest first
+        # Try to find CSV data for the stock if mentioned
+        if stock_matches and os.path.exists(DATASETS_DIR):
+            for symbol in stock_matches:
+                csv_path = os.path.join(DATASETS_DIR, f"{symbol.lower()}.us_daily.csv")
+                if os.path.exists(csv_path):
+                    logger.info(f"Found CSV data for stock {symbol} at {csv_path}")
+                    try:
+                        import pandas as pd
+                        df = pd.read_csv(csv_path)
+                        # Assuming format with columns: Date, Open, High, Low, Close, Volume, etc.
+                        if 'Close' in df.columns and 'Date' in df.columns:
+                            price_series = df['Close'].values
+                            dates = df['Date'].values.tolist()
+                            days = len(price_series)
+                            logger.info(f"Loaded {days} days of price data for {symbol}")
+                            break
+                    except Exception as e:
+                        logger.error(f"Error loading CSV data for {symbol}: {e}")
+        
+        # If no stock data found or couldn't load, use simulated data
+        if price_series is None:
+            logger.info("No stock data found or couldn't load, using simulated data")
+            days = 100
+            base_price = 100.0
+            volatility = 0.02
+            trend = 0.001
+            
+            # Generate random walk for stock prices using standard Python
+            random.seed(42)  # For reproducible results
+            price_series = [base_price]
+            for _ in range(days - 1):
+                # Generate a random return with normal-like distribution
+                # Using Box-Muller transform for normal-like distribution
+                u1 = random.random()
+                u2 = random.random()
+                z = (-2 * math.log(u1)) ** 0.5 * math.cos(2 * math.pi * u2)
+                daily_return = trend + volatility * z
+                next_price = price_series[-1] * (1 + daily_return)
+                price_series.append(next_price)
+            
+            # Generate date labels (last 100 days)
+            end_date = datetime.now()
+            dates = [(end_date - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days)]
+            dates.reverse()  # Oldest first
         
         # Simple strategy parsing (in a real app, you'd use NLP or a more sophisticated parser)
         # Look for keywords to determine strategy parameters
@@ -310,7 +359,6 @@ def backtest():
         # Analyze the strategy text to modify parameters
         if "moving average" in strategy_description.lower():
             # Extract the window size for moving average if specified
-            import re
             ma_matches = re.findall(r'(\d+)[-\s]day moving average', strategy_description.lower())
             if ma_matches:
                 window_size = int(ma_matches[0])
@@ -332,14 +380,15 @@ def backtest():
         balance_history = [balance]
         buy_prices = []
         
-        # Calculate moving averages for the entire series
-        # This is a simple implementation that can be enhanced based on specific strategies
+        # Calculate moving averages for the entire series using Python
         ma_series = []
         for i in range(days):
             if i < window_size - 1:
                 ma_series.append(price_series[i])  # Not enough data for MA yet
             else:
-                ma = np.mean(price_series[i-window_size+1:i+1])
+                # Calculate mean manually
+                window_sum = sum(price_series[i-window_size+1:i+1])
+                ma = window_sum / window_size
                 ma_series.append(ma)
         
         # Execute trades based on strategy
@@ -417,7 +466,7 @@ def execute_strategy(price_data, window_size={window_size}):
             "sell_points": sell_points,
             "balance_over_time": balance_history,
             "generated_code": generated_code,
-            "close": price_series.tolist(),  # The price series
+            "close": price_series,  # Already a Python list now
             "dates": dates,    # Date labels
             "trades": {
                 "count": len(buy_points),

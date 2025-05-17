@@ -20,8 +20,8 @@ RUN npm install
 # Copy the Python requirements separately
 COPY requirements-fly.txt ./requirements.txt
 
-# Install Python dependencies
-RUN pip3 install -r requirements.txt
+# Install Python dependencies with optimized settings
+RUN pip3 install --no-cache-dir --disable-pip-version-check -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
