@@ -18,7 +18,7 @@ venv.bak/
 # Build
 dist/
 build/
-.cache/
+# article_cache/ # Allow article_cache directory to be included
 
 # Version control
 .git

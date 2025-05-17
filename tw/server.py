@@ -32,8 +32,103 @@ MEMORY_CACHE = {
 
 # Directory setup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CACHE_DIR = os.path.join(BASE_DIR, '.cache')
+CACHE_DIR = os.path.join(BASE_DIR, 'article_cache')
 os.makedirs(CACHE_DIR, exist_ok=True)
+
+def extract_id_from_filename(filename):
+    """Extracts ID from filename like final_article_ID.json or final_article_ID_with_underscores.json"""
+    base = os.path.basename(filename)
+    if base.startswith('final_article_') and base.endswith('.json'):
+        return base[len('final_article_'):-len('.json')]
+    return None
+
+def initialize_article_cache():
+    logger.info(f"Attempting to load articles from cache directory: {CACHE_DIR}")
+    loaded_count = 0
+    file_pattern = os.path.join(CACHE_DIR, 'final_article_*.json')
+    article_files = glob.glob(file_pattern)
+
+    if not article_files:
+        logger.info(f"No article files found matching pattern {file_pattern}")
+        return
+
+    logger.info(f"Found {len(article_files)} potential article files.")
+
+    for filepath in article_files:
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            article_id = extract_id_from_filename(filepath)
+            if not article_id:
+                logger.warning(f"Could not extract ID from filename: {filepath}")
+                continue
+
+            title = data.get('title', 'Untitled Article')
+            # If title is still basic, try to get from ID (e.g., 12345_My_Title -> My Title)
+            if title == 'Untitled Article' and '_' in article_id:
+                try:
+                    title_part = article_id.split('_', 1)[1].replace('_', ' ')
+                    if title_part: title = title_part
+                except IndexError:
+                    pass # stick with Untitled
+            
+            summary = data.get('summary', data.get('subject', ''))
+            if not summary and data.get('content'):
+                # Basic summary: first non-empty paragraph from content
+                paragraphs = [p.strip() for p in data.get('content', '').split('\n\n') if p.strip()]
+                if paragraphs:
+                    summary = paragraphs[0]
+            if not summary: summary = "No summary available."
+
+            content = data.get('content', '')
+            link = data.get('link', data.get('url', f'/article/{article_id}')) # Default link to be relative
+            
+            # Timestamp: from data, or from filename (first part of ID if numeric)
+            timestamp_ms = data.get('timestamp') # Assuming it might be in ms or seconds
+            if not timestamp_ms:
+                try:
+                    id_timestamp_part = article_id.split('_')[0]
+                    if id_timestamp_part.isdigit():
+                        ts = int(id_timestamp_part)
+                        # Check if it's seconds or milliseconds (simple heuristic: if it's a common seconds value)
+                        if ts > 1000000000 and ts < 2000000000: # Likely seconds since epoch
+                             timestamp_ms = ts * 1000
+                        else: # Assume ms or needs other handling
+                             timestamp_ms = ts 
+                except (ValueError, IndexError):
+                    pass # Could not parse from ID
+            if not timestamp_ms: timestamp_ms = datetime.now().timestamp() * 1000 # Fallback to now
+
+
+            list_item = {
+                'id': article_id,
+                'title': title,
+                'subject': summary, # Use summary as subject for the list view
+                'score': data.get('score', 0),
+                'timestamp': timestamp_ms,
+                'link': link
+            }
+            MEMORY_CACHE['articles'].append(list_item)
+
+            detail_item = {
+                'title': title,
+                'link': link,
+                'summary': summary,
+                'content': content,
+                'timestamp': timestamp_ms
+            }
+            MEMORY_CACHE['articleDetails'][article_id] = detail_item
+            loaded_count += 1
+        except json.JSONDecodeError:
+            logger.error(f"Error decoding JSON from file: {filepath}")
+        except Exception as e:
+            logger.error(f"Error processing article file {filepath}: {e}")
+    
+    logger.info(f"Successfully loaded {loaded_count} articles from cache.")
+
+# Initialize cache when the application starts
+initialize_article_cache()
 
 def load_demo_articles():
     """Generate demo articles when no articles are available"""
@@ -119,31 +214,43 @@ def get_articles():
     """Get processed articles"""
     logger.info("Processing articles endpoint")
     
-    # Check if we have articles in memory cache
-    if len(MEMORY_CACHE['articles']) > 0:
-        logger.info(f"Returning {len(MEMORY_CACHE['articles'])} articles from memory cache")
-        return jsonify(MEMORY_CACHE['articles'])
+    # Cache is now initialized at startup. If it's still empty, then load demos.
+    if not MEMORY_CACHE['articles']:
+        logger.info("MEMORY_CACHE['articles'] is empty after initial load attempt, generating demo articles.")
+        demo_articles = load_demo_articles()
+        # Also populate articleDetails for demos if we are falling back to them
+        MEMORY_CACHE['articles'] = demo_articles 
+        for article in demo_articles:
+            if article['id'] not in MEMORY_CACHE['articleDetails']:
+                 # For demo articles, the detail content needs to be generated/fetched
+                 # This part assumes get_demo_article_detail can provide the necessary structure
+                 demo_detail = get_demo_article_detail(article['id'])
+                 MEMORY_CACHE['articleDetails'][article['id']] = demo_detail
+        return jsonify(demo_articles)
     
-    # Generate demo articles
-    demo_articles = load_demo_articles()
-    MEMORY_CACHE['articles'] = demo_articles
-    
-    return jsonify(demo_articles)
+    logger.info(f"Returning {len(MEMORY_CACHE['articles'])} articles from memory cache")
+    return jsonify(MEMORY_CACHE['articles'])
 
 @app.route('/api/article/<article_id>', methods=['GET'])
 def get_article(article_id):
     """Get a specific article by ID"""
     logger.info(f"Getting article {article_id}")
     
-    # Check if we have the article in memory cache
+    # Check if we have the article in memory cache (should be populated by initialize_article_cache)
     if article_id in MEMORY_CACHE['articleDetails']:
-        logger.info(f"Returning article {article_id} from memory cache")
+        logger.info(f"Returning article {article_id} from memory cache (articleDetails)")
         return jsonify(MEMORY_CACHE['articleDetails'][article_id])
     
-    # Get demo article detail
-    article_detail = get_demo_article_detail(article_id)
-    MEMORY_CACHE['articleDetails'][article_id] = article_detail
+    # If not in details, it might be a demo ID not fully populated by a direct call to demo loader.
+    # Or it simply doesn't exist.
+    # The get_demo_article_detail function handles non-existent demo IDs gracefully.
+    logger.info(f"Article {article_id} not in MEMORY_CACHE['articleDetails'], attempting to load as demo.")
+    article_detail = get_demo_article_detail(article_id) # This will return a placeholder if not a valid demo ID
     
+    # Optionally, cache this demo detail if it was valid and not already cached (though unlikely path if demos loaded correctly)
+    if not article_id.startswith("demo") or ("placeholder" not in article_detail.get('summary','').lower()):
+         MEMORY_CACHE['articleDetails'][article_id] = article_detail # Cache if it seems like a valid demo lookup
+
     return jsonify(article_detail)
 
 @app.route('/api/health', methods=['GET'])

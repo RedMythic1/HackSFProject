@@ -82,6 +82,10 @@ const BLOB_ARTICLE_PREFIX = 'articles/final_article_';
 const BLOB_SUMMARY_PREFIX = 'articles/summary_';
 const BLOB_SEARCH_PREFIX = 'articles/search_';
 
+// Define local cache directory
+const LOCAL_CACHE_DIR = path.join(__dirname, '../article_cache');
+console.log(`Local cache directory configured at: ${LOCAL_CACHE_DIR}`);
+
 // Log the actual paths being used
 console.log(`Using storage:
   Using Vercel Blob Storage: ${isVercel ? 'Yes' : 'No'}
@@ -255,6 +259,128 @@ async function listBlobFiles(pattern) {
     
     return [];
   }
+}
+
+// NEW consolidated listFiles function
+async function listFiles(pattern) {
+  if (isVercel && blobStorage.list && blobStorage.head) {
+    let prefix = BLOB_PREFIX;
+    if (pattern.includes('final_article_')) {
+      prefix = BLOB_ARTICLE_PREFIX;
+    } else if (pattern.includes('summary_')) {
+      prefix = BLOB_SUMMARY_PREFIX;
+    } else if (pattern.includes('search_')) {
+      prefix = BLOB_SEARCH_PREFIX;
+    }
+
+    try {
+      console.log(`Listing blobs with prefix: ${prefix} for pattern: ${pattern}`);
+      if (!process.env.BLOB_READ_WRITE_TOKEN && prefix !== BLOB_PREFIX) { // Allow general prefix listing without token for broader discovery if needed, but specific prefixes might imply operations requiring tokens.
+          //This logic might need refinement based on actual public/private nature of blobs.
+          //console.warn("Vercel Blob token not set, listing might be restricted.");
+      }
+      const { blobs } = await blobStorage.list({ prefix });
+      
+      // Normalize blob pathnames and filter by the specific pattern
+      // Convert glob pattern to regex for basename matching: 'final_article_*.json' -> /^final_article_.*\\.json$/
+      const basePattern = pattern.substring(pattern.lastIndexOf('/') + 1); // e.g. final_article_*.json
+      const regexPattern = `^${basePattern.replace(/\./g, '\\\\.').replace(/\*/g, '.*')}$`;
+      const regex = new RegExp(regexPattern);
+
+      const matchedBlobs = blobs
+        .map(blob => { // Normalize pathname
+          let currentPathname = blob.pathname;
+          if (currentPathname.includes('final_article_final_article_')) {
+            currentPathname = currentPathname.replace('final_article_final_article_', 'final_article_');
+          }
+          // Add other normalizations if necessary
+          return { ...blob, pathname: currentPathname };
+        })
+        .filter(blob => regex.test(path.basename(blob.pathname)))
+        .map(blob => blob.pathname); // Return normalized blob pathnames (keys)
+      
+      console.log(`Found ${matchedBlobs.length} blobs matching pattern ${pattern} (regex: ${regexPattern})`);
+      return matchedBlobs;
+    } catch (error) {
+      console.error(`Error listing blobs with pattern ${pattern}: ${error.message}`);
+      if (error.message && error.message.includes("Access denied")) {
+        console.error("Vercel Blob: Access denied. Check token and permissions.");
+      }
+      return [];
+    }
+  } else {
+    // Local file system fallback
+    console.log(`Listing local files from ${LOCAL_CACHE_DIR} with pattern ${pattern}`);
+    try {
+      if (!fs.existsSync(LOCAL_CACHE_DIR)) {
+        console.log(`Local cache directory ${LOCAL_CACHE_DIR} does not exist. Creating it.`);
+        fs.mkdirSync(LOCAL_CACHE_DIR, { recursive: true });
+        return []; // No files if just created
+      }
+      const filesInDir = await fs.promises.readdir(LOCAL_CACHE_DIR);
+      const regexPattern = `^${pattern.replace(/\./g, '\\\\.').replace(/\*/g, '.*')}$`;
+      const regex = new RegExp(regexPattern);
+      
+      const matchedFiles = filesInDir
+        .filter(fileName => regex.test(fileName))
+        .map(fileName => path.join(LOCAL_CACHE_DIR, fileName)); // Get absolute paths
+
+      console.log(`Found ${matchedFiles.length} files locally in ${LOCAL_CACHE_DIR} matching pattern '${pattern}' (regex: ${regexPattern})`);
+      return matchedFiles;
+    } catch (error) {
+      console.error(`Error listing local files from ${LOCAL_CACHE_DIR} with pattern ${pattern}: ${error.message}`);
+      return [];
+    }
+  }
+}
+
+// NEW consolidated readFileContent function
+async function readFileContent(filePathOrKey, defaultValue = null) {
+  try {
+    if (isVercel && blobStorage.head) { // Reading from Vercel Blob
+      const blobKey = filePathOrKey; // filePathOrKey is a blob key from listFiles (Vercel path)
+      console.log(`Attempting to read from blob storage: ${blobKey}`);
+      const blobMetadata = await blobStorage.head(blobKey);
+      if (blobMetadata) {
+        const response = await fetch(blobMetadata.url); // fetch is global
+        if (!response.ok) {
+          throw new Error(`Failed to fetch blob content from ${blobMetadata.url}: ${response.status}`);
+        }
+        const content = await response.text();
+        if (blobKey.endsWith('.html')) {
+          return content; // Return raw string for HTML
+        } else if (blobKey.endsWith('.json')) {
+          return JSON.parse(content); // Parse JSON for .json files
+        } else {
+          console.warn(`Unsupported file type from blob for key ${blobKey}, returning raw text.`);
+          return content; // Fallback for other types
+        }
+      } else {
+        console.warn(`Blob not found in Vercel storage: ${blobKey}`);
+      }
+    } else if (!isVercel && typeof filePathOrKey === 'string' && fs.existsSync(filePathOrKey)) { // Reading from local file system
+      const localFilePath = filePathOrKey; // filePathOrKey is an absolute local path
+      console.log(`Attempting to read from local file: ${localFilePath}`);
+      const content = await fs.promises.readFile(localFilePath, 'utf-8');
+      if (localFilePath.endsWith('.html')) {
+        return content; // Return raw string for HTML
+      } else if (localFilePath.endsWith('.json')) {
+        return JSON.parse(content); // Parse JSON for .json files
+      } else {
+        console.warn(`Unsupported local file type: ${localFilePath}, returning raw text.`);
+        return content; // Fallback for other types
+      }
+    } else {
+      if (!isVercel && typeof filePathOrKey === 'string' && !fs.existsSync(filePathOrKey)) {
+        console.warn(`Local file not found: ${filePathOrKey}`);
+      } else {
+        console.warn(`File/Key not found or unsupported environment for: ${filePathOrKey}. isVercel: ${isVercel}`);
+      }
+    }
+  } catch (error) {
+    console.error(`Error reading file/key ${filePathOrKey}: ${error.message}`);
+  }
+  return defaultValue;
 }
 
 /**
@@ -470,106 +596,92 @@ async function process_articles_endpoint(query) {
   try {
     console.log("Processing articles endpoint with query:", query);
     
-    // First try to get articles from blob storage
-    console.log("Looking for cached articles in blob storage");
+    console.log("Looking for articles...");
     const finalArticleFiles = [
-      ...(await listBlobFiles('final_article_*.json')),
-      ...(await listBlobFiles('final_article_*.html'))
+      ...(await listFiles('final_article_*.json')),
+      ...(await listFiles('final_article_*.html'))
     ];
-    console.log(`Found ${finalArticleFiles.length} final article files in blob storage`);
+    console.log(`Found ${finalArticleFiles.length} final article files.`);
     
     if (finalArticleFiles.length > 0) {
-      // We have cached articles, process them
-      console.log(`Processing ${finalArticleFiles.length} articles from blob storage`);
+      console.log(`Processing ${finalArticleFiles.length} articles.`);
       const articles = [];
       for (const filePath of finalArticleFiles.slice(0, 20)) { // Limit to 20 articles for performance
         try {
-          // Load article data from blob storage
-          const articleData = await safeReadFile(filePath);
+          const articleData = await readFileContent(filePath);
           if (!articleData) {
-            console.warn(`Skipping article ${filePath} - could not read file`);
+            console.warn(`Skipping article ${filePath} - could not read or parse file content`);
             continue;
           }
           
-          const filename = path.basename(filePath);
-          const id = filename.replace('final_article_', '').replace('.json', '');
-          
-          // Extract title and summary from content
+          const id = path.basename(filePath).replace('final_article_', '').replace(/\.(json|html)$/, '');
           let title = 'Untitled Article';
           let summary = '';
           let subject = '';
-          
-          if (filePath.endsWith('.html')) {
-            // HTML article: extract introduction as summary
-            summary = extractHtmlIntroduction(articleData.content || articleData.html || '');
-            // Try to extract title from HTML content (fallback to filename)
-            const match = (articleData.content || '').match(/<title>(.*?)<\/title>/i);
-            if (match) {
-              title = match[1];
-            } else {
-              title = filename.replace('final_article_', '').replace('.html', '');
-            }
-            subject = title.split(':')[0];
-          } else {
-            // JSON/Markdown: use summary or intro if available
+          let articleContentSource = ''; // To hold the content string for parsing
+
+          if (typeof articleData === 'string' && filePath.endsWith('.html')) { // HTML file read as raw string
+            articleContentSource = articleData;
+            summary = extractHtmlIntroduction(articleContentSource);
+            const titleMatch = articleContentSource.match(/<title>(.*?)<\/title>/i);
+            if (titleMatch && titleMatch[1]) title = titleMatch[1];
+            else title = path.basename(filePath).replace('final_article_', '').replace('.html', '');
+            subject = title.split(':')[0]; // Basic subject extraction
+          } else if (typeof articleData === 'object' && articleData !== null && filePath.endsWith('.json')) { // JSON file parsed into object
+            articleContentSource = articleData.content || ''; // Markdown content expected in .content
             if (articleData.summary) {
               summary = articleData.summary;
             } else if (articleData.intro) {
               summary = articleData.intro;
-            } else if (articleData.content) {
-              // fallback to first paragraph or content parsing
-              const paragraphs = articleData.content.split('\n\n').filter(p => p.trim() && !p.startsWith('#'));
-              if (paragraphs.length > 0) {
-                summary = paragraphs[0];
-                if (paragraphs.length > 1) {
-                  summary += '\n\n' + paragraphs[1];
-                }
-              }
+            } else if (articleContentSource) {
+              const paragraphs = articleContentSource.split('\n\n').filter(p => p.trim() && !p.startsWith('#'));
+              if (paragraphs.length > 0) summary = paragraphs[0];
             }
-            // Extract title from content
-            if (articleData.content) {
-              const contentLines = articleData.content.split('\n');
+            
+            if (articleData.title) {
+                title = articleData.title;
+            } else if (articleContentSource) {
+              const contentLines = articleContentSource.split('\n');
               if (contentLines[0] && contentLines[0].startsWith('# ')) {
-                title = contentLines[0].substring(2);
-              }
-            }
-            // Try to extract subject from content
-            if (articleData.content) {
-              const subjectMatch = articleData.content.match(/##\s+(.+?)\n/);
-              if (subjectMatch) {
-                subject = subjectMatch[1].replace(/subject|topic|about|:/gi, '').trim();
+                title = contentLines[0].substring(2).trim();
               } else {
-                subject = title.split(':')[0];
+                title = 'Untitled JSON Article';
               }
             }
+             if (articleData.subject){
+                subject = articleData.subject;
+            } else {
+                subject = title.split(':')[0]; // Basic subject extraction
+            }
+          } else {
+            console.warn(`Skipping article ${filePath} - unknown data format or missing .json/.html extension.`);
+            continue;
           }
           
           articles.push({
             id,
-            title,
-            link: `article/${id}`,
-            summary: summary || 'No summary available',
+            title: normalizeArticleTitle(title),
+            link: `article/${id}`, // This might need adjustment if IDs are complex
+            summary: summary || 'No summary available.',
             subject: subject || 'General',
-            score: 0 // Will be scored by frontend
+            score: 0 // Will be scored by frontend or another process
           });
         } catch (error) {
           console.error(`Error processing article ${filePath}:`, error);
         }
       }
       
-      // Sort by ID (most recent first, assuming ID includes timestamp)
       articles.sort((a, b) => {
-        const idA = a.id.split('_')[0];
-        const idB = b.id.split('_')[0];
-        return idB.localeCompare(idA);
+        const idA = (a.id.split('_')[0] || '0');
+        const idB = (b.id.split('_')[0] || '0');
+        return idB.localeCompare(idA, undefined, {numeric: true, sensitivity: 'base'});
       });
       
-      console.log(`Returning ${articles.length} processed articles from blob storage`);
+      console.log(`Returning ${articles.length} processed articles.`);
       return articles;
     }
     
-    // If no blob storage articles, use demo data
-    console.log("No articles in blob storage, returning demo articles");
+    console.log("No articles found, returning demo articles");
     return generateDemoArticles();
   } catch (error) {
     console.error(`Error in process_articles_endpoint: ${error}`);
@@ -583,14 +695,13 @@ async function process_articles_endpoint(query) {
  */
 async function get_homepage_articles_endpoint() {
   try {
-    console.log('get_homepage_articles_endpoint: Retrieving articles from database');
+    console.log('get_homepage_articles_endpoint: Retrieving articles');
     
-    // Use listBlobFiles to get articles from Vercel Blob Storage
     const articleFiles = [
-      ...(await listBlobFiles('final_article_*.json')),
-      ...(await listBlobFiles('final_article_*.html'))
+      ...(await listFiles('final_article_*.json')),
+      ...(await listFiles('final_article_*.html'))
     ];
-    console.log(`Found ${articleFiles.length} article files: homepage test`);
+    console.log(`Found ${articleFiles.length} article files for homepage.`);
     
     if (articleFiles.length === 0) {
       // No articles found in blob storage, fall back to demo articles
@@ -608,15 +719,17 @@ async function get_homepage_articles_endpoint() {
     
     for (const articlePath of articleFiles) {
       try {
-        const articleData = await safeReadFile(articlePath);
+        const articleData = await readFileContent(articlePath);
         if (articleData) {
           const articleId = path.basename(articlePath)
             .replace('final_article_', '')
-            .replace('.json', '');
+            .replace(/\.(json|html)$/, '');
           
-          const processedArticle = processArticleData(articleData, articleId);
-          if (processedArticle) {
-            processedArticles.push(processedArticle);
+          const processedArticle = processArticleData(articleData, articleId, articlePath.endsWith('.html'));
+          if (processedArticle && processedArticle.article) {
+            processedArticles.push(processedArticle.article);
+          } else {
+             console.warn(`Skipping article ${articlePath} - processArticleData did not return a valid article object.`);
           }
         } else {
           console.warn(`Skipping article ${articlePath} - could not read file`);
@@ -672,93 +785,52 @@ async function get_article_endpoint(articleId) {
     console.log('Trying exact match:', `final_article_${articleId}.html`);
     // DEBUG LOGGING END
 
-    // First try exact match
-    const exactBlobFiles = [
-      ...(await listBlobFiles(`final_article_${articleId}.json`)),
-      ...(await listBlobFiles(`final_article_${articleId}.html`))
-    ];
-    
-    if (exactBlobFiles.length > 0) {
-      console.log(`Found exact match for article ID: ${articleId}`);
-      const articlePath = `/articles/final_article_${articleId}.json`;
-      console.log('Reading file:', articlePath);
-      const articleData = await safeReadFile(articlePath);
-      
-      if (articleData) {
-        console.log(`Successfully loaded article data from: ${articlePath}`);
-        return processArticleData(articleData, articleId);
-      }
-    }
-    
-    // Try partial match if exact match fails
-    console.log(`No exact match found, trying partial match for: ${articleId}`);
-    const partialBlobFiles = [
-      ...(await listBlobFiles(`final_article_*${articleId}*.json`)),
-      ...(await listBlobFiles(`final_article_*${articleId}*.html`))
-    ];
-    console.log(`Found ${partialBlobFiles.length} potential matching blob files for article ID: ${articleId}`);
-    if (partialBlobFiles.length > 0) {
-      console.log('Partial match files:', partialBlobFiles);
-    }
-    
-    if (partialBlobFiles.length === 0) {
-      // If still no matches, list all articles and check each one
-      console.log(`No partial matches, checking all articles for ID: ${articleId}`);
-      const allBlobFiles = [
-        ...(await listBlobFiles('final_article_*.json')),
-        ...(await listBlobFiles('final_article_*.html'))
-      ];
-      console.log(`Searching through ${allBlobFiles.length} total articles for ID: ${articleId}`);
-      
-      // Check if any filename contains this ID (case insensitive)
-      const lowercaseId = articleId.toLowerCase();
-      const matchingFiles = allBlobFiles.filter(filePath => {
-        const filename = path.basename(filePath).toLowerCase();
-        return filename.includes(lowercaseId);
-      });
-      
-      if (matchingFiles.length > 0) {
-        console.log(`Found ${matchingFiles.length} matching articles by filename search`);
-        const articlePath = matchingFiles[0];
-        console.log(`Using first match: ${articlePath}`);
-        
-        // Read blob data
-        const articleData = await safeReadFile(articlePath);
-        
-        if (articleData) {
-          console.log(`Successfully loaded article data from: ${articlePath}`);
-          return processArticleData(articleData, articleId);
+    const exactMatchPatterns = [`final_article_${articleId}.json`, `final_article_${articleId}.html`];
+    let foundArticleData = null;
+    let foundFilePath = null;
+
+    for (const pattern of exactMatchPatterns) {
+        const files = await listFiles(pattern);
+        if (files.length > 0) {
+            foundFilePath = files[0];
+            foundArticleData = await readFileContent(foundFilePath);
+            if (foundArticleData) break;
         }
-      }
-      
-      // Log all available articles for debugging
-      console.log('Available articles:');
-      allBlobFiles.forEach((file, index) => {
-        console.log(`${index + 1}. ${path.basename(file)}`);
-      });
-    } else {
-      // Use the first matching file from partial match
-      const articlePath = partialBlobFiles[0];
-      console.log(`Using partial match: ${articlePath}`);
-      
-      // Read blob data
-      const articleData = await safeReadFile(articlePath);
-      
-      if (articleData) {
-        console.log(`Successfully loaded article data from: ${articlePath}`);
-        return processArticleData(articleData, articleId);
-      } else {
-        console.error(`Failed to read article data from: ${articlePath}`);
-      }
     }
     
-    // If no article found in blob storage or couldn't read data, try demo data
-    console.log(`Article not found in storage, checking demo data for: ${articleId}`);
-    const demoResult = getDemoArticleDetail(articleId);
+    if (foundArticleData) {
+      console.log(`Successfully loaded article data from: ${foundFilePath}`);
+      return processArticleData(foundArticleData, articleId, foundFilePath.endsWith('.html'));
+    }
+    
+    console.log(`No exact match found, trying partial match for: ${articleId}`);
+    const partialMatchPatterns = [`final_article_*${articleId}*.json`, `final_article_*${articleId}*.html`];
+    for (const pattern of partialMatchPatterns) {
+        const files = await listFiles(pattern);
+        if (files.length > 0) {
+            // Prefer JSON if both HTML and JSON match for the same article stem
+            const preferredFile = files.find(f => f.endsWith('.json')) || files[0];
+            foundFilePath = preferredFile;
+            foundArticleData = await readFileContent(foundFilePath);
+            if (foundArticleData) break;
+        }
+    }
+    
+    if (foundArticleData) {
+      console.log(`Successfully loaded (partial match) article data from: ${foundFilePath}`);
+      return processArticleData(foundArticleData, articleId, foundFilePath.endsWith('.html'));
+    }
+
+    console.log(`Article not found in storage (exact or partial), listing all for debug if needed, then checking demo data for: ${articleId}`);
+    // Optionally list all articles for deeper debugging if article still not found
+    // const allFiles = [ ...(await listFiles('final_article_*.json')), ...(await listFiles('final_article_*.html')) ];
+    // console.log('Available articles:', allFiles.map(f => path.basename(f)));
+    
+    const demoResult = getDemoArticleDetail(articleId); // This function returns the detail part directly
     
     return {
-      status: "success",
-      article: demoResult
+      status: "success", // Assuming demo data is always a success
+      article: demoResult // demoResult is already the article object {title, link, summary}
     };
   } catch (error) {
     console.error(`Error getting article ${articleId}:`, error);
@@ -773,39 +845,45 @@ async function get_article_endpoint(articleId) {
  * Helper function to process article data and create a consistent response
  * @param {Object} articleData - Raw article data from file
  * @param {string} articleId - Article ID
+ * @param {boolean} isHtml - Flag to indicate if the source was an HTML file
  * @returns {Object} Formatted response with article data
  */
-function processArticleData(articleData, articleId) {
-  // Extract content and create title/summary
-  const content = articleData.content || '';
+function processArticleData(articleData, articleId, isHtml = false) {
   let title = 'Unknown Title';
   let summary = '';
-  
-  // Extract title from content
-  if (content) {
-    const lines = content.split('\n');
-    if (lines.length > 0) {
-      if (lines[0].startsWith('# ')) {
-        title = lines[0].substring(2);
-      } else {
-        title = lines[0].trim();
-      }
+  let content = ''; // This will hold the primary textual content (Markdown or HTML)
+  let sourceLink = `https://news.ycombinator.com/item?id=${articleId}`; // Default link
+
+  if (isHtml && typeof articleData === 'string') { // HTML content as raw string
+    content = articleData;
+    const titleMatch = content.match(/<title>(.*?)<\/title>/i);
+    if (titleMatch && titleMatch[1]) {
+      title = titleMatch[1];
+    } else {
+      // Fallback title from ID if not in HTML
+      title = articleId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()); // Basic pretty title
     }
-    
-    // Create a summary from the content
-    summary = extractArticleSummary(content);
+    summary = extractHtmlIntroduction(content); // extractHtmlIntroduction expects HTML string
+
+  } else if (!isHtml && typeof articleData === 'object' && articleData !== null) { // JSON object
+    content = articleData.content || ''; // Markdown content
+    title = articleData.title || (content.split('\n')[0]?.startsWith('# ') ? content.split('\n')[0].substring(2).trim() : 'Unknown Title');
+    summary = articleData.summary || articleData.intro || extractArticleSummary(content); // extractArticleSummary expects markdown string
+    sourceLink = articleData.url || sourceLink; // Use URL from JSON if available
+  } else {
+    console.warn(`processArticleData: articleData is not in expected format for ID ${articleId}. Type: ${typeof articleData}, IsHTML: ${isHtml}`);
+     return { status: "error", message: "Invalid article data format" };
   }
   
-  // Build response object
   return {
     status: "success",
     article: {
       id: articleId,
-      title: title,
-      link: articleData.url || `https://news.ycombinator.com/item?id=${articleId}`,
-      summary: summary,
-      content: content,
-      timestamp: articleData.timestamp || Date.now()
+      title: normalizeArticleTitle(title),
+      link: sourceLink,
+      summary: summary || "No summary available.",
+      content: content, // Full content (Markdown or HTML)
+      timestamp: (typeof articleData === 'object' ? articleData.timestamp : null) || Date.now()
     }
   };
 }
@@ -827,13 +905,12 @@ async function analyze_interests_endpoint(interests) {
       };
     }
     
-    // Get all final articles from blob storage
-    console.log("Fetching articles from Vercel Blob Storage");
+    console.log("Fetching articles from Vercel Blob Storage or local .cache");
     const finalArticleFiles = [
-      ...(await listBlobFiles('final_article_*.json')),
-      ...(await listBlobFiles('final_article_*.html'))
+      ...(await listFiles('final_article_*.json')),
+      ...(await listFiles('final_article_*.html'))
     ];
-    console.log(`Found ${finalArticleFiles.length} final article files in blob storage`);
+    console.log(`Found ${finalArticleFiles.length} final article files for analysis.`);
     
     if (finalArticleFiles.length === 0) {
       return {
@@ -846,10 +923,9 @@ async function analyze_interests_endpoint(interests) {
     const articles = [];
     for (const filePath of finalArticleFiles) {
       try {
-        // Load article data from blob storage
-        const articleData = await safeReadFile(filePath);
+        const articleData = await readFileContent(filePath);
         if (!articleData) {
-          console.warn(`Skipping article ${filePath} - could not read file`);
+          console.warn(`Skipping article ${filePath} for interest analysis - could not read or parse file content`);
           continue;
         }
         
@@ -859,48 +935,33 @@ async function analyze_interests_endpoint(interests) {
         // Extract title and content from article data
         let title = 'Untitled Article';
         let subject = '';
-        
-        if (articleData.content) {
-          // Extract title from markdown content (the first line starting with # )
-          const contentLines = articleData.content.split('\n');
-          if (contentLines[0] && contentLines[0].startsWith('# ')) {
-            title = contentLines[0].substring(2);
-          }
-          
-          // Try to extract a subject by looking for certain patterns in the content
-          // First, try to find a line starting with "## " that mentions "subject" or "topic"
-          const subjectLinePattern = contentLines.find(line => 
-            (line.startsWith('## ') && 
-             (line.toLowerCase().includes('subject') || line.toLowerCase().includes('topic')))
-          );
-          
-          if (subjectLinePattern) {
-            subject = subjectLinePattern.replace(/^## /, '');
-          } else {
-            // If no explicit subject/topic heading, try to find a sentence mentioning "subject is" or "topic is"
-            const subjectMentionPattern = /(?:subject|topic)\s+(?:is|was|about)?\s+["']?([^"'.]+)["']?/i;
-            const fullContent = articleData.content;
-            const subjectMatch = fullContent.match(subjectMentionPattern);
-            
-            if (subjectMatch && subjectMatch[1]) {
-              subject = subjectMatch[1].trim();
-            } else {
-              // Fallback: just use the first part of the title
-              subject = title.split(':')[0];
-            }
-          }
+        let contentForAnalysis = '';
+
+        if (typeof articleData === 'string' && filePath.endsWith('.html')) { // HTML file
+            contentForAnalysis = articleData; // Use full HTML for keyword spotting, or strip tags first
+            const titleMatch = contentForAnalysis.match(/<title>(.*?)<\/title>/i);
+            if (titleMatch && titleMatch[1]) title = titleMatch[1];
+            else title = path.basename(filePath).replace('final_article_', '').replace('.html', '');
+            // For HTML, subject extraction might be simple (from title) or require DOM parsing (not done here)
+            subject = title.split(':')[0];
+        } else if (typeof articleData === 'object' && articleData !== null && filePath.endsWith('.json')) { // JSON file
+            contentForAnalysis = articleData.content || '';
+            title = articleData.title || (contentForAnalysis.split('\n')[0]?.startsWith('# ') ? contentForAnalysis.split('\n')[0].substring(2).trim() : 'Untitled JSON Article');
+            subject = articleData.subject || title.split(':')[0];
+        } else {
+            console.warn(`Skipping article ${filePath} for interest analysis - unknown data format.`);
+            continue;
         }
         
-        // Calculate a simple score based on text matching between interests and subject/title
-        // This is a basic fallback since we no longer use Python for vectorization
         const interestTerms = interests.toLowerCase().split(/[,\s]+/).filter(term => term.length > 2);
-        const articleText = `${title} ${subject}`.toLowerCase();
+        // Use a combination of title, subject, and a snippet of content for matching
+        const textForScoring = `${title} ${subject} ${contentForAnalysis.substring(0, 500)}`.toLowerCase();
         
         let matchScore = 50; // Base score
         
         // Simple scoring based on term matching
         interestTerms.forEach(term => {
-          if (articleText.includes(term)) {
+          if (textForScoring.includes(term)) {
             matchScore += 10;
           }
         });
@@ -1071,7 +1132,7 @@ app.get('/api/articles', async (req, res) => {
   logServerMessage('Received request for /api/articles', 'INFO');
   try {
     const { interests } = req.query;
-    const result = await process_articles_endpoint(interests);
+    const result = await process_articles_endpoint(req.query);
     res.json(result);
   } catch (error) {
     console.error('Error in /api/articles:', error);

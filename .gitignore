@@ -34,3 +34,6 @@ Thumbs.db
 # Caches
 .cache/
 local_cache/
+
+#venv
+.venv
