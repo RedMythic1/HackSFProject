@@ -39,6 +39,28 @@ This project is organized as follows:
 4. **Access the web interface**: 
    - Open http://localhost:3000 in your browser
 
+## Deployment on Fly.io
+
+1. **Install Flyctl CLI**:
+   ```bash
+   curl -L https://fly.io/install.sh | sh
+   ```
+
+2. **Authenticate with Fly.io**:
+   ```bash
+   flyctl auth login
+   ```
+
+3. **Deploy the application**:
+   ```bash
+   flyctl deploy
+   ```
+
+4. **Open the deployed application**:
+   ```bash
+   flyctl open
+   ```
+
 ## Development Process
 
 1. **Article Processing**:
