@@ -32,7 +32,7 @@ MEMORY_CACHE = {
 
 # Directory setup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CACHE_DIR = os.path.join(BASE_DIR, 'local_cache')
+CACHE_DIR = os.path.join(BASE_DIR, '.cache')
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 def load_demo_articles():
