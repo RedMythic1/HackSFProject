@@ -20,4 +20,8 @@ primary_region = "sjc"  # San Jose, California
 
 [[statics]]
   guest_path = "/app/dist"
-  url_prefix = "/" 
+  url_prefix = "/"
+
+[[mounts]]
+  source = "fly_data"
+  destination = "/data"

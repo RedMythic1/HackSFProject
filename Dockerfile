@@ -27,6 +27,7 @@ RUN npm install --production=false
 # Ensure this path is correct, relative to project root.
 COPY tw/requirements-fly.txt ./requirements.txt
 # Install Python dependencies
+RUN pip3 install --upgrade pip setuptools wheel
 RUN pip3 install -r requirements.txt
 
 # Copy the rest of the 'tw' application files which are used by tw-package.json

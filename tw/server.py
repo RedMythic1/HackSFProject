@@ -8,6 +8,7 @@ import json
 import logging
 from datetime import datetime
 import glob
+import numpy as np
 
 # Set up logging
 logging.basicConfig(
@@ -125,7 +126,7 @@ def initialize_article_cache():
         except Exception as e:
             logger.error(f"Error processing article file {filepath}: {e}")
     
-    logger.info(f"Successfully loaded {loaded_count} articles from cache.")
+    logger.info(f"Successfully loaded {loaded_count} articles into local MEMORY_CACHE.")
 
 # Initialize cache when the application starts
 initialize_article_cache()
@@ -262,6 +263,175 @@ def health_check():
         'message': 'Server is running on Fly.io',
         'timestamp': datetime.now().isoformat()
     })
+
+@app.route('/api/backtest', methods=['POST'])
+def backtest():
+    """API endpoint for backtesting trading strategies
+    
+    Takes a trading strategy description from the user
+    Returns buy/sell points, profit, and performance data
+    """
+    logger.info("Processing backtesting endpoint")
+    try:
+        # Get strategy description from request body
+        data = request.get_json()
+        if not data or 'strategy' not in data:
+            logger.error("No strategy provided in backtest request")
+            return jsonify({"status": "error", "error": "No strategy provided"}), 400
+        
+        strategy_description = data['strategy']
+        logger.info(f"Received backtest request with strategy: {strategy_description[:100]}...")
+        
+        # Generate simulated stock data (in a real app, you'd fetch real market data)
+        # Generate 100 days of simulated stock data with some randomness and a general trend
+        days = 100
+        base_price = 100.0
+        volatility = 0.02
+        trend = 0.001
+        
+        # Generate random walk for stock prices
+        np.random.seed(42)  # For reproducible results
+        daily_returns = np.random.normal(trend, volatility, days)
+        price_series = base_price * np.cumprod(1 + daily_returns)
+        
+        # Generate date labels (last 100 days)
+        end_date = datetime.now()
+        dates = [(end_date - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days)]
+        dates.reverse()  # Oldest first
+        
+        # Simple strategy parsing (in a real app, you'd use NLP or a more sophisticated parser)
+        # Look for keywords to determine strategy parameters
+        
+        # Default simple strategy: Buy when price drops by 2%, sell when price rises by 3%
+        buy_threshold = -0.02
+        sell_threshold = 0.03
+        window_size = 5  # Look back period for calculating changes
+        
+        # Analyze the strategy text to modify parameters
+        if "moving average" in strategy_description.lower():
+            # Extract the window size for moving average if specified
+            import re
+            ma_matches = re.findall(r'(\d+)[-\s]day moving average', strategy_description.lower())
+            if ma_matches:
+                window_size = int(ma_matches[0])
+                logger.info(f"Using moving average with window size: {window_size}")
+        
+        if "buy" in strategy_description.lower() and "below" in strategy_description.lower():
+            # Strategy mentions buying below something - make threshold more negative
+            buy_threshold = -0.03
+        
+        if "sell" in strategy_description.lower() and "above" in strategy_description.lower():
+            # Strategy mentions selling above something - make threshold more positive
+            sell_threshold = 0.04
+            
+        # Execute backtest with the parameters
+        buy_points = []
+        sell_points = []
+        balance = 10000  # Start with $10,000
+        shares = 0
+        balance_history = [balance]
+        buy_prices = []
+        
+        # Calculate moving averages for the entire series
+        # This is a simple implementation that can be enhanced based on specific strategies
+        ma_series = []
+        for i in range(days):
+            if i < window_size - 1:
+                ma_series.append(price_series[i])  # Not enough data for MA yet
+            else:
+                ma = np.mean(price_series[i-window_size+1:i+1])
+                ma_series.append(ma)
+        
+        # Execute trades based on strategy
+        for i in range(1, days):
+            price = price_series[i]
+            prev_price = price_series[i-1]
+            ma = ma_series[i]
+            prev_ma = ma_series[i-1]
+            
+            # Determine if we should buy (price dropped below MA by threshold)
+            price_to_ma_ratio = price / ma - 1
+            if shares == 0 and price_to_ma_ratio < buy_threshold:
+                # Buy condition met
+                shares_to_buy = int(balance / price)
+                if shares_to_buy > 0:
+                    shares = shares_to_buy
+                    cost = shares * price
+                    balance -= cost
+                    buy_points.append([i, price])  # [day index, price]
+                    buy_prices.append(price)
+                    logger.info(f"BUY: Day {i}, Price: ${price:.2f}, Shares: {shares}, Balance: ${balance:.2f}")
+            
+            # Determine if we should sell (price rose above MA by threshold)
+            elif shares > 0 and price_to_ma_ratio > sell_threshold:
+                # Sell condition met
+                sale_value = shares * price
+                balance += sale_value
+                sell_points.append([i, price])  # [day index, price]
+                logger.info(f"SELL: Day {i}, Price: ${price:.2f}, Shares: {shares}, Balance: ${balance:.2f}")
+                shares = 0
+            
+            # Update balance history (account for shares held)
+            current_value = balance
+            if shares > 0:
+                current_value += shares * price
+            balance_history.append(current_value)
+        
+        # Calculate final statistics
+        initial_value = balance_history[0]
+        final_value = balance_history[-1]
+        profit_loss = final_value - initial_value
+        
+        # Generate sample code based on the strategy
+        generated_code = f"""# Python trading strategy based on your description:
+# "{strategy_description}"
+
+def execute_strategy(price_data, window_size={window_size}):
+    buy_signals = []
+    sell_signals = []
+    holdings = 0
+    
+    # Calculate moving average
+    for i in range(window_size, len(price_data)):
+        price = price_data[i]
+        ma = sum(price_data[i-window_size:i]) / window_size
+        
+        # Buy condition: price below MA by {buy_threshold*100}%
+        if holdings == 0 and price < ma * (1 + {buy_threshold}):
+            buy_signals.append(i)
+            holdings = 1
+            
+        # Sell condition: price above MA by {sell_threshold*100}%
+        elif holdings > 0 and price > ma * (1 + {sell_threshold}):
+            sell_signals.append(i)
+            holdings = 0
+            
+    return buy_signals, sell_signals
+"""
+
+        # Results in the format expected by the frontend
+        result = {
+            "status": "success",
+            "profit_loss": profit_loss,
+            "buy_points": buy_points,
+            "sell_points": sell_points,
+            "balance_over_time": balance_history,
+            "generated_code": generated_code,
+            "close": price_series.tolist(),  # The price series
+            "dates": dates,    # Date labels
+            "trades": {
+                "count": len(buy_points),
+                "buys": buy_points,
+                "sells": sell_points
+            }
+        }
+        
+        logger.info(f"Backtest completed successfully. Profit/Loss: ${profit_loss:.2f}, Trades: {len(buy_points)}")
+        return jsonify(result)
+    
+    except Exception as e:
+        logger.exception(f"Error in backtest endpoint: {e}")
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 @app.route('/', defaults={'path': 'index.html'})
 @app.route('/<path:path>')
