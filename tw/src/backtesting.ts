@@ -1,33 +1,58 @@
 import './style.css';
 import './backtesting.css';
+import { renderBacktestCharts, runBacktestAndChart } from './utils/backtest-charts';
 import Chart from 'chart.js/auto';
+
+// Add Prism type definition
+declare global {
+    interface Window {
+        Prism?: {
+            highlightElement: (element: HTMLElement) => void;
+        };
+    }
+}
 
 // Function to log messages from the frontend
 function logFrontend(message: string, data?: any) {
     console.log(`[FRONTEND] ${message}`, data !== undefined ? data : '');
 }
 
-interface BacktestResult {
-    status: string;
-    profit_loss?: number;
-    profit?: number; // Alternative field name used by Node backend
-    buy_points?: Array<[number, number]>;
-    sell_points?: Array<[number, number]>;
-    balance_over_time?: number[];
-    balance_history?: number[]; // Alternative field name used by Node backend
-    generated_code?: string;
-    code?: string; // Alternative field used by Node backend
-    chart_url?: string;
-    image?: string; // Alternative field used by Node backend
-    trades?: {
+// Backend API result interfaces 
+interface BacktestSuccessResult {
+    status: 'success';
+    profit: number;
+    buy_hold_profit: number;
+    percent_above_buyhold: number;
+    dataset: string;
+    datasets_tested: number;
+    buy_points: Array<[number, number]> | Array<{x: number, y: number}>;
+    sell_points: Array<[number, number]> | Array<{x: number, y: number}>;
+    balance_over_time: number[];
+    close: number[];
+    dates: string[];
+    trades: {
         count: number;
-        buys: Array<[number, number]>;
-        sells: Array<[number, number]>;
+        buys: Array<[number, number]> | Array<{x: number, y: number}>;
+        sells: Array<[number, number]> | Array<{x: number, y: number}>;
     };
-    error?: string;
-    close?: number[]; // Added to receive price data
-    dates?: string[]; // Optional date labels
+    code: string;
+    all_iterations?: Array<{
+        iteration: number;
+        dataset: string;
+        profit: number;
+        percent_above_buyhold: number;
+        trades_count: number;
+    }>;
 }
+
+// For API error results
+interface BacktestErrorResult {
+    status: 'error';
+    error: string;
+}
+
+// Combined type
+type BacktestResult = BacktestSuccessResult | BacktestErrorResult;
 
 class BacktestingController {
     private strategyInput: HTMLTextAreaElement | null;
@@ -76,6 +101,32 @@ class BacktestingController {
         } else {
             logFrontend('Run Backtest button not found', 'WARN');
         }
+        
+        // Add event listeners for chart tabs
+        const chartTabs = document.querySelectorAll('.chart-tab');
+        chartTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Remove active class from all tabs
+                chartTabs.forEach(t => t.classList.remove('active'));
+                // Add active class to clicked tab
+                tab.classList.add('active');
+                
+                // Get target panel
+                const targetPanelId = tab.getAttribute('data-target');
+                if (targetPanelId) {
+                    // Hide all panels
+                    const panels = document.querySelectorAll('.chart-panel');
+                    panels.forEach(panel => panel.classList.remove('active'));
+                    
+                    // Show target panel
+                    const targetPanel = document.querySelector(`.${targetPanelId}`);
+                    if (targetPanel) {
+                        targetPanel.classList.add('active');
+                    }
+                }
+            });
+        });
+        
         logFrontend('initEventListeners finished');
     }
     
@@ -132,13 +183,13 @@ class BacktestingController {
             
             const result = await response.json();
             logFrontend('Parsed JSON result from /api/backtest:', result);
-            return result;
-        } catch (error) {
+            return result as BacktestResult;
+        } catch (error: any) {
             logFrontend('Error in callBacktestAPI catch block', error);
             console.error('API call error:', error);
             return {
                 status: 'error',
-                error: error instanceof Error ? error.message : 'Unknown error occurred during API call'
+                error: error instanceof Error ? error.message : String(error)
             };
         }
     }
@@ -150,9 +201,10 @@ class BacktestingController {
             return;
         }
         
-        if (result.status === 'error' || result.error) {
-            logFrontend('Displaying error message from result', result.error);
-            this.showError(result.error || 'An unknown error occurred during backtest processing.');
+        if (result.status === 'error') {
+            const errorResult = result as BacktestErrorResult;
+            logFrontend('Displaying error message from result', errorResult.error);
+            this.showError(errorResult.error || 'An unknown error occurred during backtest processing.');
             return;
         }
         
@@ -161,7 +213,7 @@ class BacktestingController {
         
         // Update profit/loss
         if (this.profitLossValue) {
-            const profitValue = result.profit_loss ?? result.profit ?? 0;
+            const profitValue = result.profit;
             logFrontend('Profit/Loss value:', profitValue);
             
             const formattedProfitLoss = new Intl.NumberFormat('en-US', {
@@ -176,256 +228,159 @@ class BacktestingController {
         
         // Update trades count
         if (this.tradesCount) {
-            // Get trades count from different possible response formats
-            let totalTrades = 0;
-            if (result.trades && result.trades.count) {
-                totalTrades = result.trades.count;
-            } else if (result.buy_points) {
-                totalTrades = result.buy_points.length;
-            }
-            
+            const totalTrades = result.trades?.count || result.buy_points.length;
             this.tradesCount.textContent = totalTrades.toString();
         }
         
         // Update success rate
         if (this.successRate) {
-            let successfulTrades = 0;
-            let buyPoints = result.buy_points || [];
-            let sellPoints = result.sell_points || [];
+            const buyPoints = result.buy_points;
+            const sellPoints = result.sell_points;
             
-            // Handle different response formats
-            if (result.trades) {
-                buyPoints = result.trades.buys || [];
-                sellPoints = result.trades.sells || []; 
-            }
+            let successfulTrades = 0;
             
             // Count trades where sell price > buy price
             if (buyPoints && sellPoints) {
                 for (let i = 0; i < Math.min(buyPoints.length, sellPoints.length); i++) {
-                    if (sellPoints[i][1] > buyPoints[i][1]) {
+                    const buyPrice = buyPoints[i][1];
+                    const sellPrice = sellPoints[i][1];
+                    if (sellPrice > buyPrice) {
                         successfulTrades++;
                     }
                 }
             }
             
-            const buyPointsLength = buyPoints?.length || 0;
-            const rate = buyPointsLength > 0 
-                ? Math.round((successfulTrades / buyPointsLength) * 100) 
-                : 0;
-                
-            this.successRate.textContent = `${rate}%`;
+            const totalTrades = Math.min(buyPoints.length, sellPoints.length);
+            const successRateValue = totalTrades > 0 ? (successfulTrades / totalTrades) * 100 : 0;
+            this.successRate.textContent = `${successRateValue.toFixed(1)}%`;
+            
+            // Add color based on success rate
+            this.successRate.className = 'result-value ' + 
+                (successRateValue >= 50 ? 'positive' : 'negative');
         }
         
-        // Update charts
-        logFrontend('Calling createCharts');
-        this.createCharts(result);
+        // Update "vs Buy & Hold" value
+        const vsBuyHoldElement = document.getElementById('vs-buyhold');
+        if (vsBuyHoldElement && 'percent_above_buyhold' in result) {
+            const percentValue = result.percent_above_buyhold;
+            vsBuyHoldElement.textContent = `${percentValue > 0 ? '+' : ''}${percentValue.toFixed(1)}%`;
+            vsBuyHoldElement.className = 'result-value ' + 
+                (percentValue >= 0 ? 'positive' : 'negative');
+        }
         
-        // Update generated code
+        // Show generated code
         if (this.generatedCode) {
-            const codeContent = result.generated_code || result.code || '';
-            logFrontend('Generated code content length:', codeContent.length);
-            this.generatedCode.textContent = codeContent;
+            this.generatedCode.textContent = result.code || '';
+            
+            // Add Prism.js syntax highlighting if it's available
+            if (window.Prism) {
+                window.Prism.highlightElement(this.generatedCode);
+            }
         }
-        logFrontend('displayResults finished');
+        
+        // Update dataset info
+        const datasetNameElement = document.getElementById('dataset-name');
+        const datasetSizeElement = document.getElementById('dataset-size');
+        
+        if (datasetNameElement && result.dataset) {
+            datasetNameElement.textContent = result.dataset || 'Unknown Dataset';
+        }
+        
+        if (datasetSizeElement && result.close) {
+            datasetSizeElement.textContent = `${result.close.length} data points`;
+        }
+        
+        // Create charts
+        this.createCharts(result as BacktestSuccessResult);
     }
 
-    private createCharts(result: BacktestResult): void {
-        logFrontend('createCharts started with result:', result);
-        // Get the prices data
-        const close = result.close || [];
-        logFrontend('Number of close prices for chart:', close.length);
+    private createCharts(result: BacktestSuccessResult): void {
+        logFrontend('createCharts started');
         
-        // Generate x-axis labels (either use dates from API or generate indices)
-        let labels: string[] = [];
-        if (result.dates && result.dates.length === close.length) {
-            labels = result.dates;
-        } else {
-            labels = Array.from({ length: close.length }, (_, i) => `Day ${i+1}`);
-        }
-        
-        // Get buy and sell points
-        let buyPoints = result.buy_points || [];
-        let sellPoints = result.sell_points || [];
-        
-        // Handle different response formats
-        if (result.trades) {
-            buyPoints = result.trades.buys || [];
-            sellPoints = result.trades.sells || [];
-        }
-        
-        // Get balance over time
-        const balanceData = result.balance_over_time || result.balance_history || [];
-        
-        // Create price chart
-        this.createPriceChart(labels, close, buyPoints, sellPoints);
-        
-        // Create balance chart
-        this.createBalanceChart(labels, balanceData);
-        logFrontend('createCharts finished');
-    }
-    
-    private createPriceChart(labels: string[], prices: number[], buyPoints: Array<[number, number]>, sellPoints: Array<[number, number]>): void {
+        // Get chart canvases
         const priceChartCanvas = document.getElementById('price-chart') as HTMLCanvasElement;
-        if (!priceChartCanvas) return;
-        
-        // Destroy previous chart if it exists
-        if (this.priceChart) {
-            this.priceChart.destroy();
-        }
-        
-        // Create buy points dataset
-        const buyPointsData = Array(prices.length).fill(null);
-        buyPoints.forEach(point => {
-            const [index] = point;
-            if (index >= 0 && index < buyPointsData.length) {
-                buyPointsData[index] = prices[index];
-            }
-        });
-        
-        // Create sell points dataset
-        const sellPointsData = Array(prices.length).fill(null);
-        sellPoints.forEach(point => {
-            const [index] = point;
-            if (index >= 0 && index < sellPointsData.length) {
-                sellPointsData[index] = prices[index];
-            }
-        });
-        
-        this.priceChart = new Chart(priceChartCanvas, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'Stock Price',
-                        data: prices,
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        borderWidth: 1,
-                        fill: false,
-                        tension: 0.1
-                    },
-                    {
-                        label: 'Buy Points',
-                        data: buyPointsData,
-                        backgroundColor: 'rgba(75, 192, 75, 1)',
-                        borderColor: 'rgba(75, 192, 75, 1)',
-                        pointRadius: 6,
-                        pointHoverRadius: 8,
-                        showLine: false
-                    },
-                    {
-                        label: 'Sell Points',
-                        data: sellPointsData,
-                        backgroundColor: 'rgba(255, 99, 132, 1)',
-                        borderColor: 'rgba(255, 99, 132, 1)',
-                        pointRadius: 6,
-                        pointHoverRadius: 8,
-                        showLine: false
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        title: {
-                            display: true,
-                            text: 'Price ($)'
-                        }
-                    },
-                    x: {
-                        ticks: {
-                            maxRotation: 45,
-                            minRotation: 45
-                        }
-                    }
-                },
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Stock Price with Buy/Sell Points'
-                    },
-                    tooltip: {
-                        mode: 'index',
-                        intersect: false
-                    }
-                }
-            }
-        });
-    }
-    
-    private createBalanceChart(labels: string[], balanceData: number[]): void {
         const balanceChartCanvas = document.getElementById('balance-chart') as HTMLCanvasElement;
-        if (!balanceChartCanvas) return;
         
-        // Destroy previous chart if it exists
-        if (this.balanceChart) {
-            this.balanceChart.destroy();
+        if (!priceChartCanvas || !balanceChartCanvas) {
+            logFrontend('Chart canvases not found', 'ERROR');
+            console.error('Chart canvases not found:', {
+                priceChartCanvas: !!priceChartCanvas,
+                balanceChartCanvas: !!balanceChartCanvas
+            });
+            return;
         }
         
-        this.balanceChart = new Chart(balanceChartCanvas, {
-            type: 'line',
-            data: {
-                labels: labels.slice(0, balanceData.length),
-                datasets: [
-                    {
-                        label: 'Portfolio Value',
-                        data: balanceData,
-                        borderColor: 'rgba(54, 162, 235, 1)',
-                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                        borderWidth: 2,
-                        fill: true
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        title: {
-                            display: true,
-                            text: 'Value ($)'
-                        },
-                        ticks: {
-                            callback: function(value) {
-                                return '$' + value.toLocaleString();
-                            }
-                        }
-                    },
-                    x: {
-                        ticks: {
-                            maxRotation: 45,
-                            minRotation: 45
-                        }
-                    }
-                },
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Portfolio Value Over Time'
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) {
-                                    label += ': ';
-                                }
-                                if (context.parsed.y !== null) {
-                                    label += new Intl.NumberFormat('en-US', { 
-                                        style: 'currency', 
-                                        currency: 'USD' 
-                                    }).format(context.parsed.y);
-                                }
-                                return label;
-                            }
-                        }
-                    }
-                }
+        // Convert tuple points to x,y objects if needed
+        const processPoints = (points: Array<[number, number]> | Array<{x: number, y: number}>): Array<{x: number, y: number}> => {
+            if (points.length === 0) return [];
+            
+            // Check if points are already in {x,y} format
+            if (typeof points[0] === 'object' && 'x' in points[0] && 'y' in points[0]) {
+                return points as Array<{x: number, y: number}>;
             }
-        });
+            
+            // Convert tuple format to {x,y} format
+            return (points as Array<[number, number]>).map(point => ({
+                x: point[0],
+                y: point[1]
+            }));
+        };
+        
+        // Process points for charts
+        const buyPoints = processPoints(result.buy_points);
+        const sellPoints = processPoints(result.sell_points);
+        
+        logFrontend(`Processing ${result.buy_points.length} buy points and ${result.sell_points.length} sell points`);
+        logFrontend('First few buy points:', buyPoints.slice(0, 3));
+        logFrontend('First few sell points:', sellPoints.slice(0, 3));
+        
+        try {
+            logFrontend('Creating price chart');
+            
+            // Destroy existing chart instances if they exist
+            if (this.priceChart) {
+                this.priceChart.destroy();
+            }
+            if (this.balanceChart) {
+                this.balanceChart.destroy();
+            }
+            
+            // Create charts using the utility functions
+            const charts = renderBacktestCharts(
+                result as any,  // Cast as any to avoid type issues
+                priceChartCanvas,
+                balanceChartCanvas
+            );
+            
+            // Store the chart references
+            this.priceChart = charts.priceChart;
+            this.balanceChart = charts.balanceChart;
+
+            // Update dataset information
+            const datasetNameElement = document.getElementById('dataset-name');
+            const datasetSizeElement = document.getElementById('dataset-size');
+            
+            if (datasetNameElement) {
+                datasetNameElement.textContent = result.dataset || 'Unknown Dataset';
+            }
+            
+            if (datasetSizeElement) {
+                datasetSizeElement.textContent = `${result.close.length.toLocaleString()} data points`;
+            }
+            
+            // Update vs buy & hold percentage
+            const vsBuyholdElement = document.getElementById('vs-buyhold');
+            if (vsBuyholdElement) {
+                const percentage = result.percent_above_buyhold;
+                vsBuyholdElement.textContent = `${percentage >= 0 ? '+' : ''}${percentage.toFixed(2)}%`;
+                vsBuyholdElement.className = 'result-value ' + (percentage >= 0 ? 'positive' : 'negative');
+            }
+            
+            logFrontend('Charts created successfully');
+        } catch (error) {
+            logFrontend('Error creating charts', error);
+            console.error('Error creating charts:', error);
+        }
     }
     
     private showError(errorMessage: string): void {

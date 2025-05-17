@@ -10,6 +10,16 @@ import time
 import random
 import logging
 
+# TODO: This module should be refactored to use the more comprehensive backtesting logic from st.py.
+# This would include:
+# 1. Importing the core functions from st.py
+# 2. Adapting the run_improved_simulation to use st.py's run_simulation and other functions
+# 3. Ensuring all features from st.py are properly integrated
+# 4. Maintaining the same API interface for server.py
+# 
+# For now, this file remains as is, but a complete refactoring is recommended to centralize logic
+# and avoid code duplication.
+
 logger = logging.getLogger(__name__)
 
 # Add the python_packages directory to the Python path
@@ -20,21 +30,14 @@ sys.path.insert(0, package_dir)
 import g4f
 import numpy as np
 
-# Define a log file path
-# LOG_FILE_PATH = os.path.join(os.path.dirname(__file__), 'backtest_live.log') # Removed
-
-# Clear the log file at the start of the script
-# if os.path.exists(LOG_FILE_PATH): # Removed
-#     os.remove(LOG_FILE_PATH) # Removed
-
-def log_message(message):
-    """Logs a message to the console."""
-    logger.info(message) # Keep original console output
-    # try: # Removed
-    #     with open(LOG_FILE_PATH, 'a') as f: # Removed
-    #         f.write(str(message) + '\\n') # Removed
-    # except Exception as e: # Removed
-    #     print(f"Error writing to log file: {e}") # Removed
+try:
+    import matplotlib
+    matplotlib.use('Agg')  # Use Agg backend which doesn't require a display
+    import matplotlib.pyplot as plt
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    logger.warning("Matplotlib not available. Plotting will be disabled.")
+    MATPLOTLIB_AVAILABLE = False
 
 # Track previously used datasets in this session
 if 'used_datasets' not in globals():
@@ -43,13 +46,34 @@ if 'used_datasets' not in globals():
 # Set the initial balance for all simulations
 initial_balance = 100000
 
+# Set up charts directory
+def get_charts_dir():
+    """Get the directory for saving chart images."""
+    datasets_dir = os.environ.get('DATASETS_DIR', '/data/datasets')
+    if not os.path.exists(datasets_dir):
+        # Try the parent directory's datasets folder if the specified one doesn't exist
+        parent_datasets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'datasets')
+        if os.path.exists(parent_datasets_dir):
+            datasets_dir = parent_datasets_dir
+    
+    charts_dir = os.path.join(datasets_dir, 'charts')
+    os.makedirs(charts_dir, exist_ok=True)
+    return charts_dir
+
 def get_random_dataset():
     """Get a random dataset from the datasets directory, tracking previously used ones."""
     datasets_dir = os.environ.get('DATASETS_DIR', '/data/datasets')
     if not os.path.exists(datasets_dir):
         logger.info(f"ERROR: Datasets directory {datasets_dir} does not exist!")
-        return None
-    files = [f for f in os.listdir(datasets_dir) if f.endswith('.csv')]
+        # Try the parent directory's datasets folder if the specified one doesn't exist
+        parent_datasets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'datasets')
+        if os.path.exists(parent_datasets_dir):
+            logger.info(f"Found parent datasets directory: {parent_datasets_dir}")
+            datasets_dir = parent_datasets_dir
+        else:
+            return None
+    # Skip files starting with '._' (macOS resource forks)
+    files = [f for f in os.listdir(datasets_dir) if f.endswith('.csv') and not f.startswith('._')]
     if not files:
         logger.info(f"ERROR: No CSV files found in {datasets_dir}!")
         return None
@@ -75,11 +99,78 @@ def get_random_dataset():
     return os.path.join(datasets_dir, chosen)
 
 # -----------------------------------------------------------------------------
+# Plot Results (similar to st.py)
+# -----------------------------------------------------------------------------
+
+def plot_results(close, buy_points, sell_points, balance_over_time, dataset_name="unknown", strategy_name="strategy"):
+    """Generate a chart showing price and overlayed (scaled) balance over time."""
+    if not MATPLOTLIB_AVAILABLE:
+        logger.warning("Matplotlib not available, skipping plot generation")
+        return None
+    
+    logger.info("Generating results plot...")
+    charts_dir = get_charts_dir()
+    
+    # Create a safe filename
+    safe_strategy = re.sub(r'[^-\w\s-]', '', strategy_name[:30])
+    safe_strategy = re.sub(r'\s+', '_', safe_strategy).strip('-_')
+    safe_dataset = re.sub(r'[^-\w\s-]', '', dataset_name)
+    safe_dataset = re.sub(r'\s+', '_', safe_dataset).strip('-_')
+    
+    timestamp = int(time.time())
+    filename = f'backtest_{safe_strategy}_{safe_dataset}_{timestamp}.png'
+    filepath = os.path.join(charts_dir, filename)
+    
+    try:
+        plt.figure(figsize=(12, 10), dpi=100)
+        # Plot 1: Price and overlayed balance
+        plt.subplot(2, 1, 1)
+        plt.plot(close, label='Close Price', linewidth=0.8, zorder=1, color='skyblue')
+        # Scale balance_over_time to start at the same value as close[0]
+        if balance_over_time and len(balance_over_time) > 1:
+            bal = np.array(balance_over_time)
+            # Scale so that bal[0] == close[0]
+            if bal[0] != 0:
+                bal_scaled = (bal / bal[0]) * close[0]
+            else:
+                bal_scaled = bal
+            plt.plot(bal_scaled, label='Portfolio Value (scaled)', color='orange', linewidth=1.5, zorder=2)
+        plt.title(f'Stock Price and Portfolio Value - {safe_dataset}')
+        plt.ylabel('Price')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        # Plot 2: Balance over time (raw, not scaled)
+        plt.subplot(2, 1, 2)
+        if balance_over_time and len(balance_over_time) > 0:
+            plt.plot(balance_over_time, label='Portfolio Value', color='blue', linewidth=1.5)
+            plt.axhline(y=initial_balance, color='gray', linestyle='--', label=f'Initial ${initial_balance:,.0f}')
+            final_balance = balance_over_time[-1] if balance_over_time else initial_balance
+            plt.annotate(f'Final: ${final_balance:,.0f}', 
+                         xy=(len(balance_over_time)-1, final_balance),
+                         xytext=(len(balance_over_time)-10, final_balance*1.05),
+                         arrowprops=dict(arrowstyle='->'))
+        plt.title('Portfolio Value Over Time')
+        plt.xlabel('Trading Days')
+        plt.ylabel('Portfolio Value ($)')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.gca().yaxis.set_major_formatter(matplotlib.ticker.StrMethodFormatter('${x:,.0f}'))
+        plt.tight_layout()
+        plt.savefig(filepath)
+        plt.close()
+        logger.info(f"Plot saved to {filepath}")
+        return filename
+    except Exception as e:
+        logger.error(f"Error generating plot: {e}")
+        return None
+
+# -----------------------------------------------------------------------------
 # GPT-4 FREE (g4f) helper
 # -----------------------------------------------------------------------------
 
-def ask_llama(prompt, temperature=0.7):
-    """Ask a question to the GPT-4 Free backend via g4f."""
+def ask_llama(prompt, temperature=None):
+    """Ask a question to the GPT-4 Free backend via g4f. Always use temperature=0.1."""
+    temperature = 0.1
     logger.info(f"\nSending prompt to g4f ChatCompletion with temperature={temperature}…")
     try:
         response = g4f.ChatCompletion.create(
@@ -88,7 +179,6 @@ def ask_llama(prompt, temperature=0.7):
             provider=g4f.Provider.PollinationsAI,
             temperature=temperature
         )
-        # g4f returns plain text (no dict like OpenAI)
         logger.info("Received response:" + response)
         return response.strip()
     except Exception as e:
@@ -387,7 +477,7 @@ max_position_pct_of_volume = params.get('max_position_pct', 0.01)  # Maximum 1% 
 #       balance -= trade_cost
 #       shares += shares_to_buy
 #       buy_points.append((i, price_today)) # Record buy point (index, price at trade)
-#       print(f"Bought [shares_to_buy] shares at [buy_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
+#       logger.info(f"Bought [shares_to_buy] shares at [buy_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
 
 # Example Sell Logic (adapt to your strategy):
 # elif YOUR_SELL_CONDITION and shares > 0: # Only sell if shares are held
@@ -405,7 +495,7 @@ max_position_pct_of_volume = params.get('max_position_pct', 0.01)  # Maximum 1% 
 #       sale_proceeds = (shares * sell_price) - commission
 #       balance += sale_proceeds
 #       sell_points.append((i, price_today)) # Record sell point (index, price at trade)
-#       print(f"Sold [shares] shares at [sell_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f[])")
+#       logger.info(f"Sold [shares] shares at [sell_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
 #       shares = 0
 
 # At the end of each iteration in your loop (after potential buy/sell):
@@ -422,7 +512,7 @@ if shares > 0:
     sale_proceeds = (shares * last_price) - commission
     balance += sale_proceeds
     sell_points.append((len(close) -1, close[-1] if close else 0.01)) # Record final auto-sell
-    print(f"Final liquidation: Sold [shares] shares at [last_price:.2f] with [commission:.2f] commission")
+    logger.info(f"Final liquidation: Sold [shares] shares at [last_price:.2f] with [commission:.2f] commission")
     shares = 0
 balance_over_time.append(balance) # Append final balance state
 return balance - initial_balance, buy_points, sell_points, balance_over_time
@@ -548,7 +638,7 @@ max_position_pct_of_volume = params.get('max_position_pct', 0.01)  # Maximum 1% 
 #       balance -= trade_cost
 #       shares += shares_to_buy
 #       buy_points.append((i, price_today)) # Record buy point (index, price at trade)
-#       print(f"Bought [shares_to_buy] shares at [buy_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
+#       logger.info(f"Bought [shares_to_buy] shares at [buy_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
 
 # Example Sell Logic (adapt to your strategy):
 # elif YOUR_SELL_CONDITION and shares > 0: # Only sell if shares are held
@@ -566,7 +656,7 @@ max_position_pct_of_volume = params.get('max_position_pct', 0.01)  # Maximum 1% 
 #       sale_proceeds = (shares * sell_price) - commission
 #       balance += sale_proceeds
 #       sell_points.append((i, price_today)) # Record sell point (index, price at trade)
-#       print(f"Sold [shares] shares at [sell_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
+#       logger.info(f"Sold [shares] shares at [sell_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
 #       shares = 0
 
 # At the end of each iteration in your loop (after potential buy/sell):
@@ -583,7 +673,7 @@ if shares > 0:
     sale_proceeds = (shares * last_price) - commission
     balance += sale_proceeds
     sell_points.append((len(close) -1, close[-1] if close else 0.01)) # Record final auto-sell
-    print(f"Final liquidation: Sold [shares] shares at [last_price:.2f] with [commission:.2f] commission")
+    logger.info(f"Final liquidation: Sold [shares] shares at [last_price:.2f] with [commission:.2f] commission")
     shares = 0
 balance_over_time.append(balance) # Append final balance state
 return balance - initial_balance, buy_points, sell_points, balance_over_time
@@ -647,7 +737,7 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
 
             if not response or attempts > 0:
                 logger.info("Getting response from GPT…")
-                response = ask_llama(current_prompt, temperature=current_temperature)
+                response = ask_llama(current_prompt)
                 if response is None:
                     raise Exception("LLM failed to provide a response.")
 
@@ -662,8 +752,8 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                 from datetime import datetime
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 
-                safe_user_input_filename_part = re.sub(r'[^\\w\\s-]', '', user_input[:30])
-                safe_user_input_filename_part = re.sub(r'\\s+', '_', safe_user_input_filename_part).strip('-_')
+                safe_user_input_filename_part = re.sub(r'[^-\w\s-]', '', user_input[:30])
+                safe_user_input_filename_part = re.sub(r'\s+', '_', safe_user_input_filename_part).strip('-_')
                 
                 code_info = {
                     'timestamp': timestamp,
@@ -687,20 +777,11 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                 raise
                 
             logger.info("Evaluating input function with timeout protection...")
-            
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(30) 
-            
+            # TODO: Implement a safe timeout using multiprocessing or another method if needed in production
             try:
                 inp = eval(f'{function_name_input_code}()')
-                signal.alarm(0)
                 logger.info(f"Input function returned: {inp}")
-            except TimeoutError:
-                signal.alarm(0)
-                logger.info("ERROR: get_user_params function execution timed out after 30 seconds")
-                raise Exception("get_user_params function timed out - likely contains an infinite loop or excessive computation.")
             except Exception as e:
-                signal.alarm(0)
                 logger.info(f"Error evaluating input function: {e}")
                 raise
 
@@ -720,16 +801,20 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                     safe_params = {i: val for i, val in enumerate(params_arg)}
                     for i, val in enumerate(params_arg):
                         safe_params[f'param{i+1}'] = val
-                        local_vars['params'] = safe_params
-                    
+                    local_vars['params'] = safe_params
+                
                 # Ensure params is a dictionary
-                    if not isinstance(local_vars['params'], dict):
-                        logger.info("Warning: Converting non-dict params to dict for safety")
+                if not isinstance(local_vars['params'], dict):
+                    logger.info("Warning: Converting non-dict params to dict for safety")
+                    if isinstance(local_vars['params'], str):
+                        # Handle string params by treating it as a single parameter
                         local_vars['params'] = {'param': local_vars['params']}
-                    
+                    else:
+                        local_vars['params'] = {'param': local_vars['params']}
+                
                 # Guarantee a working .get method
-                    if not hasattr(local_vars['params'], 'get'):
-                        local_vars['params'] = dict(local_vars['params'])
+                if not hasattr(local_vars['params'], 'get'):
+                    local_vars['params'] = dict(local_vars['params'])
 
                 # Make sure 'close' reference exists inside params
                 local_vars['params'].setdefault('close', close)
@@ -741,7 +826,7 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
 
                 # Attempt to run the strategy with various fall-backs for signature mismatches
                 try:
-                        result = eval(f"{func_name}(params)", globals(), local_vars)
+                    result = eval(f"{func_name}(params)", globals(), local_vars)
                 except TypeError as e:
                     if ("required positional argument" in str(e) or
                         "takes 1 positional argument" in str(e) or
@@ -755,16 +840,16 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                                 result = eval(f"{func_name}()", globals(), local_vars)
                             else:
                                 raise
-                        else:
-                            raise
-                    
+                    else:
+                        raise
+                
                 # Normalise result into expected 4-tuple if necessary
                 if not (isinstance(result, tuple) and len(result) == 4) and not (
                     isinstance(result, dict) and all(k in result for k in [
                         'profit_loss', 'buy_points', 'sell_points', 'balance_over_time'])):
                     logger.info(f"Warning: {func_name} returned {type(result)} instead of a 4-tuple or expected dict. Attempting to adapt.")
                     if isinstance(result, (int, float)): # Only profit/loss returned
-                            return result, [], [], [initial_balance, initial_balance + result]
+                        return result, [], [], [initial_balance, initial_balance + result]
                     elif isinstance(result, dict):
                         profit_loss = result.get('profit_loss', result.get('profit', 0))
                         buy_points_res = result.get('buy_points', result.get('buy', []))
@@ -918,97 +1003,196 @@ Your response MUST consist of:
     logger.info("\nExecution successful.")
     return bb, buy_points, sell_points, balance_over_time, code_info
 
-def run_improved_simulation(user_input, max_error_attempts=10):
-    """Run an iterative improvement process to achieve profit target."""
+def run_improved_simulation(user_input, max_error_attempts=10, max_iterations=None):
+    """Run an iterative improvement process to achieve profit target (copied/adapted from st.py)."""
     logger.info("\n=== STARTING ITERATIVE IMPROVEMENT PROCESS ===")
-    
-    # For API use, limit to just one iteration with fixed dataset
+    if max_iterations is None:
+        max_iterations = int(os.environ.get('BACKTEST_MAX_ITERATIONS', '5'))
     global close, dates
-    
-    # Create a base counter for plots
     from datetime import datetime
     base_counter = int(datetime.now().timestamp())
-    
-    # Select the dataset (use test.csv for consistency)
-    file_path = get_random_dataset()
-    close = []
-    dates = []
-    
-    try:
-        if file_path and os.path.exists(file_path):
-            logger.info(f"Loading data from {file_path}")
-            with open(file_path, 'r') as csvfile:
-                reader = csv.DictReader(csvfile)
-                for row in reader:
-                    try:
-                        close.append(float(row['Close']))
-                        dates.append(row['Date'])
-                    except (ValueError, KeyError) as e:
-                        logger.info(f"Warning: Error parsing row {row}: {e}")
-            logger.info(f"Loaded {len(close)} data points.")
-        else:
-            raise FileNotFoundError("No valid dataset CSV file found. Please ensure /data/datasets contains at least one .csv file.")
-        
+    best_profit = float('-inf')
+    best_strategy_data = None
+    all_datasets_results = []
+    improvement_context = ""
+    for iteration in range(1, max_iterations + 1):
+        logger.info(f"\n--- IMPROVEMENT ITERATION {iteration}/{max_iterations} ---")
+        file_path = get_random_dataset()
+        dataset_name = os.path.basename(file_path) if file_path else "unknown"
+        close = []
+        dates = []
+        if not file_path or not os.path.exists(file_path):
+            logger.error(f"No valid dataset CSV file found: {file_path}")
+            continue
+        with open(file_path, 'r') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                try:
+                    close.append(float(row['Close']))
+                    dates.append(row['Date'])
+                except (ValueError, KeyError) as e:
+                    logger.info(f"Warning: Error parsing row {row}: {e}")
         if not close:
-            raise ValueError("Dataset file was found but no valid price data could be loaded from it.")
-        
-        # Calculate buy and hold profit as baseline for this dataset
+            logger.error(f"Dataset file {dataset_name} was found but no valid price data could be loaded from it.")
+            continue
         buy_hold_profit = calculate_buy_and_hold_profit(close)
-        
-        # Enhanced prompt is just the user input for API mode
-        enhanced_prompt = user_input
-        
-        # Run single simulation
+        target_profit = buy_hold_profit * 1.5
+        if iteration == 1:
+            enhanced_prompt = enhance_user_prompt(user_input) if max_iterations > 1 else user_input
+        else:
+            improvement_context = f"""
+**PREVIOUS ITERATION PERFORMANCE:**
+- Previous Profit: ${current_profit:.2f} (vs Buy & Hold: {percent_above_buyhold:+.2f}%)
+- Target Profit: ${target_profit:.2f}
+- Performance vs Target: {percent_vs_target:+.2f}%
+
+**IMPROVEMENT SUGGESTIONS:**
+{improvement_suggestions if 'improvement_suggestions' in locals() else ''}
+
+Based on the above analysis, implement these improvements in your trading strategy to achieve the target profit of ${target_profit:.2f}.
+"""
+            enhanced_prompt = user_input
+        improvement_context = "" if iteration == 1 else improvement_context
         current_profit, buy_points, sell_points, balance_over_time, code_info = run_simulation(
             enhanced_prompt, 
             user_input, 
-            "", 
-            1,
-            1,
+            improvement_context, 
+            iteration,
+            max_iterations,
             max_error_attempts
         )
-        
-        # Calculate percentage above buy-and-hold
         percent_above_buyhold = ((current_profit / buy_hold_profit) - 1) * 100 if buy_hold_profit > 0 else 0
-        
+        percent_vs_target = ((current_profit / target_profit) - 1) * 100 if target_profit > 0 else 0
         logger.info(f"\nCurrent Profit: ${current_profit:.2f}")
         logger.info(f"Buy & Hold Profit: ${buy_hold_profit:.2f}")
+        logger.info(f"Target Profit (1.5x Buy & Hold): ${target_profit:.2f}")
         logger.info(f"Performance vs Buy & Hold: {percent_above_buyhold:+.2f}%")
-        
-        # Get code content
+        logger.info(f"Performance vs Target: {percent_vs_target:+.2f}%")
+        normalized_buy_points = []
+        for point in buy_points:
+            if isinstance(point, tuple) and len(point) == 2:
+                index = point[0]
+                if isinstance(index, (int, float)) and 0 <= index < len(close):
+                    normalized_buy_points.append((int(index), close[int(index)]))
+            elif isinstance(point, (int, float)) and 0 <= point < len(close):
+                normalized_buy_points.append((int(point), close[int(point)]))
+        normalized_sell_points = []
+        for point in sell_points:
+            if isinstance(point, tuple) and len(point) == 2:
+                index = point[0]
+                if isinstance(index, (int, float)) and 0 <= index < len(close):
+                    normalized_sell_points.append((int(index), close[int(index)]))
+            elif isinstance(point, (int, float)) and 0 <= point < len(close):
+                normalized_sell_points.append((int(point), close[int(point)]))
+        logger.info(f"Normalized {len(normalized_buy_points)} buy points and {len(normalized_sell_points)} sell points")
         code_info = code_info or {}
         trading_strategy_code = code_info.get('code', '')
         params_code = code_info.get('input_code', '')
-        
-        # Build the full response
-        result = {
-            'status': 'success',
+        iteration_result = {
+            'iteration': iteration,
+            'dataset': dataset_name,
             'profit': current_profit,
             'buy_hold_profit': buy_hold_profit,
+            'target_profit': target_profit,
             'percent_above_buyhold': percent_above_buyhold,
-            'dataset': os.path.basename(file_path) if file_path else 'unknown',
-            'buy_points': buy_points,
-            'sell_points': sell_points,
+            'percent_vs_target': percent_vs_target,
+            'buy_points': normalized_buy_points,
+            'sell_points': normalized_sell_points,
             'balance_over_time': balance_over_time,
-            'close': close,  # Include close price data for client-side charting
-            'dates': dates,  # Include dates for chart labels
-            'trades': {
-                'count': len(buy_points),
-                'buys': buy_points,
-                'sells': sell_points
-            },
-            'code': f"# Trading Strategy\n{trading_strategy_code}\n\n# Parameters\n{params_code}"
+            'close': close,
+            'dates': dates,
+            'code': f"# Trading Strategy (Iteration {iteration})\n{trading_strategy_code}\n\n# Parameters\n{params_code}"
         }
-        
-        return result
-    except Exception as e:
-        error_traceback = traceback.format_exc()
-        logger.info(f"Error during simulation: {e}")
-        logger.info(error_traceback)
+        all_datasets_results.append(iteration_result)
+        if current_profit > best_profit:
+            logger.info(f"New best strategy found! Profit: ${current_profit:.2f}")
+            best_profit = current_profit
+            best_strategy_data = iteration_result
+        if max_iterations > 1 and current_profit >= target_profit:
+            logger.info("\n=== TARGET PROFIT ACHIEVED! ===")
+            break
+        # Generate improvement suggestions for next iteration
+        if iteration < max_iterations:
+            logger.info("\nGenerating improvement suggestions...")
+            improvement_prompt = f"""
+**Strategy Analysis and Improvement**
+
+I need you to analyze the current trading strategy and suggest specific improvements to increase profitability.
+
+**Current Strategy:** {user_input}
+
+**Performance Metrics:**
+- Current Profit: ${current_profit:.2f}
+- Buy & Hold Profit: ${buy_hold_profit:.2f}
+- Target Profit (1.5x Buy & Hold): ${target_profit:.2f}
+- Performance vs Buy & Hold: {percent_above_buyhold:+.2f}%
+- Performance vs Target: {percent_vs_target:+.2f}%
+- Number of Buy Points: {len(buy_points)}
+- Number of Sell Points: {len(sell_points)}
+
+**Current Price Series Statistics:**
+- First Price: ${close[0]:.2f}
+- Last Price: ${close[-1]:.2f}
+- Min Price: ${min(close):.2f}
+- Max Price: ${max(close):.2f}
+- Price Range: ${max(close) - min(close):.2f}
+
+**Your Task:**
+You must keep the strategy at least 95% the same as the user's original. Only make minimal, necessary changes to improve profitability. Do not rewrite or restructure the strategy. Focus on:
+1. Parameter adjustments (multipliers, thresholds, etc.)
+2. Tiny logic improvements to buy/sell decision-making
+3. Any inefficiencies in the current approach
+
+**Output Format:** 
+Provide a concise, focused analysis of what's working/not working, followed by specific, bulleted improvement suggestions. Your response will be fed directly back into the strategy implementation.
+"""
+            improvement_suggestions = ask_llama(improvement_prompt)
+    if not all_datasets_results:
         return {
             'status': 'error',
-            'error': str(e)
+            'error': "All iterations failed to produce results"
         }
+    final_result = best_strategy_data or all_datasets_results[-1]
+    result = {
+        'status': 'success',
+        'profit': int(round(final_result['profit'])),
+        'buy_hold_profit': final_result['buy_hold_profit'],
+        'percent_above_buyhold': final_result['percent_above_buyhold'],
+        'dataset': final_result['dataset'],
+        'datasets_tested': len(all_datasets_results),
+        'buy_points': final_result.get('buy_points', []),
+        'sell_points': final_result.get('sell_points', []),
+        'balance_over_time': final_result.get('balance_over_time', []),
+        'close': final_result.get('close', []),
+        'dates': final_result.get('dates', []),
+        'trades': {
+            'count': len(final_result.get('buy_points', [])),
+            'buys': final_result.get('buy_points', []),
+            'sells': final_result.get('sell_points', [])
+        },
+        'code': final_result['code'],
+        'all_iterations': [{
+            'iteration': r['iteration'],
+            'dataset': r['dataset'],
+            'profit': r['profit'],
+            'percent_above_buyhold': r['percent_above_buyhold'],
+            'trades_count': len(r['buy_points'])
+        } for r in all_datasets_results]
+    }
+    if 'buy_points' in result and result['buy_points']:
+        chart_ready_buy_points = []
+        for point in result['buy_points']:
+            if isinstance(point, tuple) and len(point) == 2:
+                chart_ready_buy_points.append({'x': point[0], 'y': point[1]})
+        result['buy_points'] = chart_ready_buy_points
+    if 'sell_points' in result and result['sell_points']:
+        chart_ready_sell_points = []
+        for point in result['sell_points']:
+            if isinstance(point, tuple) and len(point) == 2:
+                chart_ready_sell_points.append({'x': point[0], 'y': point[1]})
+        result['sell_points'] = chart_ready_sell_points
+    logger.info(f"Final result includes {len(result.get('buy_points', []))} buy points and {len(result.get('sell_points', []))} sell points")
+    return result
 
 def enhance_user_prompt(original_prompt):
     """Enhance the user's trading strategy prompt using LLM."""
@@ -1035,7 +1219,7 @@ Provide ONLY the enhanced strategy description. DO NOT include explanations, int
 
     try:
         logger.info("Getting enhanced prompt from LLM...")
-        enhanced_prompt = ask_llama(enhancement_prompt, temperature=0.5)  # Lower temperature for more conservative edits
+        enhanced_prompt = ask_llama(enhancement_prompt)
         
         if enhanced_prompt and len(enhanced_prompt) > 50:  # Basic validation
             logger.info("Successfully enhanced the prompt.")
@@ -1089,6 +1273,6 @@ if __name__ == "__main__":
                 'error': str(e),
                 'traceback': error_traceback
             }
-            print(json.dumps(error_response))
+            logger.info(json.dumps(error_response))
         
         sys.exit(1)

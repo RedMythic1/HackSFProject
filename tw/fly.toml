@@ -9,6 +9,7 @@ primary_region = "sjc"  # San Jose, California
   PORT = "8080"
   DEBUG = "true"
   PYTHONPATH = "/app:/app/api/python_packages"
+  USE_SYSTEM_PACKAGES = "true"
 
 [http_service]
   internal_port = 8080

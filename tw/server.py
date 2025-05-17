@@ -11,6 +11,18 @@ import glob
 import random  # Replace numpy with random
 import math
 import re
+import traceback
+
+# Check if we should use system-installed packages instead of bundled ones
+USE_SYSTEM_PACKAGES = os.environ.get('USE_SYSTEM_PACKAGES', 'false').lower() == 'true'
+if not USE_SYSTEM_PACKAGES and os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'api/python_packages')):
+    # Add the bundled packages to the Python path
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'api/python_packages'))
+    logger_init = logging.getLogger("initialization")
+    logger_init.info("Using bundled Python packages from api/python_packages")
+else:
+    logger_init = logging.getLogger("initialization")
+    logger_init.info("Using system-installed Python packages")
 
 # Set up logging
 logging.basicConfig(
@@ -289,7 +301,7 @@ def backtest():
     """API endpoint for backtesting trading strategies
     
     Takes a trading strategy description from the user
-    Returns buy/sell points, profit, and performance data
+    Returns buy/sell points, profit, and performance data for frontend charting
     """
     logger.info("Processing backtesting endpoint")
     try:
@@ -302,192 +314,67 @@ def backtest():
         strategy_description = data['strategy']
         logger.info(f"Received backtest request with strategy: {strategy_description[:100]}...")
         
-        # Check if stock symbol is mentioned in the strategy
-        stock_pattern = r'\b[A-Z]{1,5}\b'  # Pattern to match stock symbols (1-5 uppercase letters)
-        stock_matches = re.findall(stock_pattern, strategy_description)
-        
-        price_series = None
-        dates = None
-        logger.info(f"DATASETS_DIR: {DATASETS_DIR}")
-        logger.info(f"os.path.exists(DATASETS_DIR): {os.path.exists(DATASETS_DIR)}")
-        # Try to find CSV data for the stock if mentioned
-        if stock_matches and os.path.exists(DATASETS_DIR):
-            for symbol in stock_matches:
-                csv_path = os.path.join(DATASETS_DIR, f"{symbol.lower()}.us_daily.csv")
-                if os.path.exists(csv_path):
-                    logger.info(f"Found CSV data for stock {symbol} at {csv_path}")
-                    try:
-                        import pandas as pd
-                        df = pd.read_csv(csv_path)
-                        # Assuming format with columns: Date, Open, High, Low, Close, Volume, etc.
-                        if 'Close' in df.columns and 'Date' in df.columns:
-                            price_series = df['Close'].values
-                            dates = df['Date'].values.tolist()
-                            days = len(price_series)
-                            logger.info(f"Loaded {days} days of price data for {symbol}")
-                            break
-                    except Exception as e:
-                        logger.error(f"Error loading CSV data for {symbol}: {e}")
-        
-        # If no stock data found or couldn't load, use simulated data
-        if price_series is None:
-            logger.info("No stock data found or couldn't load, using simulated data")
-            days = 100
-            base_price = 100.0
-            volatility = 0.02
-            trend = 0.001
+        try:
+            # Try to import the backtest module
+            from api.backtest import run_improved_simulation
             
-            # Generate random walk for stock prices using standard Python
-            random.seed(42)  # For reproducible results
-            price_series = [base_price]
-            for _ in range(days - 1):
-                # Generate a random return with normal-like distribution
-                # Using Box-Muller transform for normal-like distribution
-                u1 = random.random()
-                u2 = random.random()
-                z = (-2 * math.log(u1)) ** 0.5 * math.cos(2 * math.pi * u2)
-                daily_return = trend + volatility * z
-                next_price = price_series[-1] * (1 + daily_return)
-                price_series.append(next_price)
+            # Run the backtest using the more robust implementation with iterations
+            result = run_improved_simulation(strategy_description)
             
-            # Generate date labels (last 100 days)
-            end_date = datetime.now()
-            dates = [(end_date - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days)]
-            dates.reverse()  # Oldest first
-        
-        # Simple strategy parsing (in a real app, you'd use NLP or a more sophisticated parser)
-        # Look for keywords to determine strategy parameters
-        
-        # Default simple strategy: Buy when price drops by 2%, sell when price rises by 3%
-        buy_threshold = -0.02
-        sell_threshold = 0.03
-        window_size = 5  # Look back period for calculating changes
-        
-        # Analyze the strategy text to modify parameters
-        if "moving average" in strategy_description.lower():
-            # Extract the window size for moving average if specified
-            ma_matches = re.findall(r'(\d+)[-\s]day moving average', strategy_description.lower())
-            if ma_matches:
-                window_size = int(ma_matches[0])
-                logger.info(f"Using moving average with window size: {window_size}")
-        
-        if "buy" in strategy_description.lower() and "below" in strategy_description.lower():
-            # Strategy mentions buying below something - make threshold more negative
-            buy_threshold = -0.03
-        
-        if "sell" in strategy_description.lower() and "above" in strategy_description.lower():
-            # Strategy mentions selling above something - make threshold more positive
-            sell_threshold = 0.04
+            # If there's an error, return it
+            if result.get('status') == 'error':
+                logger.error(f"Backtest failed: {result.get('error')}")
+                return jsonify(result), 500
             
-        # Execute backtest with the parameters
-        buy_points = []
-        sell_points = []
-        balance = 10000  # Start with $10,000
-        shares = 0
-        balance_history = [balance]
-        buy_prices = []
-        
-        # Calculate moving averages for the entire series using Python
-        ma_series = []
-        for i in range(days):
-            if i < window_size - 1:
-                ma_series.append(price_series[i])  # Not enough data for MA yet
+            # Log success with profit information and number of trades
+            profit = result.get('profit', 0)
+            trades_count = result.get('trades', {}).get('count', 0)
+            logger.info(f"Backtest completed successfully. Profit/Loss: ${profit:.2f}, Trades: {trades_count}")
+            
+            # Include dataset information if available (as a string, not a nested object)
+            if result.get('dataset'):
+                logger.info(f"Including dataset information in response: {result.get('dataset')}")
+            
+            # No need to include chart URLs since we'll generate charts on the frontend
+            # Instead, make sure we have all the necessary data for charting
+            
+            # Return the result with all data needed for frontend charts
+            return jsonify(result)
+        except TypeError as te:
+            logger.exception(f"TypeError in backtest: {te}")
+            if "'type' object is not subscriptable" in str(te):
+                # This is a Python version compatibility issue
+                error_msg = "Backtest failed due to Python version compatibility issues. The server is running on Python 3.8 or earlier, but the dependencies require Python 3.9+."
+                logger.error(f"{error_msg} Original error: {te}")
+                return jsonify({
+                    "status": "error", 
+                    "error": error_msg,
+                    "details": "Please upgrade the server to Python 3.9 or later, or use compatible versions of the dependencies."
+                }), 500
             else:
-                # Calculate mean manually
-                window_sum = sum(price_series[i-window_size+1:i+1])
-                ma = window_sum / window_size
-                ma_series.append(ma)
-        
-        # Execute trades based on strategy
-        for i in range(1, days):
-            price = price_series[i]
-            prev_price = price_series[i-1]
-            ma = ma_series[i]
-            prev_ma = ma_series[i-1]
+                # Other TypeError
+                return jsonify({
+                    "status": "error",
+                    "error": str(te),
+                    "traceback": traceback.format_exc()
+                }), 500
             
-            # Determine if we should buy (price dropped below MA by threshold)
-            price_to_ma_ratio = price / ma - 1
-            if shares == 0 and price_to_ma_ratio < buy_threshold:
-                # Buy condition met
-                shares_to_buy = int(balance / price)
-                if shares_to_buy > 0:
-                    shares = shares_to_buy
-                    cost = shares * price
-                    balance -= cost
-                    buy_points.append([i, price])  # [day index, price]
-                    buy_prices.append(price)
-                    logger.info(f"BUY: Day {i}, Price: ${price:.2f}, Shares: {shares}, Balance: ${balance:.2f}")
-            
-            # Determine if we should sell (price rose above MA by threshold)
-            elif shares > 0 and price_to_ma_ratio > sell_threshold:
-                # Sell condition met
-                sale_value = shares * price
-                balance += sale_value
-                sell_points.append([i, price])  # [day index, price]
-                logger.info(f"SELL: Day {i}, Price: ${price:.2f}, Shares: {shares}, Balance: ${balance:.2f}")
-                shares = 0
-            
-            # Update balance history (account for shares held)
-            current_value = balance
-            if shares > 0:
-                current_value += shares * price
-            balance_history.append(current_value)
-        
-        # Calculate final statistics
-        initial_value = balance_history[0]
-        final_value = balance_history[-1]
-        profit_loss = final_value - initial_value
-        
-        # Generate sample code based on the strategy
-        generated_code = f"""# Python trading strategy based on your description:
-# "{strategy_description}"
-
-def execute_strategy(price_data, window_size={window_size}):
-    buy_signals = []
-    sell_signals = []
-    holdings = 0
-    
-    # Calculate moving average
-    for i in range(window_size, len(price_data)):
-        price = price_data[i]
-        ma = sum(price_data[i-window_size:i]) / window_size
-        
-        # Buy condition: price below MA by {buy_threshold*100}%
-        if holdings == 0 and price < ma * (1 + {buy_threshold}):
-            buy_signals.append(i)
-            holdings = 1
-            
-        # Sell condition: price above MA by {sell_threshold*100}%
-        elif holdings > 0 and price > ma * (1 + {sell_threshold}):
-            sell_signals.append(i)
-            holdings = 0
-            
-    return buy_signals, sell_signals
-"""
-
-        # Results in the format expected by the frontend
-        result = {
-            "status": "success",
-            "profit_loss": profit_loss,
-            "buy_points": buy_points,
-            "sell_points": sell_points,
-            "balance_over_time": balance_history,
-            "generated_code": generated_code,
-            "close": price_series,  # Already a Python list now
-            "dates": dates,    # Date labels
-            "trades": {
-                "count": len(buy_points),
-                "buys": buy_points,
-                "sells": sell_points
-            }
-        }
-        
-        logger.info(f"Backtest completed successfully. Profit/Loss: ${profit_loss:.2f}, Trades: {len(buy_points)}")
-        return jsonify(result)
-    
     except Exception as e:
         logger.exception(f"Error in backtest endpoint: {e}")
-        return jsonify({"status": "error", "error": str(e)}), 500
+        return jsonify({
+            "status": "error", 
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+# Register additional static routes
+@app.route('/static/charts/<path:filename>')
+def serve_chart(filename):
+    """Serve chart images from the charts directory"""
+    charts_dir = os.path.join(DATASETS_DIR, 'charts')
+    os.makedirs(charts_dir, exist_ok=True)
+    logger.info(f"Serving chart: {filename} from {charts_dir}")
+    return send_from_directory(charts_dir, filename)
 
 @app.route('/', defaults={'path': 'index.html'})
 @app.route('/<path:path>')
@@ -504,7 +391,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run the Flask server')
     parser.add_argument('--port', type=int, default=8080, help='Port to run the server on')
     parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to run the server on')
+    parser.add_argument('--iterations', type=int, default=1, help='Number of iterations for backtesting')
     args = parser.parse_args()
+    
+    # Set environment variables for backtesting
+    os.environ['BACKTEST_MAX_ITERATIONS'] = str(args.iterations)
+    
+    # Make sure DATASETS_DIR is correctly set
+    if not os.environ.get('DATASETS_DIR'):
+        os.environ['DATASETS_DIR'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'datasets')
+        logger.info(f"Set DATASETS_DIR to {os.environ['DATASETS_DIR']}")
     
     logger.info(f"Starting server on {args.host}:{args.port}")
     app.run(host=args.host, port=args.port, debug=False) 

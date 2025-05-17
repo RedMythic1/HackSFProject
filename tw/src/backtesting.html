@@ -6,6 +6,11 @@
     <!-- Add permissions policy meta tags to resolve browser warnings -->
     <meta http-equiv="Permissions-Policy" content="browsing-topics=(), run-ad-auction=(), join-ad-interest-group=(), attribution-reporting=(), private-state-token-redemption=(), private-state-token-issuance=(), private-aggregation=()">
     <title>Stock Backtesting - HackLens</title>
+    
+    <!-- Add Prism.js for code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-python.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -52,28 +57,38 @@
                             <h3>Success Rate</h3>
                             <div id="success-rate" class="result-value">0%</div>
                         </div>
+                        
+                        <div class="result-card">
+                            <h3>vs Buy & Hold</h3>
+                            <div id="vs-buyhold" class="result-value">0%</div>
+                        </div>
                     </div>
                     
                     <div class="chart-container">
-                        <h3>Performance Chart</h3>
+                        <h3>Performance Charts</h3>
+                        <div class="chart-tabs">
+                            <button class="chart-tab active" data-target="price-chart-container">Price with Buy/Sell</button>
+                            <button class="chart-tab" data-target="balance-chart-container">Portfolio Value</button>
+                        </div>
                         <div id="chart-area">
-                            <div class="price-chart-container">
+                            <div class="chart-panel price-chart-container active">
                                 <canvas id="price-chart"></canvas>
                             </div>
-                            <div class="balance-chart-container">
+                            <div class="chart-panel balance-chart-container">
                                 <canvas id="balance-chart"></canvas>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="log-container">
-                        <h3>Backtest Logs:</h3>
-                        <pre id="backtestLogOutput"></pre>
-                    </div>
-                    
                     <div class="code-container">
                         <h3>Generated Trading Strategy Code</h3>
-                        <pre id="generated-code" class="code-block"></pre>
+                        <pre id="generated-code" class="code-block language-python"></pre>
+                    </div>
+                    
+                    <div class="dataset-info">
+                        <h3>Dataset Information</h3>
+                        <div id="dataset-name">Unknown Dataset</div>
+                        <div id="dataset-size">0 data points</div>
                     </div>
                 </div>
             </section>
@@ -85,6 +100,5 @@
     </div>
 
     <script src="backtesting.js"></script>
-    <!-- <script src="helpers.js"></script> -->
 </body>
 </html> 
