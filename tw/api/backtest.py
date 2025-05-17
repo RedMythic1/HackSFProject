@@ -3,29 +3,35 @@ import csv
 import os
 import traceback
 import re
-import g4f
+import sys
 import argparse
 import json
-import sys
-import numpy as np
 import time
 import random
 
+# Add the python_packages directory to the Python path
+package_dir = os.path.join(os.path.dirname(__file__), 'python_packages')
+sys.path.insert(0, package_dir)
+
+# Now import packages from the local directory
+import g4f
+import numpy as np
+
 # Define a log file path
-LOG_FILE_PATH = os.path.join(os.path.dirname(__file__), 'backtest_live.log')
+# LOG_FILE_PATH = os.path.join(os.path.dirname(__file__), 'backtest_live.log') # Removed
 
 # Clear the log file at the start of the script
-if os.path.exists(LOG_FILE_PATH):
-    os.remove(LOG_FILE_PATH)
+# if os.path.exists(LOG_FILE_PATH): # Removed
+#     os.remove(LOG_FILE_PATH) # Removed
 
 def log_message(message):
-    """Logs a message to both the console and the log file."""
+    """Logs a message to the console."""
     print(message) # Keep original console output
-    try:
-        with open(LOG_FILE_PATH, 'a') as f:
-            f.write(str(message) + '\n')
-    except Exception as e:
-        print(f"Error writing to log file: {e}") # Log errors to console
+    # try: # Removed
+    #     with open(LOG_FILE_PATH, 'a') as f: # Removed
+    #         f.write(str(message) + '\\n') # Removed
+    # except Exception as e: # Removed
+    #     print(f"Error writing to log file: {e}") # Removed
 
 # Track previously used datasets in this session
 if 'used_datasets' not in globals():

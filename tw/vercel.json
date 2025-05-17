@@ -1,23 +1,24 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/index.js",
-      "use": "@vercel/node"
+  "functions": {
+    "api/index.js": {
+      "runtime": "@vercel/node@2.15.10",
+      "excludeFiles": "{.next,*.cache,node_modules,public,static,stockbt,src,models,tools,__pycache__,user_data}/**"
     },
-    {
-      "src": "api/vercel.js",
-      "use": "@vercel/node"
+    "api/vercel.js": {
+      "runtime": "@vercel/node@2.15.10",
+      "excludeFiles": "{.next,*.cache,node_modules,public,static,stockbt,src,models,tools,__pycache__,user_data}/**"
     },
-    {
-      "src": "api/env-check.js",
-      "use": "@vercel/node"
+    "api/env-check.js": {
+      "runtime": "@vercel/node@2.15.10",
+      "excludeFiles": "{.next,*.cache,node_modules,public,static,stockbt,src,models,tools,__pycache__,user_data}/**"
     },
-    {
-      "src": "dist/**",
-      "use": "@vercel/static"
+    "api/**/*.py": {
+      "runtime": "@vercel/python@3.1.53",
+      "excludeFiles": "{.next,*.cache,node_modules,public,static,stockbt,src,models,tools,__pycache__,user_data}/**",
+      "includeFiles": "api/python_packages/**"
     }
-  ],
+  },
   "routes": [
     {
       "src": "/api/env-check",
@@ -104,6 +105,23 @@
     "VERCEL": "1",
     "DEBUG": "true",
     "BLOB_READ_WRITE_TOKEN": "vercel_blob_rw_MzCMzRmJaiRlp3km_L5RVXS9InB9rTT1Aov2ZI4kzQFoT5S",
-    "BLOB_URL": "https://mzcmzrmjairlp3km.public.blob.vercel-storage.com"
+    "BLOB_URL": "https://mzcmzrmjairlp3km.public.blob.vercel-storage.com",
+    "PYTHON_VERSION": "3.9",
+    "PYTHONPATH": "/var/task/api/python_packages:/var/task",
+    "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+    "PIP_NO_INSTALL": "1",
+    "PIP_IGNORE_INSTALLED": "1",
+    "PATH": "/var/task:/var/task/bin:/usr/local/bin:/usr/bin:/bin"
+  },
+  "build": {
+    "env": {
+      "PYTHON_VERSION": "3.9",
+      "PYTHONPATH": "${PYTHONPATH}:${VERCEL_ROOT}/api/python_packages",
+      "PIP_NO_DEPS": "1",
+      "PIP_NO_INSTALL": "1",
+      "PYTHONUSERBASE": "/var/task/api/python_packages",
+      "PATH": "/var/task:/var/task/bin:/usr/local/bin:/usr/bin:/bin"
+    },
+    "buildCommand": "echo 'Skipping build' && exit 0"
   }
 }

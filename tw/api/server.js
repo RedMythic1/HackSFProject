@@ -15,6 +15,19 @@ const WebSocket = require('ws');
 const http = require('http');
 const { 엄마APITESTER } = require('./test-exports.js');
 
+// Import the Python command handler
+let pythonCommand = 'python3'; // Default fallback
+try {
+  const serverHandler = require('./server_handler.js');
+  if (serverHandler.pythonCommand) {
+    pythonCommand = serverHandler.pythonCommand;
+    console.log(`Using Python command: ${pythonCommand}`);
+  }
+} catch (error) {
+  console.warn(`Could not load pythonCommand from server_handler.js: ${error.message}`);
+  console.warn('Defaulting to python3');
+}
+
 // Define a log file path (same as in backtest.py for combined logging)
 const LIVE_LOG_FILE_PATH = path.join(__dirname, 'backtest_live.log');
 
@@ -950,10 +963,16 @@ app.post('/api/backtest', async (req, res) => {
     process.env.BACKTEST_USE_TEST_DATASET = '1';
     logServerMessage(`Set BACKTEST_USE_TEST_DATASET=1`);
 
+    // Set the PYTHONPATH to the local python_packages directory
+    const pythonPackagesPath = path.join(__dirname, 'python_packages');
+    const currentEnv = { ...process.env };
+    currentEnv.PYTHONPATH = pythonPackagesPath;
+    logServerMessage(`Set PYTHONPATH=${pythonPackagesPath} for Python process`);
+
     const pythonArgs = [scriptPath, '--json', strategy];
-    logServerMessage(`Spawning python3 process with args: ${JSON.stringify(pythonArgs)}`, 'DEBUG');
+    logServerMessage(`Spawning ${pythonCommand} process with args: ${JSON.stringify(pythonArgs)}`, 'DEBUG');
     
-    const pythonProcess = spawn('python3', pythonArgs);
+    const pythonProcess = spawn(pythonCommand, pythonArgs, { env: currentEnv });
     
     let outputData = '';
     let errorData = '';

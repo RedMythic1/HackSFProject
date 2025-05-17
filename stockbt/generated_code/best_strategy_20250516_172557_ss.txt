@@ -1,0 +1,357 @@
+# BEST Trading Strategy - Iteration 4
+# User Input (Original): use ode diffrential equations...
+# User Input (Enhanced by LLM): use ode diffrential equations...
+# Profit: $297623.17
+# Buy & Hold Profit: $25815981.00
+# Performance vs Buy & Hold: -98.85%
+# Performance vs Target: -99.23%
+
+# --- Full LLM Prompt Used for This Strategy --- #
+
+**Your Role:** You are a specialized Python code generation assistant. Your sole task is to generate *exactly* two Python functions based on the user\'s strategy, following the strict rules below.
+
+**User Strategy:** use ode diffrential equations
+
+**IMPROVEMENT CONTEXT:** 
+
+**PREVIOUS ITERATION PERFORMANCE:**
+- Previous Profit: $100848.01 (vs Buy & Hold: -96.32%)
+- Target Profit: $4115321.25
+- Performance vs Target: -97.55%
+
+**IMPROVEMENT SUGGESTIONS:**
+**Analysis**
+
+- **What’s Working:**  
+  The strategy is actively generating buy/sell signals (35 buys, 35 sells), indicating the ODE-based logic is responsive to market changes. It’s not missing major action, but it is not capturing trend profits.
+
+- **What’s Not Working:**  
+  The performance is dramatically underperforming Buy & Hold (only ~3.7% as profitable). This suggests frequent whipsaws, late entries/exits, or holding through unfavorable moves. The ODE model is not aligning with the underlying trend, possibly overfitting to noise or reacting too slowly/quickly.
+
+**Improvement Suggestions**
+
+- **Parameter Adjustments**
+  - Slightly widen any ODE-driven thresholds for buying/selling (e.g., if using dP/dt > x, slightly increase |x|) to reduce overtrading and avoid noise.
+  - Increase holding period minimum, if present, to allow trends to develop.
+  - Decrease signal sensitivity (e.g., smooth input series more or increase ODE step size) to suppress false triggers.
+
+- **Logic Tweaks**
+  - Add a filter to confirm buy/sell signals only if price is above/below a short moving average, to avoid trading against the main trend.
+  - Require a minimum % price move from last trade before allowing a new buy/sell (e.g., >2%), to cut down on whipsaws.
+  - If possible, check for "buy high/sell low" errors by logging trade prices—tune logic to avoid entering against momentum.
+
+- **Efficiency Fixes**
+  - Ensure you’re not double-counting signals at price extremes (e.g., avoid buying/selling at the same price).
+  - If ODE output is noisy, add a debounce mechanism: only act on a signal if it persists for N periods.
+
+These minor changes should reduce unnecessary trades and let the ODE logic capture more of the underlying price trend, closing the gap with Buy & Hold.
+
+Based on the above analysis, implement these improvements in your trading strategy to achieve the target profit of $4115321.25.
+
+
+**DATA INFORMATION:**
+- The data is loaded from a CSV file at 'stockbt/datasets/test.csv'
+- CSV Format: Date,Open,High,Low,Close,Volume
+- In the code, only the Close prices are available as a simple Python list named 'close'
+- No DataFrame or pandas is used - data is just a plain Python list of float values
+- You DO NOT need to load the data yourself - it\'s already available as 'close'
+
+**CODE TEMPLATE GUIDELINES:**
+
+1. Use a TRADING_STRATEGY function that accepts PARAMS dict
+2. Iterate over CLOSE prices: for i, price_today in enumerate(close)
+3. Create BUY_POINTS and SELL_POINTS lists for trades
+4. Return (profit_loss, buy_points, sell_points, balance_over_time)
+5. Replace YOUR_BUY_CONDITION and YOUR_SELL_CONDITION with actual logic
+6. Use params.get('key', default) to safely access parameters
+7. NO input() calls or user prompting in any function
+8. Use try/except blocks to handle potential errors
+
+**Critical Output Requirements:**
+
+1.  **Format:**
+    *   Your entire response MUST be ONLY the Python code for the two functions.
+    *   **ABSOLUTELY NO MARKDOWN:** Do not use ```python, ```, or any other markdown formatting.
+    *   **NO Explanations** outside of the code itself: Do not add any prose before or after the functions.
+    *   **Limited Comments Allowed:** Inside the functions, you MAY include concise comments or docstrings that explain the purpose of scale/ratio parameters, but avoid any other extraneous commentary.
+    *   Separate the two functions with exactly ONE blank line.
+
+2.  **Function 1: `trading_strategy`**
+    *   Must be named exactly `trading_strategy`.
+    *   Must accept **EXACTLY ONE** positional argument (e.g., `params`), which will be the output (tuple or dict) from `get_user_params`. Do **NOT** add extra parameters (such as `formatted_inp`, `data`, etc.).
+    *   Must implement the user\'s trading strategy using the provided `params`.
+    *   When determining buy/sell prices, you **MUST NOT** rely on hard-coded or absolute price values. Instead, compute them as a **multiplier of the current `price_today`** or other relative measures derived from `params` (e.g., `buy_price = price_today * params["buy_mult"]`). A minimum execution price of $0.01 will be enforced.
+    *   Define necessary loop variables such as `i`, `price_today`, and any multiplier-derived `buy_price`/`sell_price` consistent with the strategy (note that `close` is available in the execution context).
+    *   Must include the **MANDATORY TRADING LOGIC** block verbatim within its primary execution loop or logic.
+    *   Must include realistic market execution features such as slippage, bid-ask spread, commissions/fees, and liquidity constraints.
+    *   Must **return** exactly `balance - initial_balance, buy_points, sell_points, balance_over_time` in that order.
+
+3.  **Function 2: `get_user_params`**
+    *   Must be named exactly `get_user_params`.
+    *   **ABSOLUTELY CRITICAL: THIS FUNCTION MUST *NEVER* PROMPT THE USER FOR INPUT (e.g., using `input()` or similar functions, printing messages to the console that ask for input). ANY FORM OF USER INTERACTION IS STRICTLY FORBIDDEN.** It must automatically determine or iteratively search for optimized numeric parameters relevant to the strategy.
+    *   Must **return** the chosen numeric parameters as a single tuple or dictionary.
+    *   Include realistic market execution parameters (slippage_pct, spread_pct, commission_per_share, min_commission, max_position_pct).
+    *   **DO NOT** read files (e.g., CSVs) within this function.
+    *   **DO NOT** hard-code absolute price thresholds; parameters should be relative scales/ratios or other dimensionless values.
+
+4.  **Environment:**
+    *   Assume `math` module is pre-imported and available. Do **NOT** add import statements.
+    *   Assume a Python list named `close` containing the price data is available in the execution scope of `trading_strategy`.
+
+5.  **Simplified Data Structure:** The price series is available as the global Python list named `close`. It\'s a simple list of floating-point values. Access elements with standard indexing: `close[i]` or iterate with `for i, price_today in enumerate(close):`. No pandas/DataFrame code is needed.
+
+6.  **Character Set:** Your entire code must use ONLY standard ASCII characters. Avoid typographic quotes (\' \' \" \" ) or long dashes (—). Use straight quotes (\' \") and hyphens (-) instead.
+
+7.  **Data Access:** The price series is available as the global list named `close`. **Do NOT** attempt to access data via dictionaries or DataFrames. Simply use `close[i]` or iterate with `for i, price_today in enumerate(close):`.
+
+8.  **Key-Error Safety:** Your code should never raise `KeyError`. Reference only variables you explicitly define.
+
+**MANDATORY TRADING LOGIC (Include and adapt this block inside `trading_strategy`):**
+```python
+initial_balance = 100000
+balance = initial_balance
+shares = 0
+buy_points = []
+sell_points = []
+balance_over_time = [balance] # Record initial balance
+
+# Market execution parameters (realistic market conditions)
+slippage_pct = params.get('slippage_pct', 0.001)  # 0.1% slippage by default
+spread_pct = params.get('spread_pct', 0.0005)  # 0.05% half-spread by default
+commission_per_share = params.get('commission_per_share', 0.005)  # $0.005 per share
+min_commission_per_trade = params.get('min_commission', 1.0)  # Minimum $1.00 per trade
+max_position_pct_of_volume = params.get('max_position_pct', 0.01)  # Maximum 1% of volume
+
+# --- Start of logic needing integration with your strategy loop ---
+# You need a loop here (e.g., for i, price_today in enumerate(close):)
+# Inside the loop, calculate buy/sell signals based on user_input strategy and params.
+
+# Example Buy Logic (adapt to your strategy):
+# if YOUR_BUY_CONDITION and shares == 0: # Only buy if no shares are held
+#   # Apply bid-ask spread (buy at ask price = higher)
+#   base_price = price_today * (1 + spread_pct)
+#   # Apply slippage (price moves against you when executing)
+#   buy_price_with_spread = base_price * (1 + slippage_pct)
+#   # Ensure minimum price
+#   buy_price = max(0.01, buy_price_with_spread * params.get('buy_price_multiplier', 0.99))
+#   
+#   # Apply liquidity constraint (limit position size)
+#   daily_volume = params.get('avg_volume', 100000)  # Default or from params
+#   max_shares_by_volume = int(daily_volume * max_position_pct_of_volume)
+#   
+#   # Calculate shares to buy considering price and liquidity
+#   max_shares_by_cash = math.floor(balance / buy_price) if buy_price > 0 else 0
+#   shares_to_buy = min(max_shares_by_cash, max_shares_by_volume)
+#   
+#   if shares_to_buy > 0:
+#       # Calculate commission
+#       commission = max(min_commission_per_trade, shares_to_buy * commission_per_share)
+#       # Execute trade with commission
+#       trade_cost = (shares_to_buy * buy_price) + commission
+#       balance -= trade_cost
+#       shares += shares_to_buy
+#       buy_points.append((i, price_today)) # Record buy point (index, price at trade)
+#       print(f"Bought [shares_to_buy] shares at [buy_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
+
+# Example Sell Logic (adapt to your strategy):
+# elif YOUR_SELL_CONDITION and shares > 0: # Only sell if shares are held
+#   # Apply bid-ask spread (sell at bid price = lower)
+#   base_price = price_today * (1 - spread_pct)
+#   # Apply slippage (price moves against you when executing)
+#   sell_price_with_spread = base_price * (1 - slippage_pct)
+#   # Ensure minimum price
+#   sell_price = max(0.01, sell_price_with_spread * params.get('sell_price_multiplier', 1.01))
+#   
+#   if shares > 0: # Check if shares are held before selling
+#       # Calculate commission
+#       commission = max(min_commission_per_trade, shares * commission_per_share)
+#       # Execute trade with commission
+#       sale_proceeds = (shares * sell_price) - commission
+#       balance += sale_proceeds
+#       sell_points.append((i, price_today)) # Record sell point (index, price at trade)
+#       print(f"Sold [shares] shares at [sell_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f[])")
+#       shares = 0
+
+# At the end of each iteration in your loop (after potential buy/sell):
+# balance_over_time.append(balance + (shares * price_today if shares > 0 else 0)) # Append current total value
+
+# After the loop, if shares are still held, liquidate them at the last known price
+if shares > 0:
+    # Apply bid-ask spread and slippage for final liquidation
+    base_price = max(0.01, close[-1] if close else 0.01) * (1 - spread_pct)
+    last_price = max(0.01, base_price * (1 - slippage_pct))
+    # Calculate commission for final sale
+    commission = max(min_commission_per_trade, shares * commission_per_share)
+    # Execute final liquidation with commission
+    sale_proceeds = (shares * last_price) - commission
+    balance += sale_proceeds
+    sell_points.append((len(close) -1, close[-1] if close else 0.01)) # Record final auto-sell
+    print(f"Final liquidation: Sold [shares] shares at [last_price:.2f] with [commission:.2f] commission")
+    shares = 0
+balance_over_time.append(balance) # Append final balance state
+return balance - initial_balance, buy_points, sell_points, balance_over_time
+```
+**(Note:** The MANDATORY TRADING LOGIC above is a template. You **must** integrate it correctly within the `trading_strategy` function\'s loop, defining variables like `i`, `price_today`, `buy_price`, `sell_price` according to the user\'s strategy and the parameters from `get_user_params`. The comments indicate where your strategy-specific logic needs to fit.)
+
+**Final Check:** Ensure your output is only the two raw Python function definitions separated by a single blank line. No markdown, no comments outside the functions, no extra text.
+
+**Important Output Format Requirements:**
+- Your trading_strategy function may return its results in EITHER of these formats:
+  1. Standard tuple: (profit_loss, buy_points, sell_points, balance_over_time)
+  2. Dictionary format: {\'profit_loss\': profit_amount, \'buy_points\': [...], \'sell_points\': [...], \'balance_over_time\': [...]}
+
+- The dictionary format is preferred as it\'s more explicit. For buy_points and sell_points, you can provide either:
+  * A list of (index, price) tuples
+  * A list of indices where trades occurred
+
+
+# --- Generated Strategy Function --- #
+def trading_strategy(params):
+    initial_balance = 100000
+    balance = initial_balance
+    shares = 0
+    buy_points = []
+    sell_points = []
+    balance_over_time = [balance]
+
+    slippage_pct = params.get('slippage_pct', 0.001)
+    spread_pct = params.get('spread_pct', 0.0005)
+    commission_per_share = params.get('commission_per_share', 0.005)
+    min_commission_per_trade = params.get('min_commission', 1.0)
+    max_position_pct_of_volume = params.get('max_position_pct', 0.01)
+    buy_price_multiplier = params.get('buy_price_multiplier', 0.99)
+    sell_price_multiplier = params.get('sell_price_multiplier', 1.01)
+    ode_window = params.get('ode_window', 5)
+    ode_threshold = params.get('ode_threshold', 0.001)
+    min_hold_period = params.get('min_hold_period', 10)
+    debounce_period = params.get('debounce_period', 3)
+    min_pct_move = params.get('min_pct_move', 0.02)
+    ma_period = params.get('ma_period', 7)
+    avg_volume = params.get('avg_volume', 100000)
+
+    last_trade_index = -min_hold_period
+    last_trade_price = None
+    buy_signal_debounce = 0
+    sell_signal_debounce = 0
+    holding_since = None
+
+    # Precompute moving average for trend filter
+    ma = []
+    for i in range(len(close)):
+        if i < ma_period:
+            ma.append(sum(close[:i+1]) / (i+1))
+        else:
+            ma.append(sum(close[i-ma_period+1:i+1]) / ma_period)
+
+    for i, price_today in enumerate(close):
+        # ODE: approximate dP/dt as (P_t - P_{t-w}) / w
+        if i < ode_window:
+            dP_dt = 0
+        else:
+            dP_dt = (price_today - close[i-ode_window]) / ode_window
+
+        # Smoothing: use moving average of dP/dt
+        if i < ode_window + 2:
+            dP_dt_ma = dP_dt
+        else:
+            dP_dt_ma = sum([(close[j] - close[j-ode_window]) / ode_window for j in range(i-2, i+1)]) / 3
+
+        # Debounce logic: only act if signal persists
+        buy_signal = dP_dt_ma > ode_threshold and price_today > ma[i]
+        sell_signal = dP_dt_ma < -ode_threshold and price_today < ma[i]
+
+        # Minimum price move since last trade
+        price_move_ok = True
+        if last_trade_price is not None:
+            if shares == 0:
+                price_move_ok = (price_today > last_trade_price * (1 + min_pct_move))
+            else:
+                price_move_ok = (price_today < last_trade_price * (1 - min_pct_move))
+
+        # Minimum hold period
+        can_trade = (i - last_trade_index) >= min_hold_period
+
+        # Debounce buy
+        if buy_signal and shares == 0 and can_trade and price_move_ok:
+            buy_signal_debounce += 1
+        else:
+            buy_signal_debounce = 0
+
+        # Debounce sell
+        if sell_signal and shares > 0 and can_trade and price_move_ok:
+            sell_signal_debounce += 1
+        else:
+            sell_signal_debounce = 0
+
+        # Execute buy
+        if buy_signal_debounce >= debounce_period and shares == 0:
+            base_price = price_today * (1 + spread_pct)
+            buy_price_with_spread = base_price * (1 + slippage_pct)
+            buy_price = max(0.01, buy_price_with_spread * buy_price_multiplier)
+            max_shares_by_volume = int(avg_volume * max_position_pct_of_volume)
+            max_shares_by_cash = math.floor(balance / buy_price) if buy_price > 0 else 0
+            shares_to_buy = min(max_shares_by_cash, max_shares_by_volume)
+            if shares_to_buy > 0:
+                commission = max(min_commission_per_trade, shares_to_buy * commission_per_share)
+                trade_cost = (shares_to_buy * buy_price) + commission
+                balance -= trade_cost
+                shares += shares_to_buy
+                buy_points.append((i, price_today))
+                last_trade_index = i
+                last_trade_price = price_today
+                holding_since = i
+            buy_signal_debounce = 0
+
+        # Execute sell
+        if sell_signal_debounce >= debounce_period and shares > 0:
+            base_price = price_today * (1 - spread_pct)
+            sell_price_with_spread = base_price * (1 - slippage_pct)
+            sell_price = max(0.01, sell_price_with_spread * sell_price_multiplier)
+            if shares > 0:
+                commission = max(min_commission_per_trade, shares * commission_per_share)
+                sale_proceeds = (shares * sell_price) - commission
+                balance += sale_proceeds
+                sell_points.append((i, price_today))
+                shares = 0
+                last_trade_index = i
+                last_trade_price = price_today
+                holding_since = None
+            sell_signal_debounce = 0
+
+        balance_over_time.append(balance + (shares * price_today if shares > 0 else 0))
+
+    if shares > 0:
+        base_price = max(0.01, close[-1] if close else 0.01) * (1 - spread_pct)
+        last_price = max(0.01, base_price * (1 - slippage_pct))
+        commission = max(min_commission_per_trade, shares * commission_per_share)
+        sale_proceeds = (shares * last_price) - commission
+        balance += sale_proceeds
+        sell_points.append((len(close) -1, close[-1] if close else 0.01))
+        shares = 0
+    balance_over_time.append(balance)
+    return {
+        'profit_loss': balance - initial_balance,
+        'buy_points': buy_points,
+        'sell_points': sell_points,
+        'balance_over_time': balance_over_time
+    }
+
+# --- Generated Parameters Function --- #
+def get_user_params():
+    # Parameters tuned to reduce whipsaws and overtrading for ODE-based strategy
+    return {
+        'slippage_pct': 0.001,
+        'spread_pct': 0.0005,
+        'commission_per_share': 0.005,
+        'min_commission': 1.0,
+        'max_position_pct': 0.01,
+        'buy_price_multiplier': 0.995,  # Slightly less aggressive entry
+        'sell_price_multiplier': 1.005, # Slightly less aggressive exit
+        'ode_window': 7,                # Smoother ODE, less noise
+        'ode_threshold': 0.002,         # Higher threshold to avoid noise
+        'min_hold_period': 12,          # Hold longer to let trends develop
+        'debounce_period': 4,           # Require signal to persist
+        'min_pct_move': 0.025,          # Require 2.5% move from last trade
+        'ma_period': 10,                # Trend filter window
+        'avg_volume': 100000            # Used for liquidity constraint
+    }

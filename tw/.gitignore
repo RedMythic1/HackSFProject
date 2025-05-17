@@ -1,4 +1,5 @@
 .vercel
 .env*.local
 .frontend*.log
-.server*.log
+.server*.log/bin/pip*
+/bin/pip*

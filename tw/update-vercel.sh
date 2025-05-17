@@ -34,6 +34,19 @@ if [ -z "$BLOB_URL" ]; then
     exit 1
 fi
 
+# Configure Python to use pre-installed packages
+echo "Configuring Python to use pre-installed packages..."
+export PYTHONPATH="$PROJECT_DIR/api/python_packages:$PYTHONPATH"
+echo "PYTHONPATH set to: $PYTHONPATH"
+
+# Run the build script which includes the preparation steps
+echo "Running build script for Vercel deployment..."
+./build.sh
+if [ $? -ne 0 ]; then
+    echo "Error: Build script failed. Aborting deployment."
+    exit 1
+fi
+
 # Skipping all tests as we're focusing on fixing dependencies
 echo "Skipping all tests and checks..."
 
@@ -42,6 +55,12 @@ echo "Deploying to Vercel..."
 # Run deployment command from the current directory
 vercel --prod \
   --env BLOB_READ_WRITE_TOKEN="$BLOB_READ_WRITE_TOKEN" \
-  --env BLOB_URL="$BLOB_URL"
+  --env BLOB_URL="$BLOB_URL" \
+  --env PYTHON_VERSION="3.9" \
+  --env PYTHONPATH="/var/task/api/python_packages" \
+  --build-env PYTHON_VERSION="3.9" \
+  --build-env PYTHONPATH="/var/task/api/python_packages" \
+  --build-env PIP_NO_DEPS="1" \
+  --build-env PIP_NO_INSTALL="1"
 
 echo "Deployment complete!" 

@@ -175,4 +175,36 @@ router.post('/sync-cache', async (req, res) => {
   }
 });
 
+// Determine which Python command to use based on available versions
+function getPythonCommand() {
+  try {
+    // Try different Python commands in order of preference
+    const commands = ['python3.9', 'python3.8', 'python3', 'python'];
+    const { execSync } = require('child_process');
+    
+    for (const cmd of commands) {
+      try {
+        execSync(`${cmd} --version`, { stdio: 'ignore' });
+        console.log(`Found Python command: ${cmd}`);
+        return cmd;
+      } catch (e) {
+        // Command not found, try next one
+        console.log(`Command ${cmd} not available, trying next option...`);
+      }
+    }
+    
+    // If we get here, none of the commands worked
+    console.warn('No Python command found, defaulting to python3');
+    return 'python3';
+  } catch (error) {
+    console.warn('Error determining Python command:', error.message);
+    return 'python3'; // Default to python3
+  }
+}
+
+// Export the Python command for use in server.js
+module.exports = {
+  pythonCommand: getPythonCommand()
+};
+
 module.exports = router;

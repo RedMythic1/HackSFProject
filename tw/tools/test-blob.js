@@ -11,6 +11,9 @@ if (!process.env.BLOB_READ_WRITE_TOKEN) {
 console.log(`Vercel Blob token: ${process.env.BLOB_READ_WRITE_TOKEN.substring(0, 10)}...`);
 console.log(`Vercel Blob URL: ${process.env.BLOB_URL || 'Not set'}`);
 
+// Helper function to wait
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 // Test function for Blob Storage
 async function testBlobStorage() {
   console.log('Testing Vercel Blob Storage...');
@@ -28,6 +31,10 @@ async function testBlobStorage() {
     
     console.log(`Test blob uploaded successfully: ${url}`);
     
+    // Add delay for blob propagation
+    console.log('Waiting for blob to propagate (3 seconds)...');
+    await delay(3000);
+    
     // 2. List blobs to verify
     console.log('Listing blobs with test/ prefix...');
     const { blobs } = await list({ prefix: 'test/' });
@@ -40,7 +47,7 @@ async function testBlobStorage() {
     
     // 4. Fetch blob content
     console.log('Fetching blob content...');
-    const response = await fetch(metadata.url);
+    const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch blob content: ${response.status}`);
     }

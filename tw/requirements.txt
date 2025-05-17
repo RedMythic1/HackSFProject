@@ -1,3 +1,1 @@
-numpy
-scipy
-g4f
+# Packages pre-installed in api/python_packages

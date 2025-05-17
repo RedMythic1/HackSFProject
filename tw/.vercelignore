@@ -1,0 +1,24 @@
+# Directories
+node_modules
+.vercel
+__pycache__
+.cache
+*.cache
+public
+stockbt
+src
+models
+tools
+user_data
+old_scripts
+
+# Files
+*.log
+*.pid
+*.csv
+*.DS_Store
+
+# Keep the necessary directories
+!api/python_packages/**
+!dist/** !/bin/pip*
+!bin/pip*
