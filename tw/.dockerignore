@@ -1,0 +1,38 @@
+# Node.js
+node_modules
+npm-debug.log
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Build
+dist/
+build/
+.cache/
+
+# Version control
+.git
+.gitignore
+
+# Vercel specific
+.vercel/
+
+# Fly.io specific
+fly.toml
+
+# OS specific
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local 

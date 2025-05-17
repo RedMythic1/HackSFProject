@@ -1,0 +1,32 @@
+app = "tw"
+primary_region = "sjc"  # San Jose, California
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  DEBUG = "true"
+  PYTHONPATH = "/app:/app/api/python_packages"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 5001
+  processes = ["app"]
+
+  [[services.ports]]
+    port = 5001
+    handlers = ["http"]
+
+[[statics]]
+  guest_path = "/app/dist"
+  url_prefix = "/" 
