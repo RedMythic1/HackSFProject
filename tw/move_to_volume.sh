@@ -22,12 +22,27 @@ if [ -d "./article_cache" ]; then
   echo "Done copying article_cache."
 fi
 
-# Check if datasets exists in the current directory
-if [ -d "./datasets" ]; then
-  echo "Copying datasets to volume..."
-  cp -rv ./datasets/* /data/datasets/
-  echo "Done copying datasets."
+# Create datasets directory on volume
+echo "Creating datasets directory on volume..."
+mkdir -p /data/datasets
+
+# Copy datasets to volume
+echo "Copying datasets to volume..."
+if [ -d "/app/datasets" ]; then
+  cp -r /app/datasets/* /data/datasets/
+  echo "Copied datasets from /app/datasets to /data/datasets"
+else
+  echo "Warning: /app/datasets directory not found, datasets may not be available"
 fi
+
+# Set permissions
+echo "Setting permissions..."
+chmod -R 755 /data/article_cache
+chmod -R 755 /data/datasets
+
+echo "Environment setup complete."
+export DATASETS_DIR=/data/datasets
+echo "DATASETS_DIR set to $DATASETS_DIR"
 
 echo "All files copied to volume."
 echo "Remember that data in the /data volume persists between deployments." 

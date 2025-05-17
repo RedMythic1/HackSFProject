@@ -8,6 +8,9 @@ import argparse
 import json
 import time
 import random
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Add the python_packages directory to the Python path
 package_dir = os.path.join(os.path.dirname(__file__), 'python_packages')
@@ -26,7 +29,7 @@ import numpy as np
 
 def log_message(message):
     """Logs a message to the console."""
-    print(message) # Keep original console output
+    logger.info(message) # Keep original console output
     # try: # Removed
     #     with open(LOG_FILE_PATH, 'a') as f: # Removed
     #         f.write(str(message) + '\\n') # Removed
@@ -42,12 +45,23 @@ initial_balance = 100000
 
 def get_random_dataset():
     """Get a random dataset from the datasets directory, tracking previously used ones."""
-    datasets_dir = os.path.join(os.path.dirname(__file__), 'datasets')
-    all_files = [f for f in os.listdir(datasets_dir) if f.endswith('.csv')]
+    datasets_dir = os.environ.get('DATASETS_DIR', '/data/datasets')
+    if not os.path.exists(datasets_dir):
+        logger.info(f"ERROR: Datasets directory {datasets_dir} does not exist!")
+        return None
+    files = [f for f in os.listdir(datasets_dir) if f.endswith('.csv')]
+    if not files:
+        logger.info(f"ERROR: No CSV files found in {datasets_dir}!")
+        return None
+    logger.info(f"Using datasets directory: {datasets_dir}")
+    
+    all_files = files
     
     # If specified, always use test.csv (for consistency in API testing)
     if os.environ.get('BACKTEST_USE_TEST_DATASET') == '1':
-        return os.path.join(datasets_dir, 'test.csv')
+        test_path = os.path.join(datasets_dir, 'test.csv')
+        if os.path.exists(test_path):
+            return test_path
     
     # First, try to use a dataset that hasn't been used before
     unused_files = [f for f in all_files if f not in used_datasets]
@@ -66,7 +80,7 @@ def get_random_dataset():
 
 def ask_llama(prompt, temperature=0.7):
     """Ask a question to the GPT-4 Free backend via g4f."""
-    log_message(f"\nSending prompt to g4f ChatCompletion with temperature={temperature}…")
+    logger.info(f"\nSending prompt to g4f ChatCompletion with temperature={temperature}…")
     try:
         response = g4f.ChatCompletion.create(
             model="gpt-4o",
@@ -75,10 +89,10 @@ def ask_llama(prompt, temperature=0.7):
             temperature=temperature
         )
         # g4f returns plain text (no dict like OpenAI)
-        log_message("Received response:" + response)
+        logger.info("Received response:" + response)
         return response.strip()
     except Exception as e:
-        log_message(f"ERROR getting response: {e}")
+        logger.info(f"ERROR getting response: {e}")
         return None
 
 # -----------------------------------------------------------------------------
@@ -86,30 +100,30 @@ def ask_llama(prompt, temperature=0.7):
 # -----------------------------------------------------------------------------
 
 def split_response(response):
-    log_message("\nSplitting response into code blocks…")
+    logger.info("\nSplitting response into code blocks…")
     import ast
 
     # Print a diagnostic excerpt of the response
     if response:
-        log_message(f"Response length: {len(response)} chars")
+        logger.info(f"Response length: {len(response)} chars")
         excerpt_len = min(200, len(response))
-        log_message(f"Response excerpt: {response[:excerpt_len]}...")
+        logger.info(f"Response excerpt: {response[:excerpt_len]}...")
     else:
-        log_message("WARNING: Empty response received")
+        logger.info("WARNING: Empty response received")
         raise ValueError("Empty response from LLM")
 
     # First, remove any markdown code fences
     cleaned_response = response
     if "```" in response:
-        log_message("Removing markdown code fences…")
+        logger.info("Removing markdown code fences…")
         # Remove ```python and ``` markers
         cleaned_response = re.sub(r'```(?:python)?\s*', '', cleaned_response)
         cleaned_response = cleaned_response.replace('```', '')
-        log_message("Markdown fences removed")
+        logger.info("Markdown fences removed")
 
     # Remove any explanations or other non-code text
     if "**Explanation:**" in cleaned_response:
-        log_message("Removing explanations…")
+        logger.info("Removing explanations…")
         cleaned_response = re.sub(r'\*\*Explanation:\*\*.*?(?=def |$)', '', cleaned_response, flags=re.DOTALL)
 
     # Remove other markdown formatting that might interfere with code parsing
@@ -119,64 +133,64 @@ def split_response(response):
 
     # Make sure there's at least one function definition
     if "def " not in cleaned_response:
-        log_message("ERROR: No function definitions found in response")
+        logger.info("ERROR: No function definitions found in response")
         raise ValueError("No function definitions found in response.")
 
     # Try to extract all function blocks
     code_blocks = re.findall(r"(def [\s\S]+?)(?=\ndef |\Z)", cleaned_response)
-    log_message(f"Found {len(code_blocks)} code blocks")
+    logger.info(f"Found {len(code_blocks)} code blocks")
 
     # If we got less than 2 blocks, try a simpler extraction
     if len(code_blocks) < 2:
-        log_message("Warning: Less than 2 code blocks found, trying fallback extraction…")
+        logger.info("Warning: Less than 2 code blocks found, trying fallback extraction…")
         # Split on 'def ' and reconstruct function definitions
         parts = cleaned_response.split('def ')
         code_blocks = []
         for part in parts[1:]:  # Skip the first empty part
             code_blocks.append('def ' + part.strip())
-        log_message(f"Fallback extraction found {len(code_blocks)} blocks")
+        logger.info(f"Fallback extraction found {len(code_blocks)} blocks")
         
         # If still less than 2 blocks, try more aggressive techniques
         if len(code_blocks) < 2:
-            log_message("WARNING: Still found less than 2 code blocks after fallback extraction")
-            log_message("Attempting more aggressive parsing techniques...")
+            logger.info("WARNING: Still found less than 2 code blocks after fallback extraction")
+            logger.info("Attempting more aggressive parsing techniques...")
             
             # Try to find any function-like blocks
             all_funcs = re.findall(r"def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(", cleaned_response)
-            log_message(f"Found {len(all_funcs)} potential function definitions: {all_funcs}")
+            logger.info(f"Found {len(all_funcs)} potential function definitions: {all_funcs}")
             
             # Look for the required function names specifically
             if "trading_strategy" in cleaned_response and "get_user_params" in cleaned_response:
-                log_message("Found both required function names in the response text")
+                logger.info("Found both required function names in the response text")
                 
                 # Try to extract each function individually
                 trading_strategy_match = re.search(r"(def\s+trading_strategy\s*\([^)]*\)[\s\S]+?)(?=def\s+get_user_params|\Z)", cleaned_response)
                 get_user_params_match = re.search(r"(def\s+get_user_params\s*\([^)]*\)[\s\S]+?)(?=def\s+trading_strategy|\Z)", cleaned_response)
                 
                 if trading_strategy_match:
-                    log_message("Found trading_strategy function via direct regex")
+                    logger.info("Found trading_strategy function via direct regex")
                     code_blocks.append(trading_strategy_match.group(1))
                 
                 if get_user_params_match:
-                    log_message("Found get_user_params function via direct regex")
+                    logger.info("Found get_user_params function via direct regex")
                     code_blocks.append(get_user_params_match.group(1))
                 
-                log_message(f"After aggressive extraction, found {len(code_blocks)} blocks")
+                logger.info(f"After aggressive extraction, found {len(code_blocks)} blocks")
             else:
-                log_message("ERROR: One or both required function names are missing from the response")
+                logger.info("ERROR: One or both required function names are missing from the response")
                 if "trading_strategy" in cleaned_response:
-                    log_message("Only found trading_strategy")
+                    logger.info("Only found trading_strategy")
                 elif "get_user_params" in cleaned_response:
-                    log_message("Only found get_user_params")
+                    logger.info("Only found get_user_params")
                 else:
-                    log_message("Neither required function was found")
+                    logger.info("Neither required function was found")
 
     trading_blocks = [block for block in code_blocks if re.search(r"def\s+trading_strategy\s*\(", block)]
     param_blocks = [block for block in code_blocks if re.search(r"def\s+get_user_params\s*\(", block)]
-    log_message(f"Identified {len(trading_blocks)} trading_strategy functions and {len(param_blocks)} get_user_params functions")
+    logger.info(f"Identified {len(trading_blocks)} trading_strategy functions and {len(param_blocks)} get_user_params functions")
 
     if not trading_blocks or not param_blocks:
-        log_message("ERROR: Required function definitions not found")
+        logger.info("ERROR: Required function definitions not found")
         raise ValueError("Missing required functions in LLM response.")
 
     code = trading_blocks[0].strip()
@@ -189,7 +203,7 @@ def split_response(response):
                 if isinstance(node, ast.FunctionDef):
                     return node.name
         except Exception as e:
-            log_message(f"AST parsing failed: {e}. Falling back to regex.")
+            logger.info(f"AST parsing failed: {e}. Falling back to regex.")
             # Fallback method if parsing fails
             first_line = code_block.strip().split('\n')[0]
             match = re.search(r'def\s+([a-zA-Z0-9_]+)', first_line)
@@ -200,29 +214,29 @@ def split_response(response):
     # Syntax check the extracted code
     try:
         compile(code, '<string>', 'exec')
-        log_message("trading_strategy code syntax is valid")
+        logger.info("trading_strategy code syntax is valid")
     except SyntaxError as e:
-        log_message(f"WARNING: trading_strategy has syntax errors: {e}")
+        logger.info(f"WARNING: trading_strategy has syntax errors: {e}")
         # Try to fix common syntax issues
         code = code.replace('"', '"').replace('"', '"').replace('\'\'', "'").replace('\'\'', "'")
         try:
             compile(code, '<string>', 'exec')
-            log_message("Syntax fixed after character replacement")
+            logger.info("Syntax fixed after character replacement")
         except SyntaxError as e:
-            log_message(f"Still has syntax errors after fixing: {e}")
+            logger.info(f"Still has syntax errors after fixing: {e}")
     
     try:
         compile(input_code, '<string>', 'exec')
-        log_message("get_user_params code syntax is valid")
+        logger.info("get_user_params code syntax is valid")
     except SyntaxError as e:
-        log_message(f"WARNING: get_user_params has syntax errors: {e}")
+        logger.info(f"WARNING: get_user_params has syntax errors: {e}")
         # Try to fix common syntax issues
         input_code = input_code.replace('"', '"').replace('"', '"').replace('\'\'', "'").replace('\'\'', "'")
         try:
             compile(input_code, '<string>', 'exec')
-            log_message("Syntax fixed after character replacement")
+            logger.info("Syntax fixed after character replacement")
         except SyntaxError as e:
-            log_message(f"Still has syntax errors after fixing: {e}")
+            logger.info(f"Still has syntax errors after fixing: {e}")
 
     return {
         "code": code,
@@ -259,7 +273,7 @@ def calculate_buy_and_hold_profit(close_prices, initial_balance=100000):
 # -----------------------------------------------------------------------------
 
 def run_simulation(user_input, original_user_input_text, improvement_context="", iteration=1, max_iterations=5, max_error_attempts=10):
-    log_message(f"\nStarting simulation iteration {iteration} with user input: {user_input[:100]}…")
+    logger.info(f"\nStarting simulation iteration {iteration} with user input: {user_input[:100]}…")
 
     # Construct the prompt with improvement context if provided
     if improvement_context:
@@ -517,7 +531,7 @@ max_position_pct_of_volume = params.get('max_position_pct', 0.01)  # Maximum 1% 
 #   buy_price_with_spread = base_price * (1 + slippage_pct)
 #   # Ensure minimum price
 #   buy_price = max(0.01, buy_price_with_spread * params.get('buy_price_multiplier', 0.99))
-#
+#   
 #   # Apply liquidity constraint (limit position size)
 #   daily_volume = params.get('avg_volume', 100000)  # Default or from params
 #   max_shares_by_volume = int(daily_volume * max_position_pct_of_volume)
@@ -534,7 +548,7 @@ max_position_pct_of_volume = params.get('max_position_pct', 0.01)  # Maximum 1% 
 #       balance -= trade_cost
 #       shares += shares_to_buy
 #       buy_points.append((i, price_today)) # Record buy point (index, price at trade)
-#       print(f"Bought [shares_to_buy] shares at [buy_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f]")
+#       print(f"Bought [shares_to_buy] shares at [buy_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
 
 # Example Sell Logic (adapt to your strategy):
 # elif YOUR_SELL_CONDITION and shares > 0: # Only sell if shares are held
@@ -624,26 +638,26 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
 
     while not success:
         try:
-            log_message(f"\n--- Attempt {attempts + 1} ---")
+            logger.info(f"\n--- Attempt {attempts + 1} ---")
             current_prompt = error_prompt if attempts > 0 else prompt
             
             # Calculate temperature (increase with more attempts)
             current_temperature = min(base_temperature + (temperature_step * (attempts // 2)), max_temperature)
-            log_message(f"Using temperature: {current_temperature}")
+            logger.info(f"Using temperature: {current_temperature}")
 
             if not response or attempts > 0:
-                log_message("Getting response from GPT…")
+                logger.info("Getting response from GPT…")
                 response = ask_llama(current_prompt, temperature=current_temperature)
                 if response is None:
                     raise Exception("LLM failed to provide a response.")
 
-                log_message("Splitting response into parts…")
+                logger.info("Splitting response into parts…")
                 parts = split_response(response)
                 code = parts["code"]
                 function_name_code = parts["function_name_code"]
                 input_code = parts["input_code"]
                 function_name_input_code = parts["function_name_input_code"]
-                log_message(f"Extracted function names: {function_name_code} and {function_name_input_code}")
+                logger.info(f"Extracted function names: {function_name_code} and {function_name_input_code}")
 
                 from datetime import datetime
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -665,14 +679,14 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                 if re.search(r'\binput\s*\(', input_code):
                     raise Exception("Detected forbidden user prompt (input()) in get_user_params. This function must run autonomously without requiring user interaction.")
 
-            log_message("Executing input code…")
+            logger.info("Executing input code…")
             try:
                 exec(input_code, globals())
             except Exception as e:
-                log_message(f"Error executing input code: {e}")
+                logger.info(f"Error executing input code: {e}")
                 raise
                 
-            log_message("Evaluating input function with timeout protection...")
+            logger.info("Evaluating input function with timeout protection...")
             
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(30) 
@@ -680,23 +694,23 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
             try:
                 inp = eval(f'{function_name_input_code}()')
                 signal.alarm(0)
-                log_message(f"Input function returned: {inp}")
+                logger.info(f"Input function returned: {inp}")
             except TimeoutError:
                 signal.alarm(0)
-                log_message("ERROR: get_user_params function execution timed out after 30 seconds")
+                logger.info("ERROR: get_user_params function execution timed out after 30 seconds")
                 raise Exception("get_user_params function timed out - likely contains an infinite loop or excessive computation.")
             except Exception as e:
                 signal.alarm(0)
-                log_message(f"Error evaluating input function: {e}")
+                logger.info(f"Error evaluating input function: {e}")
                 raise
 
             formatted_inp = repr(inp)
 
-            log_message("Executing main code…")
+            logger.info("Executing main code…")
             exec(code, globals())
-            log_message("Evaluating main function…")
+            logger.info("Evaluating main function…")
             
-            log_message("Applying safety wrapper...")
+            logger.info("Applying safety wrapper...")
             def safe_execute_trading_strategy(func_name, params_arg):
                 """Execute trading strategy with safety checks and flexible parameter handling"""
                 local_vars = {'params': params_arg, 'close': close, 'math': math, 'np': np}
@@ -710,7 +724,7 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                     
                 # Ensure params is a dictionary
                     if not isinstance(local_vars['params'], dict):
-                        log_message("Warning: Converting non-dict params to dict for safety")
+                        logger.info("Warning: Converting non-dict params to dict for safety")
                         local_vars['params'] = {'param': local_vars['params']}
                     
                 # Guarantee a working .get method
@@ -723,7 +737,7 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                 # Convenience variable for strategy authors
                 local_vars['n'] = len(close)
 
-                log_message(f"Executing {func_name} with {len(close)} data points and params: {local_vars['params']}")
+                logger.info(f"Executing {func_name} with {len(close)} data points and params: {local_vars['params']}")
 
                 # Attempt to run the strategy with various fall-backs for signature mismatches
                 try:
@@ -732,12 +746,12 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                     if ("required positional argument" in str(e) or
                         "takes 1 positional argument" in str(e) or
                         "takes 0 positional arguments but 1 was given" in str(e)):
-                        log_message(f"Retrying with direct close data due to TypeError: {e}")
+                        logger.info(f"Retrying with direct close data due to TypeError: {e}")
                         try:
                             result = eval(f"{func_name}(close)", globals(), local_vars)
                         except TypeError as e2:
                             if "takes 0 positional arguments but 1 was given" in str(e2):
-                                log_message(f"Retrying with no arguments due to TypeError: {e2}")
+                                logger.info(f"Retrying with no arguments due to TypeError: {e2}")
                                 result = eval(f"{func_name}()", globals(), local_vars)
                             else:
                                 raise
@@ -748,7 +762,7 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                 if not (isinstance(result, tuple) and len(result) == 4) and not (
                     isinstance(result, dict) and all(k in result for k in [
                         'profit_loss', 'buy_points', 'sell_points', 'balance_over_time'])):
-                    log_message(f"Warning: {func_name} returned {type(result)} instead of a 4-tuple or expected dict. Attempting to adapt.")
+                    logger.info(f"Warning: {func_name} returned {type(result)} instead of a 4-tuple or expected dict. Attempting to adapt.")
                     if isinstance(result, (int, float)): # Only profit/loss returned
                             return result, [], [], [initial_balance, initial_balance + result]
                     elif isinstance(result, dict):
@@ -766,7 +780,7 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                 return result  # Already in correct tuple form
 
             bb, buy_points, sell_points, balance_over_time = safe_execute_trading_strategy(function_name_code, inp)
-            log_message(f"Main function returned: bb={bb}, {len(buy_points)} buy points, {len(sell_points)} sell points")
+            logger.info(f"Main function returned: bb={bb}, {len(buy_points)} buy points, {len(sell_points)} sell points")
 
             if isinstance(bb, (int, float)) and bb > best_bb: # Removed buy/sell points check for best_bb to allow strategies that don't trade but are valid
                 best_bb = bb
@@ -785,7 +799,7 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                 for point in points:
                     if not (isinstance(point, tuple) and len(point) == 2 and isinstance(point[0], int) and isinstance(point[1], (int, float))):
                         if isinstance(point, (int, float)): # If it's just a list of indices/prices, try to fix
-                            log_message(f"Warning: Adapting {name} from list of numbers to list of (index, price) tuples.")
+                            logger.info(f"Warning: Adapting {name} from list of numbers to list of (index, price) tuples.")
                             # This is a guess; assumes points are indices and uses close price. Not ideal.
                             # A better fix would be for the LLM to return correct format.
                             adapted_points = []
@@ -804,7 +818,7 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                     
             # Fallback for empty trades only if it's the last attempt and no best result yet
             if (not buy_points or not sell_points) and attempts >= max_error_attempts - 1 and best_bb == float('-inf'):
-                log_message(f"Last attempt ({attempts + 1}) failed to produce trades, and no prior best strategy. Falling back to basic buy-and-hold.")
+                logger.info(f"Last attempt ({attempts + 1}) failed to produce trades, and no prior best strategy. Falling back to basic buy-and-hold.")
                     
                 buy_points = [(0, close[0])] if close else []
                 sell_points = [(len(close) - 1, close[-1])] if close else []
@@ -819,25 +833,25 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
                 else:  # Handle empty close or balance_over_time
                     balance_over_time = [initial_balance, initial_balance + bb]
 
-                log_message("Implemented fallback buy-and-hold strategy.")
+                logger.info("Implemented fallback buy-and-hold strategy.")
                 return bb, buy_points, sell_points, balance_over_time, code_info
 
             success = True
 
         except Exception as e:
             attempts += 1
-            log_message(f"\n--- Attempt {attempts} FAILED with error: ---")
+            logger.info(f"\n--- Attempt {attempts} FAILED with error: ---")
             error_traceback = traceback.format_exc()
-            log_message(error_traceback)
-            log_message("-------------------------------------------")
+            logger.info(error_traceback)
+            logger.info("-------------------------------------------")
 
             if attempts >= max_error_attempts:
-                log_message(f"\n!!! REACHED MAXIMUM ERROR ATTEMPTS ({max_error_attempts}) !!!")
+                logger.info(f"\n!!! REACHED MAXIMUM ERROR ATTEMPTS ({max_error_attempts}) !!!")
                 if best_bb != float('-inf'):
-                    log_message("Giving up on this iteration and returning best results found so far.")
+                    logger.info("Giving up on this iteration and returning best results found so far.")
                     return best_bb, best_buy_points, best_sell_points, best_balance_over_time, best_code_info
                 else:
-                    log_message("No successful strategy found after all attempts. Returning empty results.")
+                    logger.info("No successful strategy found after all attempts. Returning empty results.")
                     return 0, [], [], [initial_balance, initial_balance], None 
 
             response = None 
@@ -899,14 +913,14 @@ Your response MUST consist of:
   * A list of (index, price) tuples
   * A list of indices where trades occurred
 """
-            log_message(f"Attempting retry {attempts} to fix the error…")
+            logger.info(f"Attempting retry {attempts} to fix the error…")
 
-    log_message("\nExecution successful.")
+    logger.info("\nExecution successful.")
     return bb, buy_points, sell_points, balance_over_time, code_info
 
 def run_improved_simulation(user_input, max_error_attempts=10):
     """Run an iterative improvement process to achieve profit target."""
-    log_message("\n=== STARTING ITERATIVE IMPROVEMENT PROCESS ===")
+    logger.info("\n=== STARTING ITERATIVE IMPROVEMENT PROCESS ===")
     
     # For API use, limit to just one iteration with fixed dataset
     global close, dates
@@ -916,21 +930,27 @@ def run_improved_simulation(user_input, max_error_attempts=10):
     base_counter = int(datetime.now().timestamp())
     
     # Select the dataset (use test.csv for consistency)
-    file_path = os.path.join(os.path.dirname(__file__), 'datasets', 'test.csv')
-    log_message(f"Loading data from {file_path}")
+    file_path = get_random_dataset()
     close = []
     dates = []
     
     try:
-        with open(file_path, 'r') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                try:
-                    close.append(float(row['Close']))
-                    dates.append(row['Date'])
-                except (ValueError, KeyError) as e:
-                    log_message(f"Warning: Error parsing row {row}: {e}")
-        log_message(f"Loaded {len(close)} data points.")
+        if file_path and os.path.exists(file_path):
+            logger.info(f"Loading data from {file_path}")
+            with open(file_path, 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    try:
+                        close.append(float(row['Close']))
+                        dates.append(row['Date'])
+                    except (ValueError, KeyError) as e:
+                        logger.info(f"Warning: Error parsing row {row}: {e}")
+            logger.info(f"Loaded {len(close)} data points.")
+        else:
+            raise FileNotFoundError("No valid dataset CSV file found. Please ensure /data/datasets contains at least one .csv file.")
+        
+        if not close:
+            raise ValueError("Dataset file was found but no valid price data could be loaded from it.")
         
         # Calculate buy and hold profit as baseline for this dataset
         buy_hold_profit = calculate_buy_and_hold_profit(close)
@@ -951,9 +971,9 @@ def run_improved_simulation(user_input, max_error_attempts=10):
         # Calculate percentage above buy-and-hold
         percent_above_buyhold = ((current_profit / buy_hold_profit) - 1) * 100 if buy_hold_profit > 0 else 0
         
-        log_message(f"\nCurrent Profit: ${current_profit:.2f}")
-        log_message(f"Buy & Hold Profit: ${buy_hold_profit:.2f}")
-        log_message(f"Performance vs Buy & Hold: {percent_above_buyhold:+.2f}%")
+        logger.info(f"\nCurrent Profit: ${current_profit:.2f}")
+        logger.info(f"Buy & Hold Profit: ${buy_hold_profit:.2f}")
+        logger.info(f"Performance vs Buy & Hold: {percent_above_buyhold:+.2f}%")
         
         # Get code content
         code_info = code_info or {}
@@ -966,7 +986,7 @@ def run_improved_simulation(user_input, max_error_attempts=10):
             'profit': current_profit,
             'buy_hold_profit': buy_hold_profit,
             'percent_above_buyhold': percent_above_buyhold,
-            'dataset': os.path.basename(file_path),
+            'dataset': os.path.basename(file_path) if file_path else 'unknown',
             'buy_points': buy_points,
             'sell_points': sell_points,
             'balance_over_time': balance_over_time,
@@ -983,8 +1003,8 @@ def run_improved_simulation(user_input, max_error_attempts=10):
         return result
     except Exception as e:
         error_traceback = traceback.format_exc()
-        log_message(f"Error during simulation: {e}")
-        log_message(error_traceback)
+        logger.info(f"Error during simulation: {e}")
+        logger.info(error_traceback)
         return {
             'status': 'error',
             'error': str(e)
@@ -992,8 +1012,8 @@ def run_improved_simulation(user_input, max_error_attempts=10):
 
 def enhance_user_prompt(original_prompt):
     """Enhance the user's trading strategy prompt using LLM."""
-    log_message("\n=== ENHANCING USER PROMPT ===")
-    log_message(f"Original prompt: {original_prompt[:100]}...")
+    logger.info("\n=== ENHANCING USER PROMPT ===")
+    logger.info(f"Original prompt: {original_prompt[:100]}...")
     
     enhancement_prompt = f"""
 You are an expert trading strategy developer. Your task is to MINIMALLY refine the user's trading strategy while preserving ~90% of the original content.
@@ -1014,18 +1034,18 @@ Provide ONLY the enhanced strategy description. DO NOT include explanations, int
 """
 
     try:
-        log_message("Getting enhanced prompt from LLM...")
+        logger.info("Getting enhanced prompt from LLM...")
         enhanced_prompt = ask_llama(enhancement_prompt, temperature=0.5)  # Lower temperature for more conservative edits
         
         if enhanced_prompt and len(enhanced_prompt) > 50:  # Basic validation
-            log_message("Successfully enhanced the prompt.")
-            log_message(f"Enhanced prompt: {enhanced_prompt[:100]}...")
+            logger.info("Successfully enhanced the prompt.")
+            logger.info(f"Enhanced prompt: {enhanced_prompt[:100]}...")
             return enhanced_prompt
         else:
-            log_message("Warning: Enhancement returned empty or very short result. Using original prompt.")
+            logger.info("Warning: Enhancement returned empty or very short result. Using original prompt.")
             return original_prompt
     except Exception as e:
-        log_message(f"Error enhancing prompt: {e}")
+        logger.info(f"Error enhancing prompt: {e}")
         return original_prompt
 
 if __name__ == "__main__":
@@ -1037,7 +1057,7 @@ if __name__ == "__main__":
     if args.strategy:
         user_input_raw = args.strategy
     else:
-        log_message("Waiting for user input…")
+        logger.info("Waiting for user input…")
         user_input_raw = input("Enter your trading strategy: ")
 
     try:
@@ -1046,21 +1066,21 @@ if __name__ == "__main__":
         if args.json:
             # For API use, print only the JSON with no additional output
             json_result = json.dumps(result)
-            log_message(json_result) # Log the JSON result as well
+            logger.info(json_result) # Log the JSON result as well
         else:
             if result['status'] == 'success':
-                log_message(f"Best Profit: ${result['profit']:.2f}")
-                log_message(f"Performance vs Buy & Hold: {result['percent_above_buyhold']:+.2f}%")
-                log_message(f"Dataset used: {result['dataset']}")
-                log_message(f"Number of trades: {result['trades']['count']}")
+                logger.info(f"Best Profit: ${result['profit']:.2f}")
+                logger.info(f"Performance vs Buy & Hold: {result['percent_above_buyhold']:+.2f}%")
+                logger.info(f"Dataset used: {result['dataset']}")
+                logger.info(f"Number of trades: {result['trades']['count']}")
             else:
-                log_message(f"Error: {result['error']}")
+                logger.info(f"Error: {result['error']}")
         
         sys.exit(0)
     except Exception as e:
         error_traceback = traceback.format_exc()
-        log_message(f"Error during backtest execution: {e}", file=sys.stderr) # Keep stderr for critical errors
-        log_message(error_traceback, file=sys.stderr)
+        logger.info(f"Error during backtest execution: {e}", file=sys.stderr) # Keep stderr for critical errors
+        logger.info(error_traceback, file=sys.stderr)
         
         # For API calls, provide a structured error response
         if args.json:

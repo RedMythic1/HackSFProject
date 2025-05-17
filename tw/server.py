@@ -17,8 +17,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('server.log')
+        logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
@@ -36,8 +35,14 @@ MEMORY_CACHE = {
 # Directory setup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Check if DATASETS_DIR is explicitly set in environment variables
+env_datasets_dir = os.environ.get('DATASETS_DIR')
+if env_datasets_dir:
+    CACHE_DIR = os.environ.get('CACHE_DIR', '/data/article_cache')
+    DATASETS_DIR = env_datasets_dir
+    logger.info(f"Using environment-specified paths: CACHE_DIR={CACHE_DIR}, DATASETS_DIR={DATASETS_DIR}")
 # Check if running on Fly.io with volume
-if os.path.exists('/data'):
+elif os.path.exists('/data'):
     # Use Fly.io volume paths
     CACHE_DIR = '/data/article_cache'
     DATASETS_DIR = '/data/datasets'
@@ -49,6 +54,7 @@ else:
     logger.info(f"Using local paths: CACHE_DIR={CACHE_DIR}, DATASETS_DIR={DATASETS_DIR}")
 
 os.makedirs(CACHE_DIR, exist_ok=True)
+os.makedirs(DATASETS_DIR, exist_ok=True)
 
 def extract_id_from_filename(filename):
     """Extracts ID from filename like final_article_ID.json or final_article_ID_with_underscores.json"""
@@ -302,7 +308,8 @@ def backtest():
         
         price_series = None
         dates = None
-        
+        logger.info(f"DATASETS_DIR: {DATASETS_DIR}")
+        logger.info(f"os.path.exists(DATASETS_DIR): {os.path.exists(DATASETS_DIR)}")
         # Try to find CSV data for the stock if mentioned
         if stock_matches and os.path.exists(DATASETS_DIR):
             for symbol in stock_matches:
