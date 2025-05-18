@@ -3,6 +3,7 @@ import random
 import csv
 import matplotlib.pyplot as plt
 import numpy as np
+from datetime import datetime, timedelta
 
 # Path to datasets directory
 DATASETS_DIR = os.path.join(os.path.dirname(__file__), 'datasets')
@@ -54,14 +55,16 @@ print("2. Volatile (moderate angle, squeeze, noise)")
 print("3. Deadly (high angle, squeeze, noise)")
 print("4. Flat (angle=0, squeeze=1, no noise)")
 print("5. Flat Erratic (angle=0, high squeeze, high noise)")
-profile_choice = input("Enter 1-5: ").strip()
+print("6. Advanced (custom parameters)")
+profile_choice = input("Enter 1-6: ").strip()
 
 profile_map = {
     '1': 'normal',
     '2': 'volatile',
     '3': 'deadly',
     '4': 'flat',
-    '5': 'flat_erratic'
+    '5': 'flat_erratic',
+    '6': 'advanced'
 }
 profile = profile_map.get(profile_choice, 'normal')
 
@@ -75,9 +78,9 @@ if profile == 'normal':
     base_amplitude = 0
 elif profile == 'volatile':
     angle = 30
-    squeeze = 2
-    noise_level = 50
-    base_amplitude = 4
+    squeeze = 1.5
+    noise_level = 30
+    base_amplitude = 2
 elif profile == 'deadly':
     angle = 45
     squeeze = 3
@@ -93,6 +96,23 @@ elif profile == 'flat_erratic':
     squeeze = 3
     noise_level = 80
     base_amplitude = 5
+elif profile == 'advanced':
+    try:
+        angle = float(input('Enter custom angle (degrees): ').strip())
+    except ValueError:
+        angle = 0
+    try:
+        squeeze = float(input('Enter custom squeeze (1 = original, >1 = more erratic): ').strip())
+    except ValueError:
+        squeeze = 1
+    try:
+        noise_level = float(input('Enter custom noise level (0-100): ').strip())
+    except ValueError:
+        noise_level = 0
+    try:
+        base_amplitude = float(input('Enter custom base amplitude: ').strip())
+    except ValueError:
+        base_amplitude = 0
 else:
     angle = 0
     squeeze = 1
@@ -183,9 +203,25 @@ noise = random_fourier_noise(x, num_terms=num_terms, amplitude=base_amplitude)
 noise_scaled = noise * weights
 y_noisy = y_squeezed + noise_scaled
 
+# --- CLEANUP FUNCTION ---
+def cleanup_series(series, max_pct_change=0.3):
+    cleaned = np.abs(series).copy()
+    for i in range(1, len(cleaned)):
+        prev = cleaned[i-1]
+        max_up = prev * (1 + max_pct_change)
+        max_down = prev * (1 - max_pct_change)
+        if cleaned[i] > max_up:
+            cleaned[i] = max_up
+        elif cleaned[i] < max_down:
+            cleaned[i] = max_down
+    return cleaned
+
+# Apply cleanup before plotting and storing
+y_noisy_clean = cleanup_series(y_noisy)
+
 # Plot and print Riemann sum for the noisy series
 plt.figure(figsize=(12, 6))
-plt.plot(x, y_noisy, label=f'Profile: {profile}, Neg: {neg_mod}, Angle: {angle}, Squeeze: {squeeze}, Noise: {noise_level}, Amp: {base_amplitude}')
+plt.plot(x, y_noisy_clean, label=f'Profile: {profile}, Neg: {neg_mod}, Angle: {angle}, Squeeze: {squeeze}, Noise: {noise_level}, Amp: {base_amplitude}')
 plt.plot(x, line_fit, 'r--', label='Best Fit Line')
 plt.title(f'Profile: {profile} | {file1} x {file2}')
 plt.xlabel('Price Point (Index)')
@@ -195,5 +231,29 @@ plt.gca().set_aspect('equal', adjustable='datalim')
 plt.tight_layout()
 plt.show()
 
-riemann_sum = np.sum(y_noisy - line_fit)
+riemann_sum = np.sum(y_noisy_clean - line_fit)
 print(f'Riemann sum (integral) of final - best fit line: {riemann_sum:.4f}')
+
+# --- CSV OUTPUT ---
+# Prepare output directory
+output_dir = 'stockbt/generated_data'
+os.makedirs(output_dir, exist_ok=True)
+
+# Find next available file name
+existing = [f for f in os.listdir(output_dir) if f.startswith('genstock') and f.endswith('.csv')]
+nums = [int(f[len('genstock'):-4]) for f in existing if f[len('genstock'):-4].isdigit()]
+next_num = max(nums) + 1 if nums else 1
+output_file = os.path.join(output_dir, f'genstock{next_num}.csv')
+
+# Generate dates
+start_date = datetime.strptime('1976-01-22', '%Y-%m-%d')
+dates = [(start_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(len(y_noisy_clean))]
+
+# Write to CSV
+with open(output_file, 'w', newline='') as csvfile:
+    writer = csv.writer(csvfile)
+    writer.writerow(['Date', 'Close'])
+    for date, price in zip(dates, y_noisy_clean):
+        writer.writerow([date, price])
+
+print(f'Generated CSV: {output_file}')
