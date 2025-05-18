@@ -764,6 +764,47 @@ async function get_homepage_articles_endpoint() {
 }
 
 /**
+ * Load an article by ID using exact and partial match logic.
+ * @param {string} articleId - Article ID
+ * @returns {Object|null} Processed article data or null if not found
+ */
+async function loadArticleById(articleId) {
+  // Try exact match
+  const exactMatchPatterns = [`final_article_${articleId}.json`, `final_article_${articleId}.html`];
+  let foundArticleData = null;
+  let foundFilePath = null;
+
+  for (const pattern of exactMatchPatterns) {
+    const files = await listFiles(pattern);
+    if (files.length > 0) {
+      foundFilePath = files[0];
+      foundArticleData = await readFileContent(foundFilePath);
+      if (foundArticleData) break;
+    }
+  }
+
+  // Try partial match if not found
+  if (!foundArticleData) {
+    const partialMatchPatterns = [`final_article_*${articleId}*.json`, `final_article_*${articleId}*.html`];
+    for (const pattern of partialMatchPatterns) {
+      const files = await listFiles(pattern);
+      if (files.length > 0) {
+        const preferredFile = files.find(f => f.endsWith('.json')) || files[0];
+        foundFilePath = preferredFile;
+        foundArticleData = await readFileContent(foundFilePath);
+        if (foundArticleData) break;
+      }
+    }
+  }
+
+  // Return the processed article or null
+  if (foundArticleData) {
+    return processArticleData(foundArticleData, articleId, foundFilePath.endsWith('.html'));
+  }
+  return null;
+}
+
+/**
  * Get article endpoint
  * @param {string} articleId - Article ID
  * @returns {Object} Response with article data
@@ -776,61 +817,16 @@ async function get_article_endpoint(articleId) {
         message: 'Article ID is required' 
       };
     }
-    
-    // DEBUG LOGGING START
-    console.log('--- get_article_endpoint DEBUG ---');
-    console.log('Looking for article with ID:', articleId);
-    console.log('Current working directory:', process.cwd());
-    console.log('Trying exact match:', `final_article_${articleId}.json`);
-    console.log('Trying exact match:', `final_article_${articleId}.html`);
-    // DEBUG LOGGING END
-
-    const exactMatchPatterns = [`final_article_${articleId}.json`, `final_article_${articleId}.html`];
-    let foundArticleData = null;
-    let foundFilePath = null;
-
-    for (const pattern of exactMatchPatterns) {
-        const files = await listFiles(pattern);
-        if (files.length > 0) {
-            foundFilePath = files[0];
-            foundArticleData = await readFileContent(foundFilePath);
-            if (foundArticleData) break;
-        }
+    // Use the new reusable loader
+    const result = await loadArticleById(articleId);
+    if (result) {
+      return result;
     }
-    
-    if (foundArticleData) {
-      console.log(`Successfully loaded article data from: ${foundFilePath}`);
-      return processArticleData(foundArticleData, articleId, foundFilePath.endsWith('.html'));
-    }
-    
-    console.log(`No exact match found, trying partial match for: ${articleId}`);
-    const partialMatchPatterns = [`final_article_*${articleId}*.json`, `final_article_*${articleId}*.html`];
-    for (const pattern of partialMatchPatterns) {
-        const files = await listFiles(pattern);
-        if (files.length > 0) {
-            // Prefer JSON if both HTML and JSON match for the same article stem
-            const preferredFile = files.find(f => f.endsWith('.json')) || files[0];
-            foundFilePath = preferredFile;
-            foundArticleData = await readFileContent(foundFilePath);
-            if (foundArticleData) break;
-        }
-    }
-    
-    if (foundArticleData) {
-      console.log(`Successfully loaded (partial match) article data from: ${foundFilePath}`);
-      return processArticleData(foundArticleData, articleId, foundFilePath.endsWith('.html'));
-    }
-
-    console.log(`Article not found in storage (exact or partial), listing all for debug if needed, then checking demo data for: ${articleId}`);
-    // Optionally list all articles for deeper debugging if article still not found
-    // const allFiles = [ ...(await listFiles('final_article_*.json')), ...(await listFiles('final_article_*.html')) ];
-    // console.log('Available articles:', allFiles.map(f => path.basename(f)));
-    
-    const demoResult = getDemoArticleDetail(articleId); // This function returns the detail part directly
-    
+    // Fallback to demo data if not found
+    const demoResult = getDemoArticleDetail(articleId);
     return {
-      status: "success", // Assuming demo data is always a success
-      article: demoResult // demoResult is already the article object {title, link, summary}
+      status: "success",
+      article: demoResult
     };
   } catch (error) {
     console.error(`Error getting article ${articleId}:`, error);

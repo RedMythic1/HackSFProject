@@ -92,6 +92,15 @@ export function createPriceChart(container: string | HTMLCanvasElement, backtest
     sampleSellPoints: sellPoints.slice(0, 3)
   });
 
+  // Prepare scaled balance for overlay
+  let scaledBalance: number[] = [];
+  if (backtestData.balance_over_time && backtestData.balance_over_time.length > 1) {
+    const bal = backtestData.balance_over_time;
+    const close0 = prices[0] || 1;
+    const bal0 = bal[0] || 1;
+    scaledBalance = bal.map(v => (v / bal0) * close0);
+  }
+
   // Create the chart
   const priceChart = new Chart(canvas, {
     type: 'line',
@@ -108,25 +117,19 @@ export function createPriceChart(container: string | HTMLCanvasElement, backtest
           borderWidth: 1,
           fill: false
         },
-        {
-          label: 'Buy Points',
-          data: buyPoints as any,
-          borderColor: 'rgba(0, 0, 0, 0)',
-          backgroundColor: 'rgb(46, 204, 113)',
-          pointRadius: 5,
-          pointStyle: 'triangle',
-          showLine: false
-        },
-        {
-          label: 'Sell Points',
-          data: sellPoints as any,
-          borderColor: 'rgba(0, 0, 0, 0)',
-          backgroundColor: 'rgb(231, 76, 60)',
-          pointRadius: 5,
-          pointStyle: 'triangle',
-          showLine: false
-        }
-      ]
+        // Overlay scaled balance
+        scaledBalance.length > 0 ? {
+          label: 'Portfolio Value (scaled)',
+          data: scaledBalance,
+          borderColor: 'orange',
+          backgroundColor: 'rgba(255, 165, 0, 0.1)',
+          tension: 0.1,
+          pointRadius: 0,
+          borderWidth: 1.5,
+          fill: false,
+          yAxisID: 'y',
+        } : undefined
+      ].filter(Boolean)
     },
     options: {
       responsive: true,
@@ -137,7 +140,6 @@ export function createPriceChart(container: string | HTMLCanvasElement, backtest
             display: true,
             text: 'Date'
           },
-          // Display fewer labels for better readability
           ticks: {
             maxTicksLimit: 10
           }
@@ -156,21 +158,15 @@ export function createPriceChart(container: string | HTMLCanvasElement, backtest
               const item = tooltipItems[0];
               const index = item.dataIndex;
               const datasetIndex = item.datasetIndex;
-              
-              // For buy and sell points, show "Buy" or "Sell" in the title
-              if (datasetIndex === 1) return `Buy at ${labels[index]}`;
-              if (datasetIndex === 2) return `Sell at ${labels[index]}`;
-              
+              if (datasetIndex === 1 && scaledBalance.length > 0) return `Portfolio Value (scaled) at ${labels[index]}`;
               return labels[index];
             },
             label: function(context) {
               const label = context.dataset.label || '';
               const value = context.raw as number | { x: number, y: number };
-              
               if (typeof value === 'object') {
                 return `${label}: $${value.y.toFixed(2)}`;
               }
-              
               return `${label}: $${value.toFixed(2)}`;
             }
           }

@@ -386,6 +386,10 @@ def serve_static(path):
     logger.info(f"Serving static file: {path}")
     return send_from_directory('dist', path)
 
+@app.route('/data/article_cache/<path:filename>')
+def serve_article_cache(filename):
+    return send_from_directory('/data/article_cache', filename)
+
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Run the Flask server')

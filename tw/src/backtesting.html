@@ -15,7 +15,7 @@
 <body>
     <div class="container">
         <header class="centered-header">
-            <h1>Stock Backtesting</h1>
+            <h1>HackLens</h1>
             <nav class="main-nav">
                 <a href="index.html" class="nav-button" id="home-tab">Home</a>
                 <a href="backtesting.html" class="nav-button active" id="backtest-tab">Backtesting</a>
@@ -25,7 +25,7 @@
         <main class="centered-content">
             <section class="strategy-form-section">
                 <h2>Enter Your Trading Strategy</h2>
-                <p>Describe your trading strategy in plain English. Our system will convert it to code and run a backtest on historical data.</p>
+                <p><strong style="font-size:1.2em; color:#b00;">If no profit is made, <u>rerun the backtest!</u></strong><br>Describe your trading strategy in plain English. Our system will convert it to code and run a backtest on historical data.</p>
                 
                 <div class="strategy-form">
                     <textarea id="strategy-input" rows="6" placeholder="Example: Buy when the price drops below the 10-day moving average and sell when it rises above the 20-day moving average"></textarea>
@@ -54,11 +54,6 @@
                         </div>
                         
                         <div class="result-card">
-                            <h3>Success Rate</h3>
-                            <div id="success-rate" class="result-value">0%</div>
-                        </div>
-                        
-                        <div class="result-card">
                             <h3>vs Buy & Hold</h3>
                             <div id="vs-buyhold" class="result-value">0%</div>
                         </div>
@@ -81,6 +76,8 @@
                     </div>
                     
                     <div class="code-container">
+                        <h3>AI-Generated Code Summary</h3>
+                        <div id="code-summary" class="code-summary" style="margin-bottom: 1em; font-size: 1.1em; color: #333; background: #f8f8f8; border-radius: 6px; padding: 12px 16px;"></div>
                         <h3>Generated Trading Strategy Code</h3>
                         <pre id="generated-code" class="code-block language-python"></pre>
                     </div>

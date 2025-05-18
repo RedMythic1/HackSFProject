@@ -36,6 +36,7 @@ from scipy import optimize
 from scipy import fft
 
 import random
+import wikipediaapi
 
 # Track previously used datasets in this session
 if 'used_datasets' not in globals():
@@ -1191,6 +1192,30 @@ Provide ONLY the enhanced strategy description. DO NOT include explanations, int
     except Exception as e:
         print(f"Error enhancing prompt: {e}")
         return original_prompt
+
+def print_wikipedia_history_and_url(topic):
+    """
+    Fetches the 'History' section and full URL for a given Wikipedia topic and prints them.
+    """
+    wiki_wiki = wikipediaapi.Wikipedia(user_agent='MyProjectName (merlin@example.com)', language='en')
+    page_py = wiki_wiki.page(topic)
+    section_history = page_py.section_by_title('History')
+    if section_history:
+        print("%s - %s" % (section_history.title, section_history.text))
+    else:
+        print("No 'History' section found for this topic.")
+    print(page_py.fullurl)
+
+
+def describe_key_methods_with_llm(topic):
+    """
+    Calls the LLM to describe key methods used in the topic, as they would appear in Wikipedia.
+    """
+    prompt = f"""
+Describe the key methods used in {topic} as they would appear in a Wikipedia article. List and briefly explain each method, focusing on their purpose and typical usage.
+"""
+    description = ask_llama(prompt, temperature=0.3)
+    print(description)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run backtest simulation.")

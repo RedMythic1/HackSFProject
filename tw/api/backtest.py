@@ -368,9 +368,11 @@ def run_simulation(user_input, original_user_input_text, improvement_context="",
     # Construct the prompt with improvement context if provided
     if improvement_context:
         prompt = f"""
-**Your Role:** You are a specialized Python code generation assistant. Your sole task is to generate *exactly* two Python functions based on the user\\'s strategy, following the strict rules below.
+**Your Role:** You are a specialized Python code generation assistant. Your sole task is to generate *exactly* two Python functions based on the user's strategy, following the strict rules below.
 
-**User Strategy:** {user_input}
+**IMPORTANT:** You must strictly and holistically implement the user's strategy as described. Do NOT substitute, override, or dilute the user's requested method or approach with standard, generic, or template logic. The user's method must be the core of the implementation. If the user requests a specific indicator, method, or approach, it must be used as the primary logic. Integrate all aspects of the user's intent, and ensure the code is holistic, not piecemeal or generic.
+
+**User Strategy (MUST BE FOLLOWED EXACTLY):** {user_input}
 
 **IMPROVEMENT CONTEXT:** 
 {improvement_context}
@@ -532,9 +534,11 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
 """
     else:
         prompt = f"""
-**Your Role:** You are a specialized Python code generation assistant. Your sole task is to generate *exactly* two Python functions based on the user\\'s strategy, following the strict rules below.
+**Your Role:** You are a specialized Python code generation assistant. Your sole task is to generate *exactly* two Python functions based on the user's strategy, following the strict rules below.
 
-**User Strategy:** {user_input}
+**IMPORTANT:** You must strictly and holistically implement the user's strategy as described. Do NOT substitute, override, or dilute the user's requested method or approach with standard, generic, or template logic. The user's method must be the core of the implementation. If the user requests a specific indicator, method, or approach, it must be used as the primary logic. Integrate all aspects of the user's intent, and ensure the code is holistic, not piecemeal or generic.
+
+**User Strategy (MUST BE FOLLOWED EXACTLY):** {user_input}
 
 **DATA INFORMATION:**
 - The data is loaded from a CSV file at 'stockbt/datasets/test.csv'
@@ -1068,23 +1072,9 @@ Based on the above analysis, implement these improvements in your trading strate
         logger.info(f"Target Profit (1.5x Buy & Hold): ${target_profit:.2f}")
         logger.info(f"Performance vs Buy & Hold: {percent_above_buyhold:+.2f}%")
         logger.info(f"Performance vs Target: {percent_vs_target:+.2f}%")
-        normalized_buy_points = []
-        for point in buy_points:
-            if isinstance(point, tuple) and len(point) == 2:
-                index = point[0]
-                if isinstance(index, (int, float)) and 0 <= index < len(close):
-                    normalized_buy_points.append((int(index), close[int(index)]))
-            elif isinstance(point, (int, float)) and 0 <= point < len(close):
-                normalized_buy_points.append((int(point), close[int(point)]))
-        normalized_sell_points = []
-        for point in sell_points:
-            if isinstance(point, tuple) and len(point) == 2:
-                index = point[0]
-                if isinstance(index, (int, float)) and 0 <= index < len(close):
-                    normalized_sell_points.append((int(index), close[int(index)]))
-            elif isinstance(point, (int, float)) and 0 <= point < len(close):
-                normalized_sell_points.append((int(point), close[int(point)]))
-        logger.info(f"Normalized {len(normalized_buy_points)} buy points and {len(normalized_sell_points)} sell points")
+        buy_points = filter_trade_points(buy_points, close)
+        sell_points = filter_trade_points(sell_points, close)
+        logger.info(f"Filtered to {len(buy_points)} buy points and {len(sell_points)} sell points")
         code_info = code_info or {}
         trading_strategy_code = code_info.get('code', '')
         params_code = code_info.get('input_code', '')
@@ -1096,8 +1086,8 @@ Based on the above analysis, implement these improvements in your trading strate
             'target_profit': target_profit,
             'percent_above_buyhold': percent_above_buyhold,
             'percent_vs_target': percent_vs_target,
-            'buy_points': normalized_buy_points,
-            'sell_points': normalized_sell_points,
+            'buy_points': buy_points,
+            'sell_points': sell_points,
             'balance_over_time': balance_over_time,
             'close': close,
             'dates': dates,
@@ -1153,6 +1143,21 @@ Provide a concise, focused analysis of what's working/not working, followed by s
             'error': "All iterations failed to produce results"
         }
     final_result = best_strategy_data or all_datasets_results[-1]
+    # After trading_strategy_code and params_code are set, generate a summary
+    code_summary = None
+    if trading_strategy_code:
+        summary_prompt = f"""
+Summarize the following Python trading strategy code in 3-5 sentences. Focus on what the strategy does, its main logic, and any unique features. Use plain English and avoid code or variable names unless necessary.
+
+Code:
+{trading_strategy_code}
+"""
+        try:
+            code_summary = ask_llama(summary_prompt)
+        except Exception as e:
+            logger.info(f"Error generating code summary: {e}")
+            code_summary = None
+
     result = {
         'status': 'success',
         'profit': int(round(final_result['profit'])),
@@ -1171,6 +1176,7 @@ Provide a concise, focused analysis of what's working/not working, followed by s
             'sells': final_result.get('sell_points', [])
         },
         'code': final_result['code'],
+        'code_summary': code_summary,
         'all_iterations': [{
             'iteration': r['iteration'],
             'dataset': r['dataset'],
@@ -1231,6 +1237,18 @@ Provide ONLY the enhanced strategy description. DO NOT include explanations, int
     except Exception as e:
         logger.info(f"Error enhancing prompt: {e}")
         return original_prompt
+
+def filter_trade_points(points, close):
+    """Only keep unique, valid trade points as (index, price) tuples."""
+    filtered = []
+    seen = set()
+    for point in points:
+        if isinstance(point, tuple) and len(point) == 2:
+            idx, price = point
+            if isinstance(idx, int) and 0 <= idx < len(close) and idx not in seen:
+                filtered.append((idx, close[idx]))
+                seen.add(idx)
+    return filtered
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run backtest simulation.")

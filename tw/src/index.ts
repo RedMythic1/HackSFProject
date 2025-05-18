@@ -183,13 +183,13 @@ const customRankingSystem = async (
             return baseScore; // No valid interest terms
         }
         
-        // Load summary from .cache/summary_{article.id}.json if possible
+        // Load summary from /data/article_cache/summary_{article.id}.json if possible
         let articleSummary = '';
         let summarySource = 'none';
         
         if (article.id) {
             try {
-                const summaryPath = `.cache/summary_${article.id}.json`;
+                const summaryPath = `/data/article_cache/summary_${article.id}.json`;
                 console.log(`ATTEMPTING TO LOAD SUMMARY FILE: ${summaryPath}`);
                 
                 const response = await fetch(summaryPath);
@@ -419,27 +419,27 @@ class ApiService {
 
     async getArticleDetails(articleId: string): Promise<ArticleDetail | null> {
         try {
-            const url = `${this.baseUrl}/api/article/${articleId}`;
+            const url = `/data/article_cache/final_article_${articleId}.json`;
             console.log(`Fetching article details from: ${url}`);
             
             const response = await fetch(url);
-            
+            const data = await response.json();
+
             if (!response.ok) {
                 console.error(`Error response from server: ${response.status}`);
                 throw new Error(`Failed to fetch article details: ${response.statusText}`);
             }
             
-            const data = await response.json();
             console.log('Article details response:', data);
             
             // If we get a proper response with article data
-            if (data.status === 'success' && data.article) {
-                console.log('Article details fetched successfully:', data.article.title);
+            if (data && (data.title || data.summary || data.content)) {
+                console.log('Article details fetched successfully:', data.title);
                 return {
-                    title: data.article.title,
-                    link: data.article.link,
-                    summary: data.article.summary,
-                    content: data.article.content
+                    title: data.title || '',
+                    link: data.link || '',
+                    summary: data.summary || '',
+                    content: data.content || ''
                 };
             } else {
                 console.error('Invalid article data format:', data);
@@ -791,11 +791,10 @@ class AppController {
             `;
         }
         
-        // Add action buttons
+        // Add action button (centered, blue)
         articleContent += `
-            <div class="article-actions">
-                <a href="${article.link}" target="_blank" class="article-link">View Original</a>
-                <button id="back-to-articles" class="back-button">Back to Articles</button>
+            <div class="article-actions" style="display: flex; justify-content: center; margin-top: 2.5rem;">
+                <button id="back-to-articles" class="back-button blue">Back to Articles</button>
             </div>
         `;
         

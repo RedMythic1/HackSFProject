@@ -43,6 +43,7 @@ interface BacktestSuccessResult {
         percent_above_buyhold: number;
         trades_count: number;
     }>;
+    code_summary?: string;
 }
 
 // For API error results
@@ -232,33 +233,6 @@ class BacktestingController {
             this.tradesCount.textContent = totalTrades.toString();
         }
         
-        // Update success rate
-        if (this.successRate) {
-            const buyPoints = result.buy_points;
-            const sellPoints = result.sell_points;
-            
-            let successfulTrades = 0;
-            
-            // Count trades where sell price > buy price
-            if (buyPoints && sellPoints) {
-                for (let i = 0; i < Math.min(buyPoints.length, sellPoints.length); i++) {
-                    const buyPrice = buyPoints[i][1];
-                    const sellPrice = sellPoints[i][1];
-                    if (sellPrice > buyPrice) {
-                        successfulTrades++;
-                    }
-                }
-            }
-            
-            const totalTrades = Math.min(buyPoints.length, sellPoints.length);
-            const successRateValue = totalTrades > 0 ? (successfulTrades / totalTrades) * 100 : 0;
-            this.successRate.textContent = `${successRateValue.toFixed(1)}%`;
-            
-            // Add color based on success rate
-            this.successRate.className = 'result-value ' + 
-                (successRateValue >= 50 ? 'positive' : 'negative');
-        }
-        
         // Update "vs Buy & Hold" value
         const vsBuyHoldElement = document.getElementById('vs-buyhold');
         if (vsBuyHoldElement && 'percent_above_buyhold' in result) {
@@ -288,6 +262,16 @@ class BacktestingController {
         
         if (datasetSizeElement && result.close) {
             datasetSizeElement.textContent = `${result.close.length} data points`;
+        }
+        
+        // Show code summary if available
+        const codeSummaryElement = document.getElementById('code-summary');
+        if (codeSummaryElement && 'code_summary' in result && result.code_summary) {
+            codeSummaryElement.textContent = result.code_summary;
+            codeSummaryElement.style.display = 'block';
+        } else if (codeSummaryElement) {
+            codeSummaryElement.textContent = 'No summary available.';
+            codeSummaryElement.style.display = 'block';
         }
         
         // Create charts
