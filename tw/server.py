@@ -13,6 +13,9 @@ import math
 import re
 import traceback
 
+# Import the backtest module with run_improved_simulation
+from api.backtest import run_improved_simulation
+
 # Check if we should use system-installed packages instead of bundled ones
 USE_SYSTEM_PACKAGES = os.environ.get('USE_SYSTEM_PACKAGES', 'false').lower() == 'true'
 if not USE_SYSTEM_PACKAGES and os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'api/python_packages')):

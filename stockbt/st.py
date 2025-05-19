@@ -65,7 +65,7 @@ def ask_llama(prompt, temperature=0.7):
     print(f"\nSending prompt to g4f ChatCompletion with temperature={temperature}…")
     try:
         response = g4f.ChatCompletion.create(
-            model="gpt-4o",
+            model="gpt-o3",
             messages=[{"role": "user", "content": prompt}],
             provider=g4f.Provider.PollinationsAI,
             temperature=temperature

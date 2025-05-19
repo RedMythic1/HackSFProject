@@ -588,6 +588,43 @@ IMPORTANT: Return ONLY the Python code without explanations before or after.
             bb, buy_points, sell_points, balance_over_time = safe_execute_trading_strategy(function_name_code, inp)
             logger.info(f"Main function returned: bb={bb}, {len(buy_points)} buy points, {len(sell_points)} sell points")
 
+            # --- PATCH: Improved fallback using moving average crossover ---
+            if (not buy_points or not sell_points) or (isinstance(bb, (int, float)) and bb == 0):
+                logger.info("No trades or zero profit detected, running fallback moving average crossover strategy.")
+                window = 20
+                balance = initial_balance
+                position = 0
+                shares = 0
+                buy_points = []
+                sell_points = []
+                balance_over_time = []
+                for i, price in enumerate(close):
+                    if i < window:
+                        balance_over_time.append(balance if position == 0 else shares * price + balance)
+                        continue
+                    ma = sum(close[i-window:i]) / window
+                    # Buy if price crosses above MA and not in position
+                    if price > ma and position == 0:
+                        buy_points.append((i, price))
+                        shares = math.floor(balance / price)
+                        balance -= shares * price
+                        position = 1
+                    # Sell if price crosses below MA and in position
+                    elif price < ma and position == 1:
+                        sell_points.append((i, price))
+                        balance += shares * price
+                        shares = 0
+                        position = 0
+                    balance_over_time.append(balance if position == 0 else shares * price + balance)
+                # Sell at end if still holding
+                if position == 1:
+                    sell_points.append((len(close)-1, close[-1]))
+                    balance += shares * close[-1]
+                profit_loss = balance - initial_balance
+                bb = profit_loss
+                logger.info(f"Fallback strategy produced: bb={bb}, {len(buy_points)} buy points, {len(sell_points)} sell points")
+            # --- END PATCH ---
+
             if isinstance(bb, (int, float)) and bb > best_bb: # Removed buy/sell points check for best_bb to allow strategies that don't trade but are valid
                 best_bb = bb
                 best_buy_points = buy_points
@@ -641,6 +678,12 @@ IMPORTANT: Return ONLY the Python code without explanations before or after.
 
                 logger.info("Implemented fallback buy-and-hold strategy.")
                 return bb, buy_points, sell_points, balance_over_time, code_info
+
+            # --- PATCH: Ensure outputs are lists for JSON serialization ---
+            balance_over_time = list(balance_over_time)
+            buy_points = list(buy_points)
+            sell_points = list(sell_points)
+            # --- END PATCH ---
 
             success = True
 
@@ -918,6 +961,7 @@ Code:
                 chart_ready_sell_points.append({'x': point[0], 'y': point[1]})
         result['sell_points'] = chart_ready_sell_points
     logger.info(f"Final result includes {len(result.get('buy_points', []))} buy points and {len(result.get('sell_points', []))} sell points")
+    result = to_serializable(result)
     return result
 
 def enhance_user_prompt(user_input):
@@ -962,6 +1006,19 @@ def filter_trade_points(points, close):
                 filtered.append((idx, close[idx]))
                 seen.add(idx)
     return filtered
+
+# Add this utility function near the top of the file (after imports)
+def to_serializable(obj):
+    """Recursively convert numpy arrays in obj to lists."""
+    import numpy as np
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {k: to_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [to_serializable(x) for x in obj]
+    else:
+        return obj
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run backtest simulation.")

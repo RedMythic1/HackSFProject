@@ -128,7 +128,36 @@ export function createPriceChart(container: string | HTMLCanvasElement, backtest
           borderWidth: 1.5,
           fill: false,
           yAxisID: 'y',
-        } : undefined
+        } : undefined,
+        // Buy points as scatter plot
+        {
+          label: 'Buy Points',
+          type: 'scatter' as any,
+          data: buyPoints,
+          backgroundColor: 'rgb(46, 204, 113)',  // Green
+          borderColor: 'white',
+          borderWidth: 1,
+          pointRadius: 6,
+          pointStyle: 'triangle',
+          yAxisID: 'y',
+          pointHoverRadius: 8,
+          order: 0  // Make sure buy points appear on top
+        },
+        // Sell points as scatter plot
+        {
+          label: 'Sell Points',
+          type: 'scatter' as any,
+          data: sellPoints,
+          backgroundColor: 'rgb(231, 76, 60)',  // Red
+          borderColor: 'white',
+          borderWidth: 1,
+          pointRadius: 6,
+          pointStyle: 'triangle',
+          rotation: 180,  // Flip the triangle down
+          yAxisID: 'y',
+          pointHoverRadius: 8,
+          order: 0  // Make sure sell points appear on top
+        }
       ].filter(Boolean)
     },
     options: {
@@ -159,6 +188,8 @@ export function createPriceChart(container: string | HTMLCanvasElement, backtest
               const index = item.dataIndex;
               const datasetIndex = item.datasetIndex;
               if (datasetIndex === 1 && scaledBalance.length > 0) return `Portfolio Value (scaled) at ${labels[index]}`;
+              if (datasetIndex === 2) return `Buy Signal at ${labels[index]}`;
+              if (datasetIndex === 3) return `Sell Signal at ${labels[index]}`;
               return labels[index];
             },
             label: function(context) {
