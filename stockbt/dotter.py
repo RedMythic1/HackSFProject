@@ -1,8 +1,8 @@
 import os
 import random
 import csv
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
 # Path to datasets directory
@@ -40,220 +40,39 @@ min_len = min(len(v1), len(v2))
 v1 = v1[:min_len]
 v2 = v2[:min_len]
 
-# Convert to numpy arrays for norm calculation
+# Convert to numpy arrays
 v1_np = np.array(v1)
 v2_np = np.array(v2)
 
-# Calculate magnitudes (L2 norms)
-magnitude_a = np.linalg.norm(v1_np)
-magnitude_b = np.linalg.norm(v2_np)
+# Element-wise product
+product = v1_np * v2_np
 
-# --- PROFILE MENU ---
-print("Select a profile:")
-print("1. Normal (just cross/divide)")
-print("2. Volatile (moderate angle, squeeze, noise)")
-print("3. Deadly (high angle, squeeze, noise)")
-print("4. Flat (angle=0, squeeze=1, no noise)")
-print("5. Flat Erratic (angle=0, high squeeze, high noise)")
-print("6. Advanced (custom parameters)")
-profile_choice = input("Enter 1-6: ").strip()
-
-profile_map = {
-    '1': 'normal',
-    '2': 'volatile',
-    '3': 'deadly',
-    '4': 'flat',
-    '5': 'flat_erratic',
-    '6': 'advanced'
-}
-profile = profile_map.get(profile_choice, 'normal')
-
-neg_mod = input("Negative modifier? (y/n): ").strip().lower() == 'y'
-
-# Set parameters based on profile
-if profile == 'normal':
-    angle = 0
-    squeeze = 1
-    noise_level = 0
-    base_amplitude = 0
-elif profile == 'volatile':
-    angle = 30
-    squeeze = 1.5
-    noise_level = 30
-    base_amplitude = 2
-elif profile == 'deadly':
-    angle = 45
-    squeeze = 3
-    noise_level = 80
-    base_amplitude = 5
-elif profile == 'flat':
-    angle = 0
-    squeeze = 1
-    noise_level = 0
-    base_amplitude = 0
-elif profile == 'flat_erratic':
-    angle = 0
-    squeeze = 3
-    noise_level = 80
-    base_amplitude = 5
-elif profile == 'advanced':
-    try:
-        angle = float(input('Enter custom angle (degrees): ').strip())
-    except ValueError:
-        angle = 0
-    try:
-        squeeze = float(input('Enter custom squeeze (1 = original, >1 = more erratic): ').strip())
-    except ValueError:
-        squeeze = 1
-    try:
-        noise_level = float(input('Enter custom noise level (0-100): ').strip())
-    except ValueError:
-        noise_level = 0
-    try:
-        base_amplitude = float(input('Enter custom base amplitude: ').strip())
-    except ValueError:
-        base_amplitude = 0
-else:
-    angle = 0
-    squeeze = 1
-    noise_level = 0
-    base_amplitude = 0
-
-if neg_mod:
-    angle = -angle
-
-# --- PIPELINE ---
-# Step 1: Cross the two vectors (element-wise multiplication)
-crossed = v1_np * v2_np
-
-# Step 2: Normalize
-normalization_factor = (magnitude_a + magnitude_b) ** 0.25 if (magnitude_a + magnitude_b) != 0 else 1.0
-crossed_norm = crossed / normalization_factor
-
-# Step 3: Rotate
-desired_angle_rad = np.deg2rad(angle)
-x_vals = np.arange(len(crossed_norm))
-y_vals = crossed_norm
-x_start, x_end = 0, len(crossed_norm) - 1
-y_start, y_end = crossed_norm[0], crossed_norm[-1]
-current_angle = np.arctan2(y_end - y_start, x_end - x_start)
-rotation = desired_angle_rad - current_angle
-x0, y0 = x_start, y_start
-x_rot = x0 + (x_vals - x0) * np.cos(rotation) - (y_vals - y0) * np.sin(rotation)
-y_rot = y0 + (x_vals - x0) * np.sin(rotation) + (y_vals - y0) * np.cos(rotation)
-
-# Step 4: Interpolate to ensure one y per integer x
-def simple_linear_interp(x, y, x_new):
-    y_new = np.empty_like(x_new, dtype=float)
-    n = len(x)
-    for i, xi in enumerate(x_new):
-        if xi <= x[0]:
-            y_new[i] = y[0]
-        elif xi >= x[-1]:
-            y_new[i] = y[-1]
-        else:
-            j = np.searchsorted(x, xi) - 1
-            x0, x1 = x[j], x[j+1]
-            y0, y1 = y[j], y[j+1]
-            t = (xi - x0) / (x1 - x0)
-            y_new[i] = y0 + t * (y1 - y0)
-    return y_new
-sort_idx = np.argsort(x_rot)
-x_rot_sorted = x_rot[sort_idx]
-y_rot_sorted = y_rot[sort_idx]
-y_rot_interp = simple_linear_interp(x_rot_sorted, y_rot_sorted, np.arange(len(crossed_norm)))
-
-# Step 5: Fit a line to the rotated, interpolated data
-def fit_line(x, y):
-    m = (y[-1] - y[0]) / (x[-1] - x[0]) if x[-1] != x[0] else 0
-    b = y[0]
-    return m, b
-m_fit, b_fit = fit_line(np.arange(len(y_rot_interp)), y_rot_interp)
-line_fit = m_fit * np.arange(len(y_rot_interp)) + b_fit
-print(f"Equation of the best fit line after rotation: y = {m_fit:.4f}x + {b_fit:.4f}")
-
-# Step 6: Squeeze
-y_squeezed = line_fit + squeeze * (y_rot_interp - line_fit)
-
-# Step 7: Dynamic noise (always applied last)
-def random_fourier_noise(x, num_terms=10, amplitude=1.0, seed=None):
-    if seed is not None:
-        np.random.seed(seed)
-    n = len(x)
-    noise = np.zeros(n)
-    L = n
-    for k in range(1, num_terms + 1):
-        a = np.random.randn() * amplitude / np.sqrt(k)
-        b = np.random.randn() * amplitude / np.sqrt(k)
-        noise += a * np.sin(2 * np.pi * k * x / L) + b * np.cos(2 * np.pi * k * x / L)
-    return noise
-
-def local_volatility(y, window=10):
-    diffs = np.abs(np.diff(y, prepend=y[0]))
-    vol = np.convolve(diffs, np.ones(window)/window, mode='same')
-    return vol
-
-vol = local_volatility(y_squeezed, window=10)
-vol_norm = (vol - np.min(vol)) / (np.max(vol) - np.min(vol) + 1e-8)
-n = np.clip(noise_level, 0, 100) / 100.0
-weights = (1 - vol_norm) ** (1 - n) + n * 0.5
-x = np.arange(len(y_squeezed))
-num_terms = max(1, int(5 + 25 * n))
-noise = random_fourier_noise(x, num_terms=num_terms, amplitude=base_amplitude)
-noise_scaled = noise * weights
-y_noisy = y_squeezed + noise_scaled
-
-# --- CLEANUP FUNCTION ---
-def cleanup_series(series, max_pct_change=0.3):
-    cleaned = np.abs(series).copy()
-    for i in range(1, len(cleaned)):
-        prev = cleaned[i-1]
-        max_up = prev * (1 + max_pct_change)
-        max_down = prev * (1 - max_pct_change)
-        if cleaned[i] > max_up:
-            cleaned[i] = max_up
-        elif cleaned[i] < max_down:
-            cleaned[i] = max_down
-    return cleaned
-
-# Apply cleanup before plotting and storing
-y_noisy_clean = cleanup_series(y_noisy)
-
-# Plot and print Riemann sum for the noisy series
+# --- PLOTTING ---
 plt.figure(figsize=(12, 6))
-plt.plot(x, y_noisy_clean, label=f'Profile: {profile}, Neg: {neg_mod}, Angle: {angle}, Squeeze: {squeeze}, Noise: {noise_level}, Amp: {base_amplitude}')
-plt.plot(x, line_fit, 'r--', label='Best Fit Line')
-plt.title(f'Profile: {profile} | {file1} x {file2}')
-plt.xlabel('Price Point (Index)')
-plt.ylabel('Final Value')
+plt.plot(product, label=f'{file1} x {file2}')
+plt.title(f'Element-wise Product\n{file1} x {file2}')
+plt.xlabel('Index')
+plt.ylabel('Product')
 plt.legend()
-plt.gca().set_aspect('equal', adjustable='datalim')
 plt.tight_layout()
 plt.show()
 
-riemann_sum = np.sum(y_noisy_clean - line_fit)
-print(f'Riemann sum (integral) of final - best fit line: {riemann_sum:.4f}')
-
 # --- CSV OUTPUT ---
-# Prepare output directory
 output_dir = 'stockbt/generated_data'
 os.makedirs(output_dir, exist_ok=True)
 
-# Find next available file name
 existing = [f for f in os.listdir(output_dir) if f.startswith('genstock') and f.endswith('.csv')]
 nums = [int(f[len('genstock'):-4]) for f in existing if f[len('genstock'):-4].isdigit()]
 next_num = max(nums) + 1 if nums else 1
 output_file = os.path.join(output_dir, f'genstock{next_num}.csv')
 
-# Generate dates
 start_date = datetime.strptime('1976-01-22', '%Y-%m-%d')
-dates = [(start_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(len(y_noisy_clean))]
+dates = [(start_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(len(product))]
 
-# Write to CSV
 with open(output_file, 'w', newline='') as csvfile:
     writer = csv.writer(csvfile)
     writer.writerow(['Date', 'Close'])
-    for date, price in zip(dates, y_noisy_clean):
+    for date, price in zip(dates, product):
         writer.writerow([date, price])
 
 print(f'Generated CSV: {output_file}')
