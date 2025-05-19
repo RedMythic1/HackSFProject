@@ -363,337 +363,61 @@ def calculate_buy_and_hold_profit(close_prices, initial_balance=100000):
 # -----------------------------------------------------------------------------
 
 def run_simulation(user_input, original_user_input_text, improvement_context="", iteration=1, max_iterations=5, max_error_attempts=10):
+    """
+    Run a simulation of a trading strategy using the provided input.
+    
+    Args:
+        user_input (str): The user's description of a trading strategy.
+        original_user_input_text (str): The original user input for reference.
+        improvement_context (str): Additional context for improving the strategy.
+        iteration (int): The current iteration number.
+        max_iterations (int): The maximum number of iterations to run.
+        max_error_attempts (int): The maximum number of error attempts allowed.
+        
+    Returns:
+        tuple: (profit, buy_points, sell_points, balance_over_time, code_info)
+    """
     logger.info(f"\nStarting simulation iteration {iteration} with user input: {user_input[:100]}…")
+    
+    # Import in function scope to avoid circular imports
+    from api.backtest import close, dates
+    
+    # Set up simulation parameters
+    initial_balance = 100000  # Starting with $100k
+    best_bb = float('-inf')
+    best_buy_points = []
+    best_sell_points = []
+    best_balance_over_time = []
+    best_code_info = {}
+    
+    # Prepare the prompt for the trading strategy implementation
+    prompt = f"""
+# TRADING STRATEGY IMPLEMENTATION
 
-    # Construct the prompt with improvement context if provided
-    if improvement_context:
-        prompt = f"""
-**Your Role:** You are a specialized Python code generation assistant. Your sole task is to generate *exactly* two Python functions based on the user's strategy, following the strict rules below.
+Based on the following description, implement a complete trading strategy in Python:
 
-**IMPORTANT:** You must strictly and holistically implement the user's strategy as described. Do NOT substitute, override, or dilute the user's requested method or approach with standard, generic, or template logic. The user's method must be the core of the implementation. If the user requests a specific indicator, method, or approach, it must be used as the primary logic. Integrate all aspects of the user's intent, and ensure the code is holistic, not piecemeal or generic.
-
-**User Strategy (MUST BE FOLLOWED EXACTLY):** {user_input}
-
-**IMPROVEMENT CONTEXT:** 
-{improvement_context}
-
-**DATA INFORMATION:**
-- The data is loaded from a CSV file at 'stockbt/datasets/test.csv'
-- CSV Format: Date,Open,High,Low,Close,Volume
-- In the code, only the Close prices are available as a simple Python list named 'close'
-- No DataFrame or pandas is used - data is just a plain Python list of float values
-- You DO NOT need to load the data yourself - it\\'s already available as 'close'
-
-**CODE TEMPLATE GUIDELINES:**
-
-1. Use a TRADING_STRATEGY function that accepts PARAMS dict
-2. Iterate over CLOSE prices: for i, price_today in enumerate(close)
-3. Create BUY_POINTS and SELL_POINTS lists for trades
-4. Return (profit_loss, buy_points, sell_points, balance_over_time)
-5. Replace YOUR_BUY_CONDITION and YOUR_SELL_CONDITION with actual logic
-6. Use params.get('key', default) to safely access parameters
-7. NO input() calls or user prompting in any function
-8. Use try/except blocks to handle potential errors
-
-**Critical Output Requirements:**
-
-1.  **Format:**
-    *   Your entire response MUST be ONLY the Python code for the two functions.
-    *   **ABSOLUTELY NO MARKDOWN:** Do not use ```python, ```, or any other markdown formatting.
-    *   **NO Explanations** outside of the code itself: Do not add any prose before or after the functions.
-    *   **Limited Comments Allowed:** Inside the functions, you MAY include concise comments or docstrings that explain the purpose of scale/ratio parameters, but avoid any other extraneous commentary.
-    *   Separate the two functions with exactly ONE blank line.
-
-2.  **Function 1: `trading_strategy`**
-    *   Must be named exactly `trading_strategy`.
-    *   Must accept **EXACTLY ONE** positional argument (e.g., `params`), which will be the output (tuple or dict) from `get_user_params`. Do **NOT** add extra parameters (such as `formatted_inp`, `data`, etc.).
-    *   Must implement the user\\'s trading strategy using the provided `params`.
-    *   When determining buy/sell prices, you **MUST NOT** rely on hard-coded or absolute price values. Instead, compute them as a **multiplier of the current `price_today`** or other relative measures derived from `params` (e.g., `buy_price = price_today * params["buy_mult"]`). A minimum execution price of $0.01 will be enforced.
-    *   Define necessary loop variables such as `i`, `price_today`, and any multiplier-derived `buy_price`/`sell_price` consistent with the strategy (note that `close` is available in the execution context).
-    *   Must include the **MANDATORY TRADING LOGIC** block verbatim within its primary execution loop or logic.
-    *   Must include realistic market execution features such as slippage, bid-ask spread, commissions/fees, and liquidity constraints.
-    *   Must **return** exactly `balance - initial_balance, buy_points, sell_points, balance_over_time` in that order.
-
-3.  **Function 2: `get_user_params`**
-    *   Must be named exactly `get_user_params`.
-    *   **ABSOLUTELY CRITICAL: THIS FUNCTION MUST *NEVER* PROMPT THE USER FOR INPUT (e.g., using `input()` or similar functions, printing messages to the console that ask for input). ANY FORM OF USER INTERACTION IS STRICTLY FORBIDDEN.** It must automatically determine or iteratively search for optimized numeric parameters relevant to the strategy.
-    *   Must **return** the chosen numeric parameters as a single tuple or dictionary.
-    *   Include realistic market execution parameters (slippage_pct, spread_pct, commission_per_share, min_commission, max_position_pct).
-    *   **DO NOT** read files (e.g., CSVs) within this function.
-    *   **DO NOT** hard-code absolute price thresholds; parameters should be relative scales/ratios or other dimensionless values.
-
-4.  **Environment:**
-    *   Assume `math` module is pre-imported and available. Do **NOT** add import statements.
-    *   Assume a Python list named `close` containing the price data is available in the execution scope of `trading_strategy`.
-
-5.  **Simplified Data Structure:** The price series is available as the global Python list named `close`. It\\'s a simple list of floating-point values. Access elements with standard indexing: `close[i]` or iterate with `for i, price_today in enumerate(close):`. No pandas/DataFrame code is needed.
-
-6.  **Character Set:** Your entire code must use ONLY standard ASCII characters. Avoid typographic quotes (\\' \\' \\" \\" ) or long dashes (—). Use straight quotes (\\' \\") and hyphens (-) instead.
-
-7.  **Data Access:** The price series is available as the global list named `close`. **Do NOT** attempt to access data via dictionaries or DataFrames. Simply use `close[i]` or iterate with `for i, price_today in enumerate(close):`.
-
-8.  **Key-Error Safety:** Your code should never raise `KeyError`. Reference only variables you explicitly define.
-
-**MANDATORY TRADING LOGIC (Include and adapt this block inside `trading_strategy`):**
-```python
-initial_balance = {initial_balance}
-balance = initial_balance
-shares = 0
-buy_points = []
-sell_points = []
-balance_over_time = [balance] # Record initial balance
-
-# Market execution parameters (realistic market conditions)
-slippage_pct = params.get('slippage_pct', 0.001)  # 0.1% slippage by default
-spread_pct = params.get('spread_pct', 0.0005)  # 0.05% half-spread by default
-commission_per_share = params.get('commission_per_share', 0.005)  # $0.005 per share
-min_commission_per_trade = params.get('min_commission', 1.0)  # Minimum $1.00 per trade
-max_position_pct_of_volume = params.get('max_position_pct', 0.01)  # Maximum 1% of volume
-
-# --- Start of logic needing integration with your strategy loop ---
-# You need a loop here (e.g., for i, price_today in enumerate(close):)
-# Inside the loop, calculate buy/sell signals based on user_input strategy and params.
-
-# Example Buy Logic (adapt to your strategy):
-# if YOUR_BUY_CONDITION and shares == 0: # Only buy if no shares are held
-#   # Apply bid-ask spread (buy at ask price = higher)
-#   base_price = price_today * (1 + spread_pct)
-#   # Apply slippage (price moves against you when executing)
-#   buy_price_with_spread = base_price * (1 + slippage_pct)
-#   # Ensure minimum price
-#   buy_price = max(0.01, buy_price_with_spread * params.get('buy_price_multiplier', 0.99))
-#   
-#   # Apply liquidity constraint (limit position size)
-#   daily_volume = params.get('avg_volume', 100000)  # Default or from params
-#   max_shares_by_volume = int(daily_volume * max_position_pct_of_volume)
-#   
-#   # Calculate shares to buy considering price and liquidity
-#   max_shares_by_cash = math.floor(balance / buy_price) if buy_price > 0 else 0
-#   shares_to_buy = min(max_shares_by_cash, max_shares_by_volume)
-#   
-#   if shares_to_buy > 0:
-#       # Calculate commission
-#       commission = max(min_commission_per_trade, shares_to_buy * commission_per_share)
-#       # Execute trade with commission
-#       trade_cost = (shares_to_buy * buy_price) + commission
-#       balance -= trade_cost
-#       shares += shares_to_buy
-#       buy_points.append((i, price_today)) # Record buy point (index, price at trade)
-#       logger.info(f"Bought [shares_to_buy] shares at [buy_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
-
-# Example Sell Logic (adapt to your strategy):
-# elif YOUR_SELL_CONDITION and shares > 0: # Only sell if shares are held
-#   # Apply bid-ask spread (sell at bid price = lower)
-#   base_price = price_today * (1 - spread_pct)
-#   # Apply slippage (price moves against you when executing)
-#   sell_price_with_spread = base_price * (1 - slippage_pct)
-#   # Ensure minimum price
-#   sell_price = max(0.01, sell_price_with_spread * params.get('sell_price_multiplier', 1.01))
-#   
-#   if shares > 0: # Check if shares are held before selling
-#       # Calculate commission
-#       commission = max(min_commission_per_trade, shares * commission_per_share)
-#       # Execute trade with commission
-#       sale_proceeds = (shares * sell_price) - commission
-#       balance += sale_proceeds
-#       sell_points.append((i, price_today)) # Record sell point (index, price at trade)
-#       logger.info(f"Sold [shares] shares at [sell_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
-#       shares = 0
-
-# At the end of each iteration in your loop (after potential buy/sell):
-# balance_over_time.append(balance + (shares * price_today if shares > 0 else 0)) # Append current total value
-
-# After the loop, if shares are still held, liquidate them at the last known price
-if shares > 0:
-    # Apply bid-ask spread and slippage for final liquidation
-    base_price = max(0.01, close[-1] if close else 0.01) * (1 - spread_pct)
-    last_price = max(0.01, base_price * (1 - slippage_pct))
-    # Calculate commission for final sale
-    commission = max(min_commission_per_trade, shares * commission_per_share)
-    # Execute final liquidation with commission
-    sale_proceeds = (shares * last_price) - commission
-    balance += sale_proceeds
-    sell_points.append((len(close) -1, close[-1] if close else 0.01)) # Record final auto-sell
-    logger.info(f"Final liquidation: Sold [shares] shares at [last_price:.2f] with [commission:.2f] commission")
-    shares = 0
-balance_over_time.append(balance) # Append final balance state
-return balance - initial_balance, buy_points, sell_points, balance_over_time
 ```
-**(Note:** The MANDATORY TRADING LOGIC above is a template. You **must** integrate it correctly within the `trading_strategy` function\\'s loop, defining variables like `i`, `price_today`, `buy_price`, `sell_price` according to the user\\'s strategy and the parameters from `get_user_params`. The comments indicate where your strategy-specific logic needs to fit.)
-
-**Final Check:** Ensure your output is only the two raw Python function definitions separated by a single blank line. No markdown, no comments outside the functions, no extra text.
-
-**Important Output Format Requirements:**
-- Your trading_strategy function may return its results in EITHER of these formats:
-  1. Standard tuple: (profit_loss, buy_points, sell_points, balance_over_time)
-  2. Dictionary format: {{\\'profit_loss\\': profit_amount, \\'buy_points\\': [...], \\'sell_points\\': [...], \\'balance_over_time\\': [...]}}
-
-- The dictionary format is preferred as it\\'s more explicit. For buy_points and sell_points, you can provide either:
-  * A list of (index, price) tuples
-  * A list of indices where trades occurred
-"""
-    else:
-        prompt = f"""
-**Your Role:** You are a specialized Python code generation assistant. Your sole task is to generate *exactly* two Python functions based on the user's strategy, following the strict rules below.
-
-**IMPORTANT:** You must strictly and holistically implement the user's strategy as described. Do NOT substitute, override, or dilute the user's requested method or approach with standard, generic, or template logic. The user's method must be the core of the implementation. If the user requests a specific indicator, method, or approach, it must be used as the primary logic. Integrate all aspects of the user's intent, and ensure the code is holistic, not piecemeal or generic.
-
-**User Strategy (MUST BE FOLLOWED EXACTLY):** {user_input}
-
-**DATA INFORMATION:**
-- The data is loaded from a CSV file at 'stockbt/datasets/test.csv'
-- CSV Format: Date,Open,High,Low,Close,Volume
-- In the code, only the Close prices are available as a simple Python list named 'close'
-- No DataFrame or pandas is used - data is just a plain Python list of float values
-- You DO NOT need to load the data yourself - it\\'s already available as 'close'
-
-**CODE TEMPLATE GUIDELINES:**
-
-1. Use a TRADING_STRATEGY function that accepts PARAMS dict
-2. Iterate over CLOSE prices: for i, price_today in enumerate(close)
-3. Create BUY_POINTS and SELL_POINTS lists for trades
-4. Return (profit_loss, buy_points, sell_points, balance_over_time)
-5. Replace YOUR_BUY_CONDITION and YOUR_SELL_CONDITION with actual logic
-6. Use params.get('key', default) to safely access parameters
-7. NO input() calls or user prompting in any function
-8. Use try/except blocks to handle potential errors
-
-**Critical Output Requirements:**
-
-1.  **Format:**
-    *   Your entire response MUST be ONLY the Python code for the two functions.
-    *   **ABSOLUTELY NO MARKDOWN:** Do not use ```python, ```, or any other markdown formatting.
-    *   **NO Explanations** outside of the code itself: Do not add any prose before or after the functions.
-    *   **Limited Comments Allowed:** Inside the functions, you MAY include concise comments or docstrings that explain the purpose of scale/ratio parameters, but avoid any other extraneous commentary.
-    *   Separate the two functions with exactly ONE blank line.
-
-2.  **Function 1: `trading_strategy`**
-    *   Must be named exactly `trading_strategy`.
-    *   Must accept **EXACTLY ONE** positional argument (e.g., `params`), which will be the output (tuple or dict) from `get_user_params`. Do **NOT** add extra parameters (such as `formatted_inp`, `data`, etc.).
-    *   Must implement the user\\'s trading strategy using the provided `params`.
-    *   When determining buy/sell prices, you **MUST NOT** rely on hard-coded or absolute price values. Instead, compute them as a **multiplier of the current `price_today`** or other relative measures derived from `params` (e.g., `buy_price = price_today * params["buy_mult"]`). A minimum execution price of $0.01 will be enforced.
-    *   Define necessary loop variables such as `i`, `price_today`, and any multiplier-derived `buy_price`/`sell_price` consistent with the strategy (note that `close` is available in the execution context).
-    *   Must include the **MANDATORY TRADING LOGIC** block verbatim within its primary execution loop or logic.
-    *   Must include realistic market execution features such as slippage, bid-ask spread, commissions/fees, and liquidity constraints.
-    *   Must **return** exactly `balance - initial_balance, buy_points, sell_points, balance_over_time` in that order.
-
-3.  **Function 2: `get_user_params`**
-    *   Must be named exactly `get_user_params`.
-    *   **ABSOLUTELY CRITICAL: THIS FUNCTION MUST *NEVER* PROMPT THE USER FOR INPUT (e.g., using `input()` or similar functions, printing messages to the console that ask for input). ANY FORM OF USER INTERACTION IS STRICTLY FORBIDDEN.** It must automatically determine or iteratively search for optimized numeric parameters relevant to the strategy.
-    *   Must **return** the chosen numeric parameters as a single tuple or dictionary.
-    *   Include realistic market execution parameters (slippage_pct, spread_pct, commission_per_share, min_commission, max_position_pct).
-    *   **DO NOT** read files (e.g., CSVs) within this function.
-    *   **DO NOT** hard-code absolute price thresholds; parameters should be relative scales/ratios or other dimensionless values.
-
-4.  **Environment:**
-    *   Assume `math` module is pre-imported and available. Do **NOT** add import statements.
-    *   Assume a Python list named `close` containing the price data is available in the execution scope of `trading_strategy`.
-
-5.  **Simplified Data Structure:** The price series is available as the global Python list named `close`. It\\'s a simple list of floating-point values. Access elements with standard indexing: `close[i]` or iterate with `for i, price_today in enumerate(close):`. No pandas/DataFrame code is needed.
-
-6.  **Character Set:** Your entire code must use ONLY standard ASCII characters. Avoid typographic quotes (\\' \\' \\" \\" ) or long dashes (—). Use straight quotes (\\' \\") and hyphens (-) instead.
-
-7.  **Data Access:** The price series is available as the global list named `close`. **Do NOT** attempt to access data via dictionaries or DataFrames. Simply use `close[i]` or iterate with `for i, price_today in enumerate(close):`.
-
-8.  **Key-Error Safety:** Your code should never raise `KeyError`. Reference only variables you explicitly define.
-
-**MANDATORY TRADING LOGIC (Include and adapt this block inside `trading_strategy`):**
-```python
-initial_balance = {initial_balance}
-balance = initial_balance
-shares = 0
-buy_points = []
-sell_points = []
-balance_over_time = [balance] # Record initial balance
-
-# Market execution parameters (realistic market conditions)
-slippage_pct = params.get('slippage_pct', 0.001)  # 0.1% slippage by default
-spread_pct = params.get('spread_pct', 0.0005)  # 0.05% half-spread by default
-commission_per_share = params.get('commission_per_share', 0.005)  # $0.005 per share
-min_commission_per_trade = params.get('min_commission', 1.0)  # Minimum $1.00 per trade
-max_position_pct_of_volume = params.get('max_position_pct', 0.01)  # Maximum 1% of volume
-
-# --- Start of logic needing integration with your strategy loop ---
-# You need a loop here (e.g., for i, price_today in enumerate(close):)
-# Inside the loop, calculate buy/sell signals based on user_input strategy and params.
-
-# Example Buy Logic (adapt to your strategy):
-# if YOUR_BUY_CONDITION and shares == 0: # Only buy if no shares are held
-#   # Apply bid-ask spread (buy at ask price = higher)
-#   base_price = price_today * (1 + spread_pct)
-#   # Apply slippage (price moves against you when executing)
-#   buy_price_with_spread = base_price * (1 + slippage_pct)
-#   # Ensure minimum price
-#   buy_price = max(0.01, buy_price_with_spread * params.get('buy_price_multiplier', 0.99))
-#   
-#   # Apply liquidity constraint (limit position size)
-#   daily_volume = params.get('avg_volume', 100000)  # Default or from params
-#   max_shares_by_volume = int(daily_volume * max_position_pct_of_volume)
-#   
-#   # Calculate shares to buy considering price and liquidity
-#   max_shares_by_cash = math.floor(balance / buy_price) if buy_price > 0 else 0
-#   shares_to_buy = min(max_shares_by_cash, max_shares_by_volume)
-#   
-#   if shares_to_buy > 0:
-#       # Calculate commission
-#       commission = max(min_commission_per_trade, shares_to_buy * commission_per_share)
-#       # Execute trade with commission
-#       trade_cost = (shares_to_buy * buy_price) + commission
-#       balance -= trade_cost
-#       shares += shares_to_buy
-#       buy_points.append((i, price_today)) # Record buy point (index, price at trade)
-#       logger.info(f"Bought [shares_to_buy] shares at [buy_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
-
-# Example Sell Logic (adapt to your strategy):
-# elif YOUR_SELL_CONDITION and shares > 0: # Only sell if shares are held
-#   # Apply bid-ask spread (sell at bid price = lower)
-#   base_price = price_today * (1 - spread_pct)
-#   # Apply slippage (price moves against you when executing)
-#   sell_price_with_spread = base_price * (1 - slippage_pct)
-#   # Ensure minimum price
-#   sell_price = max(0.01, sell_price_with_spread * params.get('sell_price_multiplier', 1.01))
-#   
-#   if shares > 0: # Check if shares are held before selling
-#       # Calculate commission
-#       commission = max(min_commission_per_trade, shares * commission_per_share)
-#       # Execute trade with commission
-#       sale_proceeds = (shares * sell_price) - commission
-#       balance += sale_proceeds
-#       sell_points.append((i, price_today)) # Record sell point (index, price at trade)
-#       logger.info(f"Sold [shares] shares at [sell_price:.2f] with [commission:.2f] commission on day [i] (price: [price_today:.2f])")
-#       shares = 0
-
-# At the end of each iteration in your loop (after potential buy/sell):
-# balance_over_time.append(balance + (shares * price_today if shares > 0 else 0)) # Append current total value
-
-# After the loop, if shares are still held, liquidate them at the last known price
-if shares > 0:
-    # Apply bid-ask spread and slippage for final liquidation
-    base_price = max(0.01, close[-1] if close else 0.01) * (1 - spread_pct)
-    last_price = max(0.01, base_price * (1 - slippage_pct))
-    # Calculate commission for final sale
-    commission = max(min_commission_per_trade, shares * commission_per_share)
-    # Execute final liquidation with commission
-    sale_proceeds = (shares * last_price) - commission
-    balance += sale_proceeds
-    sell_points.append((len(close) -1, close[-1] if close else 0.01)) # Record final auto-sell
-    logger.info(f"Final liquidation: Sold [shares] shares at [last_price:.2f] with [commission:.2f] commission")
-    shares = 0
-balance_over_time.append(balance) # Append final balance state
-return balance - initial_balance, buy_points, sell_points, balance_over_time
+{user_input}
 ```
-**(Note:** The MANDATORY TRADING LOGIC above is a template. You **must** integrate it correctly within the `trading_strategy` function\\'s loop, defining variables like `i`, `price_today`, `buy_price`, `sell_price` according to the user\\'s strategy and the parameters from `get_user_params`. The comments indicate where your strategy-specific logic needs to fit.)
 
-**Final Check:** Ensure your output is only the two raw Python function definitions separated by a single blank line. No markdown, no comments outside the functions, no extra text.
+{improvement_context if improvement_context else ""}
 
-**Important Output Format Requirements:**
-- Your trading_strategy function may return its results in EITHER of these formats:
-  1. Standard tuple: (profit_loss, buy_points, sell_points, balance_over_time)
-  2. Dictionary format: {{\\'profit_loss\\': profit_amount, \\'buy_points\\': [...], \\'sell_points\\': [...], \\'balance_over_time\\': [...]}}
+Your implementation must:
 
-- The dictionary format is preferred as it\\'s more explicit. For buy_points and sell_points, you can provide either:
-  * A list of (index, price) tuples
-  * A list of indices where trades occurred
+1. Define a function called `trading_strategy(params)` that takes parameter dictionary and implements the strategy
+2. Define a function `get_user_params()` that returns a dictionary of parameters used by the strategy
+3. Use the global variables `close` (list of closing prices) and `dates` (list of corresponding dates)
+4. Return exactly: (profit_loss, buy_points, sell_points, balance_over_time)
+   - profit_loss: total profit/loss amount (float)
+   - buy_points: list of (index, price) tuples for buy signals
+   - sell_points: list of (index, price) tuples for sell signals
+   - balance_over_time: list of account balances over time (same length as close)
+
+Be creative and faithful to the user's description. If something is unclear, use your best judgment to implement what they likely intended.
+
+The goal is to make a profitable strategy, but more importantly, to implement what the user described.
+
+IMPORTANT: Return ONLY the Python code without explanations before or after.
 """
 
     attempts = 0
@@ -709,13 +433,6 @@ return balance - initial_balance, buy_points, sell_points, balance_over_time
     buy_points = []
     sell_points = []
     balance_over_time = []
-
-    # Track best results during attempts
-    best_bb = float('-inf')
-    best_buy_points = []
-    best_sell_points = []
-    best_balance_over_time = []
-    best_code_info = None
 
     # Temperature scaling parameters
     base_temperature = 0.3  # Start with slightly higher temperature for more variation
@@ -1065,7 +782,10 @@ Based on the above analysis, implement these improvements in your trading strate
             max_iterations,
             max_error_attempts
         )
-        percent_above_buyhold = ((current_profit / buy_hold_profit) - 1) * 100 if buy_hold_profit > 0 else 0
+        if buy_hold_profit != 0:
+            percent_above_buyhold = (current_profit / abs(buy_hold_profit)) * 100
+        else:
+            percent_above_buyhold = current_profit * 100 if current_profit != 0 else 0
         percent_vs_target = ((current_profit / target_profit) - 1) * 100 if target_profit > 0 else 0
         logger.info(f"\nCurrent Profit: ${current_profit:.2f}")
         logger.info(f"Buy & Hold Profit: ${buy_hold_profit:.2f}")
@@ -1171,7 +891,7 @@ Code:
         'close': final_result.get('close', []),
         'dates': final_result.get('dates', []),
         'trades': {
-            'count': len(final_result.get('buy_points', [])),
+            'count': len(final_result.get('buy_points', [])) + len(final_result.get('sell_points', [])),
             'buys': final_result.get('buy_points', []),
             'sells': final_result.get('sell_points', [])
         },
@@ -1182,7 +902,7 @@ Code:
             'dataset': r['dataset'],
             'profit': r['profit'],
             'percent_above_buyhold': r['percent_above_buyhold'],
-            'trades_count': len(r['buy_points'])
+            'trades_count': len(r['buy_points']) + len(r['sell_points'])
         } for r in all_datasets_results]
     }
     if 'buy_points' in result and result['buy_points']:
@@ -1200,43 +920,36 @@ Code:
     logger.info(f"Final result includes {len(result.get('buy_points', []))} buy points and {len(result.get('sell_points', []))} sell points")
     return result
 
-def enhance_user_prompt(original_prompt):
-    """Enhance the user's trading strategy prompt using LLM."""
-    logger.info("\n=== ENHANCING USER PROMPT ===")
-    logger.info(f"Original prompt: {original_prompt[:100]}...")
-    
-    enhancement_prompt = f"""
-You are an expert trading strategy developer. Your task is to MINIMALLY refine the user's trading strategy while preserving ~90% of the original content.
+def enhance_user_prompt(user_input):
+    """Enhances the user's input with additional instructions and constraints.
+    Adds specificity to user's general description of a trading algorithm.
+    """
+    enhanced_prompt = f"""
+# TRADING STRATEGY TASK
 
-**Original Strategy:**
-{original_prompt}
+Create a complete Python implementation of the trading strategy described below. The code should be creative, realistic, and follow these guidelines:
 
-**Your Task:**
-1. Preserve approximately 90% of the original text
-2. Only fix grammatical errors and improve clarity
-3. Replace vague terms with more precise technical terminology where appropriate
-4. Add missing context ONLY when absolutely necessary (e.g., if "mia khalifa method" is mentioned, briefly define what this method entails in trading terms)
-5. DO NOT completely restructure or rewrite the strategy
+## User's Trading Strategy Description:
+{user_input}
 
-The user values their original ideas - your job is just to make minor improvements while keeping their intent intact.
+## Implementation Requirements:
+1. Define a function called `trading_strategy(params)` that implements the user's strategy
+2. Define a function called `get_user_params()` that returns any parameters needed
+3. Use the `close` price array for your calculations
+4. Return a tuple containing (profit_loss, buy_points, sell_points, balance_over_time)
 
-Provide ONLY the enhanced strategy description. DO NOT include explanations, introductions, or any text outside the improved strategy itself.
+## You have available:
+- `close`: an array of daily closing prices
+- `dates`: matching dates for the close prices
+
+Your code should be creative while respecting the user's intent. Feel free to interpret the strategy in a way that makes most sense to you. While you should aim for profitability, focus more on implementing exactly what the user described.
+
+IMPORTANT: I want you to use your own approach to implement the strategy, not a rigid template. If the user's description is vague, use your best judgment to fill in the details in a way that's still true to their core idea.
+
+I need your response to contain valid Python code - do not include explanations or notes unless they're comments within the code.
 """
-
-    try:
-        logger.info("Getting enhanced prompt from LLM...")
-        enhanced_prompt = ask_llama(enhancement_prompt)
-        
-        if enhanced_prompt and len(enhanced_prompt) > 50:  # Basic validation
-            logger.info("Successfully enhanced the prompt.")
-            logger.info(f"Enhanced prompt: {enhanced_prompt[:100]}...")
-            return enhanced_prompt
-        else:
-            logger.info("Warning: Enhancement returned empty or very short result. Using original prompt.")
-            return original_prompt
-    except Exception as e:
-        logger.info(f"Error enhancing prompt: {e}")
-        return original_prompt
+    
+    return enhanced_prompt
 
 def filter_trade_points(points, close):
     """Only keep unique, valid trade points as (index, price) tuples."""

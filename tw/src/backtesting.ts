@@ -85,6 +85,7 @@ class BacktestingController {
         this.tradesCount = document.getElementById('trades-count');
         this.successRate = document.getElementById('success-rate');
         this.generatedCode = document.getElementById('generated-code');
+        
         logFrontend('initElements finished', {
             strategyInputExists: !!this.strategyInput,
             runBacktestBtnExists: !!this.runBacktestBtn
@@ -204,124 +205,67 @@ class BacktestingController {
         
         if (result.status === 'error') {
             const errorResult = result as BacktestErrorResult;
-            logFrontend('Displaying error message from result', errorResult.error);
-            this.showError(errorResult.error || 'An unknown error occurred during backtest processing.');
+            logFrontend('Error in result:', errorResult.error);
+            this.showError(errorResult.error);
             return;
         }
         
+        // Show the results container
         this.resultsContainer.style.display = 'block';
-        logFrontend('Results container displayed');
         
-        // Update profit/loss
+        const successResult = result as BacktestSuccessResult;
+        
+        // Update the profit/loss value
         if (this.profitLossValue) {
-            const profitValue = result.profit;
-            logFrontend('Profit/Loss value:', profitValue);
-            
-            const formattedProfitLoss = new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: 'USD'
-            }).format(profitValue);
-            
-            this.profitLossValue.textContent = formattedProfitLoss;
-            this.profitLossValue.className = 'result-value ' + 
-                (profitValue >= 0 ? 'positive' : 'negative');
+            const profit = successResult.profit;
+            this.profitLossValue.textContent = `$${profit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            this.profitLossValue.className = 'result-value ' + (profit >= 0 ? 'positive' : 'negative');
         }
         
         // Update trades count
-        if (this.tradesCount) {
-            const totalTrades = result.trades?.count || result.buy_points.length;
-            this.tradesCount.textContent = totalTrades.toString();
+        if (this.tradesCount && successResult.trades) {
+            const trades = successResult.trades.count;
+            this.tradesCount.textContent = trades.toString();
         }
         
-        // Update "vs Buy & Hold" value
-        const vsBuyHoldElement = document.getElementById('vs-buyhold');
-        if (vsBuyHoldElement && 'percent_above_buyhold' in result) {
-            const percentValue = result.percent_above_buyhold;
-            vsBuyHoldElement.textContent = `${percentValue > 0 ? '+' : ''}${percentValue.toFixed(1)}%`;
-            vsBuyHoldElement.className = 'result-value ' + 
-                (percentValue >= 0 ? 'positive' : 'negative');
-        }
+        // Create charts
+        this.createCharts(successResult);
         
-        // Show generated code
-        if (this.generatedCode) {
-            this.generatedCode.textContent = result.code || '';
+        // Update generated code, using syntax highlighting if Prism is available
+        if (this.generatedCode && successResult.code) {
+            this.generatedCode.textContent = successResult.code;
+            this.generatedCode.className = 'code-block language-python';
             
-            // Add Prism.js syntax highlighting if it's available
+            // Apply syntax highlighting with Prism if available
             if (window.Prism) {
                 window.Prism.highlightElement(this.generatedCode);
             }
         }
         
-        // Update dataset info
-        const datasetNameElement = document.getElementById('dataset-name');
-        const datasetSizeElement = document.getElementById('dataset-size');
-        
-        if (datasetNameElement && result.dataset) {
-            datasetNameElement.textContent = result.dataset || 'Unknown Dataset';
-        }
-        
-        if (datasetSizeElement && result.close) {
-            datasetSizeElement.textContent = `${result.close.length} data points`;
-        }
-        
-        // Show code summary if available
+        // Update code summary if available
         const codeSummaryElement = document.getElementById('code-summary');
-        if (codeSummaryElement && 'code_summary' in result && result.code_summary) {
-            codeSummaryElement.textContent = result.code_summary;
-            codeSummaryElement.style.display = 'block';
+        if (codeSummaryElement && successResult.code_summary) {
+            codeSummaryElement.textContent = successResult.code_summary;
         } else if (codeSummaryElement) {
-            codeSummaryElement.textContent = 'No summary available.';
-            codeSummaryElement.style.display = 'block';
+            codeSummaryElement.textContent = 'No code summary available.';
         }
         
-        // Create charts
-        this.createCharts(result as BacktestSuccessResult);
+        logFrontend('displayResults finished');
     }
-
+    
     private createCharts(result: BacktestSuccessResult): void {
-        logFrontend('createCharts started');
-        
-        // Get chart canvases
-        const priceChartCanvas = document.getElementById('price-chart') as HTMLCanvasElement;
-        const balanceChartCanvas = document.getElementById('balance-chart') as HTMLCanvasElement;
-        
-        if (!priceChartCanvas || !balanceChartCanvas) {
-            logFrontend('Chart canvases not found', 'ERROR');
-            console.error('Chart canvases not found:', {
-                priceChartCanvas: !!priceChartCanvas,
-                balanceChartCanvas: !!balanceChartCanvas
-            });
-            return;
-        }
-        
-        // Convert tuple points to x,y objects if needed
-        const processPoints = (points: Array<[number, number]> | Array<{x: number, y: number}>): Array<{x: number, y: number}> => {
-            if (points.length === 0) return [];
+        try {
+            logFrontend('createCharts started');
             
-            // Check if points are already in {x,y} format
-            if (typeof points[0] === 'object' && 'x' in points[0] && 'y' in points[0]) {
-                return points as Array<{x: number, y: number}>;
+            const priceChartCanvas = document.getElementById('price-chart') as HTMLCanvasElement;
+            const balanceChartCanvas = document.getElementById('balance-chart') as HTMLCanvasElement;
+            
+            if (!priceChartCanvas || !balanceChartCanvas) {
+                logFrontend('Canvas elements not found, cannot create charts', 'ERROR');
+                return;
             }
             
-            // Convert tuple format to {x,y} format
-            return (points as Array<[number, number]>).map(point => ({
-                x: point[0],
-                y: point[1]
-            }));
-        };
-        
-        // Process points for charts
-        const buyPoints = processPoints(result.buy_points);
-        const sellPoints = processPoints(result.sell_points);
-        
-        logFrontend(`Processing ${result.buy_points.length} buy points and ${result.sell_points.length} sell points`);
-        logFrontend('First few buy points:', buyPoints.slice(0, 3));
-        logFrontend('First few sell points:', sellPoints.slice(0, 3));
-        
-        try {
-            logFrontend('Creating price chart');
-            
-            // Destroy existing chart instances if they exist
+            // Destroy previous charts if they exist
             if (this.priceChart) {
                 this.priceChart.destroy();
             }
@@ -331,7 +275,7 @@ class BacktestingController {
             
             // Create charts using the utility functions
             const charts = renderBacktestCharts(
-                result as any,  // Cast as any to avoid type issues
+                result,
                 priceChartCanvas,
                 balanceChartCanvas
             );
@@ -435,7 +379,6 @@ class BacktestingController {
 
     private initWebSocket(): void {
         logFrontend('initWebSocket started (for log fetching)');
-        // const ws = new WebSocket('ws://localhost:3000'); // WebSocket not used for this log fetching
 
         document.addEventListener('DOMContentLoaded', () => {
             logFrontend('DOMContentLoaded event fired for log fetching setup');
@@ -443,9 +386,7 @@ class BacktestingController {
             logFrontend('backtestLogOutputElement found:', !!backtestLogOutputElement);
 
             async function fetchAndDisplayLogs() {
-                // logFrontend('fetchAndDisplayLogs called'); // This would be too noisy
                 if (!backtestLogOutputElement) {
-                    // console.warn('[FRONTEND] backtestLogOutputElement not found in fetchAndDisplayLogs');
                     return;
                 }
 
@@ -453,21 +394,17 @@ class BacktestingController {
                     const response = await fetch('/api/backtest-logs');
                     if (!response.ok) {
                         const errorText = `Error fetching logs: ${response.status} ${response.statusText}`;
-                        // logFrontend(errorText, 'ERROR');
-                        if (backtestLogOutputElement.textContent !== errorText) { // Avoid spamming same error
+                        if (backtestLogOutputElement.textContent !== errorText) {
                            backtestLogOutputElement.textContent = errorText;
                         }
                         return;
                     }
                     const logs = await response.text();
-                    if (backtestLogOutputElement.textContent !== logs) { // Only update if content changed
-                        // logFrontend('Logs received, length:', logs.length);
+                    if (backtestLogOutputElement.textContent !== logs) {
                         backtestLogOutputElement.textContent = logs;
                         backtestLogOutputElement.scrollTop = backtestLogOutputElement.scrollHeight;
                     }
                 } catch (error) {
-                    // logFrontend('Failed to fetch or display logs:', error);
-                    // console.error('Failed to fetch or display logs:', error);
                     if (backtestLogOutputElement) {
                         const errorMessage = 'Failed to load logs. Check console for details.';
                         if (backtestLogOutputElement.textContent !== errorMessage) {

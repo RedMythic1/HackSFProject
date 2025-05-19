@@ -309,63 +309,28 @@ def backtest():
         data = request.get_json()
         if not data or 'strategy' not in data:
             logger.error("No strategy provided in backtest request")
-            return jsonify({"status": "error", "error": "No strategy provided"}), 400
+            return jsonify({"status": "error", "error": "No strategy provided. Please describe your trading strategy."})
         
         strategy_description = data['strategy']
-        logger.info(f"Received backtest request with strategy: {strategy_description[:100]}...")
+        logger.info(f"Received strategy description: {strategy_description[:100]}...")
         
+        # Run backtest simulation
         try:
-            # Try to import the backtest module
-            from api.backtest import run_improved_simulation
-            
-            # Run the backtest using the more robust implementation with iterations
             result = run_improved_simulation(strategy_description)
-            
-            # If there's an error, return it
-            if result.get('status') == 'error':
-                logger.error(f"Backtest failed: {result.get('error')}")
-                return jsonify(result), 500
-            
-            # Log success with profit information and number of trades
-            profit = result.get('profit', 0)
-            trades_count = result.get('trades', {}).get('count', 0)
-            logger.info(f"Backtest completed successfully. Profit/Loss: ${profit:.2f}, Trades: {trades_count}")
-            
-            # Include dataset information if available (as a string, not a nested object)
-            if result.get('dataset'):
-                logger.info(f"Including dataset information in response: {result.get('dataset')}")
-            
-            # No need to include chart URLs since we'll generate charts on the frontend
-            # Instead, make sure we have all the necessary data for charting
-            
-            # Return the result with all data needed for frontend charts
             return jsonify(result)
-        except TypeError as te:
-            logger.exception(f"TypeError in backtest: {te}")
-            if "'type' object is not subscriptable" in str(te):
-                # This is a Python version compatibility issue
-                error_msg = "Backtest failed due to Python version compatibility issues. The server is running on Python 3.8 or earlier, but the dependencies require Python 3.9+."
-                logger.error(f"{error_msg} Original error: {te}")
-                return jsonify({
-                    "status": "error", 
-                    "error": error_msg,
-                    "details": "Please upgrade the server to Python 3.9 or later, or use compatible versions of the dependencies."
-                }), 500
-            else:
-                # Other TypeError
-                return jsonify({
-                    "status": "error",
-                    "error": str(te),
-                    "traceback": traceback.format_exc()
-                }), 500
+        except Exception as e:
+            error_message = str(e)
+            logger.error(f"Error in backtest simulation: {error_message}")
+            trace = traceback.format_exc()
+            logger.error(f"Traceback: {trace}")
+            return jsonify({"status": "error", "error": f"Error in backtest simulation: {error_message}"})
             
     except Exception as e:
-        logger.exception(f"Error in backtest endpoint: {e}")
-        return jsonify({
-            "status": "error", 
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        error_message = str(e)
+        logger.error(f"Unexpected error in /api/backtest: {error_message}")
+        trace = traceback.format_exc()
+        logger.error(f"Traceback: {trace}")
+        return jsonify({"status": "error", "error": f"Server error: {error_message}"})
 
 # Register additional static routes
 @app.route('/static/charts/<path:filename>')
