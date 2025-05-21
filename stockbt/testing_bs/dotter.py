@@ -1,209 +1,139 @@
-import os
-import random
-import csv
+import torch
+import torch.nn as nn
+import pandas as pd
 import numpy as np
+import os
 import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
 
-# Path to datasets directory
-DATASETS_DIR = os.path.join(os.path.dirname(__file__), 'datasets')
+# Directory containing all CSV files
+data_dir = "stockbt/testing_bs/data_folder"
+files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
 
-# List all CSV files in the datasets directory
-csv_files = [f for f in os.listdir(DATASETS_DIR) if f.endswith('.csv')]
+# Define attention block with extra layers
+class DeepSelfAttention(nn.Module):
+    def __init__(self, d_model):
+        super().__init__()
+        self.query = nn.Linear(d_model, d_model)
+        self.key = nn.Linear(d_model, d_model)
+        self.value = nn.Linear(d_model, d_model)
+        self.layer1 = nn.Linear(d_model, d_model)
+        self.layer2 = nn.Linear(d_model, d_model)
+        self.layer3 = nn.Linear(d_model, d_model)
+        self.final_weight = nn.Parameter(torch.randn(d_model, 1))  # 6d weight vector
+        self.act = nn.ReLU()
 
-if len(csv_files) < 2:
-    raise Exception('Not enough CSV files in datasets directory to select two random datasets.')
+    def forward(self, x):
+        Q = self.query(x)
+        K = self.key(x)
+        V = self.value(x)
+        attn_scores = torch.matmul(Q, K.T) / np.sqrt(x.shape[1])
+        attn_weights = torch.softmax(attn_scores, dim=1)
+        attended = torch.matmul(attn_weights, V)
+        # Pass through 3 dense layers with activation
+        out = self.act(self.layer1(attended))
+        out = self.act(self.layer2(out))
+        out = self.act(self.layer3(out))
+        # Collapse to scalar for each vector
+        out = out @ self.final_weight
+        return out.squeeze(-1)
 
-# Select two random CSV files
-file1, file2 = random.sample(csv_files, 2)
-path1 = os.path.join(DATASETS_DIR, file1)
-path2 = os.path.join(DATASETS_DIR, file2)
+# Initialize model and optimizer ONCE
+model = DeepSelfAttention(d_model=6)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+loss_fn = nn.MSELoss()
 
-# Helper to extract Close values from a CSV file
-def get_close_vector(csv_path):
-    close_values = []
-    with open(csv_path, 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            try:
-                close_values.append(float(row['Close']))
-            except (KeyError, ValueError):
-                continue
-    return close_values
+for file in files:
+    print(f"\n=== Processing {file} ===")
+    df = pd.read_csv(os.path.join(data_dir, file))
+    cols = ["Price", "Buy_Vol", "Bid_Price", "Sell_Vol", "Ask_Price", "Change_From_Previous"]
+    data = df[cols].values.astype(np.float32)
 
-# Get close vectors
-v1 = get_close_vector(path1)
-v2 = get_close_vector(path2)
+    history_X = [torch.tensor(data[0])]
+    history_y = [data[1, 0]]  # The price of the 2nd point
 
-# Truncate to the shortest length
-min_len = min(len(v1), len(v2))
-v1 = v1[:min_len]
-v2 = v2[:min_len]
+    predictions = []
+    actuals = []
 
-# Convert to numpy arrays
-v1_np = np.array(v1)
-v2_np = np.array(v2)
+    for i in range(1, len(data)-1):
+        X_train = torch.stack(history_X)
+        y_train = torch.tensor(history_y)
+        for _ in range(10):
+            model.train()
+            optimizer.zero_grad()
+            pred = model(X_train)
+            loss = loss_fn(pred[-1:], y_train[-1:])
+            loss.backward()
+            optimizer.step()
+        model.eval()
+        with torch.no_grad():
+            X_pred = torch.stack(history_X + [torch.tensor(data[i])])
+            pred_next = model(X_pred)[-1].item()
+        predictions.append(pred_next)
+        actuals.append(data[i+1, 0])
+        history_X.append(torch.tensor(data[i]))
+        history_y = list(y_train.numpy()) + [data[i+1, 0]]
 
-# Element-wise product
-product = v1_np * v2_np
+    print("Walk-forward predictions vs actuals:")
+    for i, (p, a) in enumerate(zip(predictions, actuals), start=2):
+        print(f"Step {i}: Predicted={p:.2f}, Actual={a:.2f}")
 
-# Cleanup function to limit point-to-point changes to ±20%
-def cleanup_series(series, max_pct_change=0.2):
-    cleaned = np.array(series).copy()
-    for i in range(1, len(cleaned)):
-        prev = cleaned[i-1]
-        max_up = prev * (1 + max_pct_change)
-        max_down = prev * (1 - max_pct_change)
-        if cleaned[i] > max_up:
-            cleaned[i] = max_up
-        elif cleaned[i] < max_down:
-            cleaned[i] = max_down
-    return cleaned
+    mse = np.mean((np.array(predictions) - np.array(actuals))**2)
+    print(f"\nWalk-forward MSE: {mse:.4f}")
 
-# Apply cleanup to the transformed vector
-transformed_clean = cleanup_series(product)
+    # Predict the last price using all previous data
+    model.eval()
+    with torch.no_grad():
+        X_pred = torch.stack([torch.tensor(row) for row in data[:-1]])
+        pred_last = model(X_pred)[-1].item()
+        actual_last = data[-1, 0]
+        pct_diff = 100 * (pred_last - actual_last) / actual_last
+        print(f"\nPredicted last price: {pred_last:.4f}")
+        print(f"Actual last price:    {actual_last:.4f}")
+        print(f"Percentage difference: {pct_diff:.2f}%")
 
-# --- PROFILE MENU ---
-print("Select a profile:")
-print("1. Down Volatile")
-print("2. Down Non-Volatile")
-print("3. Up Volatile")
-print("4. Up Non-Volatile")
-print("5. Flat Volatile")
-print("6. Flat Non-Volatile")
-print("7. Full (combine two datasets with separate profiles)")
-profile_choice = input("Enter 1-7: ").strip()
+    # --- Autoregressive prediction for last 100 points ---
+    start_idx = 400
+    if len(data) > start_idx + 1:
+        auto_preds = []
+        auto_actuals = []
+        # Use real data up to start_idx as history
+        auto_history = [torch.tensor(row) for row in data[:start_idx]]
+        for i in range(start_idx, len(data)):
+            X_auto = torch.stack(auto_history)
+            with torch.no_grad():
+                pred_val = model(X_auto)[-1].item()
+            auto_preds.append(pred_val)
+            auto_actuals.append(data[i, 0])
+            # For next step, use the predicted value in place of the real one
+            # Copy the last row, but replace the price with the predicted value
+            next_vec = data[i].copy()
+            next_vec[0] = pred_val
+            auto_history.append(torch.tensor(next_vec))
+        # Plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(range(start_idx, len(data)), auto_actuals, label='Actual Price', linewidth=1)
+        plt.plot(range(start_idx, len(data)), auto_preds, label='Predicted Price (autoregressive)', linewidth=1)
+        plt.xlabel('Time Step')
+        plt.ylabel('Price')
+        plt.title(f'Autoregressive Prediction vs Actual for {file}')
+        plt.legend()
+        plt.tight_layout()
 
-profile_map = {
-    '1': ('down', 2.0),
-    '2': ('down', 0.5),
-    '3': ('up', 2.0),
-    '4': ('up', 0.5),
-    '5': ('flat', 2.0),
-    '6': ('flat', 0.5)
-}
+        # Zoom in on the y-axis to focus on micro fluctuations
+        all_prices = np.concatenate([auto_actuals, auto_preds])
+        ymin, ymax = np.min(all_prices), np.max(all_prices)
+        yrange = ymax - ymin
+        plt.ylim(ymin - 0.05 * yrange, ymax + 0.05 * yrange)  # 5% padding
 
-if profile_choice == '7':
-    print("First half profile:")
-    first_choice = input("Enter 1-6: ").strip()
-    trend1, g1 = profile_map.get(first_choice, ('flat', 1.0))
-    print("Second half profile:")
-    second_choice = input("Enter 1-6: ").strip()
-    trend2, g2 = profile_map.get(second_choice, ('flat', 1.0))
+        # Optionally, plot the error
+        plt.twinx()
+        plt.plot(range(start_idx, len(data)), np.array(auto_preds) - np.array(auto_actuals), 
+                 color='gray', alpha=0.3, label='Prediction Error')
+        plt.ylabel('Prediction Error')
+        plt.legend(loc='upper right')
 
-    # Split the data in half
-    mid = len(transformed_clean) // 2
-    data1 = transformed_clean[:mid]
-    data2 = transformed_clean[mid:]
+        print("auto_preds[:10]:", auto_preds[:10])
+        print("auto_actuals[:10]:", auto_actuals[:10])
+        print("auto_preds unique values:", np.unique(auto_preds))
 
-    # Helper to process a segment
-    def process_segment(data, trend, g):
-        startpoint = data[0]
-        endpoint = data[-1]
-        ratio = startpoint / endpoint if endpoint != 0 else 1.0
-        trend_for_calc = 'up' if trend == 'down' else trend
-        if trend_for_calc == 'flat':
-            trend_div = ratio
-        elif trend_for_calc == 'up':
-            trend_div = random.randint(5, 40) * ratio
-        else:
-            trend_div = ratio
-        trend_series = data / trend_div if trend_div != 0 else data
-        x_vals = np.arange(len(trend_series))
-        if trend_for_calc == 'flat':
-            avg_val = (trend_series[0] + trend_series[-1]) / 2
-            line_vals = np.full_like(trend_series, avg_val)
-        else:
-            y_start = trend_series[0]
-            y_end = trend_series[-1]
-            x_start = 0
-            x_end = len(trend_series) - 1
-            m = (y_end - y_start) / (x_end - x_start) if x_end != x_start else 0
-            b = y_start
-            line_vals = m * x_vals + b
-        bounced = ((trend_series - line_vals) * g) + line_vals
-        if trend == 'down':
-            # Mirror over midpoint
-            mid = len(bounced) // 2
-            bounced = np.concatenate([bounced[mid:][::-1], bounced[:mid][::-1]]) if len(bounced) % 2 == 0 else np.concatenate([bounced[mid+1:][::-1], [bounced[mid]], bounced[:mid][::-1]])
-        return bounced
-
-    bounced1 = process_segment(data1, trend1, g1)
-    bounced2 = process_segment(data2, trend2, g2)
-    offset = bounced1[-1] - bounced2[0]
-    bounced2_offset = bounced2 + offset
-    combined = np.concatenate([bounced1, bounced2_offset])
-    bounced = combined
-    trend = f'full ({trend1} {g1} + {trend2} {g2})'
-    label = f'Profile: full | 1st: {trend1} {"Volatile" if g1 > 1 else "Non-Volatile"} | 2nd: {trend2} {"Volatile" if g2 > 1 else "Non-Volatile"} | {file1} x {file2}'
-else:
-    trend, g = profile_map.get(profile_choice, ('flat', 1.0))
-    # --- PIPELINE ---
-    # Apply trend
-    startpoint = transformed_clean[0]
-    endpoint = transformed_clean[-1]
-    ratio = startpoint / endpoint if endpoint != 0 else 1.0
-    # For 'down' profiles, generate as 'up' first
-    trend_for_calc = 'up' if trend == 'down' else trend
-    if trend_for_calc == 'flat':
-        trend_div = ratio
-    elif trend_for_calc == 'up':
-        trend_div = random.randint(5, 40) * ratio
-    else:
-        trend_div = ratio
-    trend_series = transformed_clean / trend_div if trend_div != 0 else transformed_clean
-    # Apply bounce
-    g = float(g)
-    x_vals = np.arange(len(trend_series))
-    if trend_for_calc == 'flat':
-        avg_val = (trend_series[0] + trend_series[-1]) / 2
-        line_vals = np.full_like(trend_series, avg_val)
-    else:
-        y_start = trend_series[0]
-        y_end = trend_series[-1]
-        x_start = 0
-        x_end = len(trend_series) - 1
-        m = (y_end - y_start) / (x_end - x_start) if x_end != x_start else 0
-        b = y_start
-        line_vals = m * x_vals + b
-    bounced = ((trend_series - line_vals) * g) + line_vals
-    # Mirror for 'down' profiles
-    def mirror_over_midpoint(arr):
-        mid = len(arr) // 2
-        return np.concatenate([arr[mid:][::-1], arr[:mid][::-1]]) if len(arr) % 2 == 0 else np.concatenate([arr[mid+1:][::-1], [arr[mid]], arr[:mid][::-1]])
-    if trend == 'down':
-        bounced = mirror_over_midpoint(bounced)
-    label = f'Profile: {trend} {"Volatile" if g > 1 else "Non-Volatile"} | {file1} x {file2}'
-
-# Take the absolute value before plotting and saving
-bounced = np.abs(bounced)
-
-# --- PLOTTING ---
-plt.figure(figsize=(12, 6))
-plt.plot(bounced, label=label)
-plt.title(f'{label}')
-plt.xlabel('Index')
-plt.ylabel('Final Value')
-plt.legend()
-plt.tight_layout()
-plt.show()
-
-# --- CSV OUTPUT ---
-output_dir = 'stockbt/generated_data'
-os.makedirs(output_dir, exist_ok=True)
-
-existing = [f for f in os.listdir(output_dir) if f.startswith('genstock') and f.endswith('.csv')]
-nums = [int(f[len('genstock'):-4]) for f in existing if f[len('genstock'):-4].isdigit()]
-next_num = max(nums) + 1 if nums else 1
-output_file = os.path.join(output_dir, f'genstock{next_num}.csv')
-
-start_date = datetime.strptime('1976-01-22', '%Y-%m-%d')
-dates = [(start_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(len(bounced))]
-
-with open(output_file, 'w', newline='') as csvfile:
-    writer = csv.writer(csvfile)
-    writer.writerow(['Date', 'Close'])
-    for date, price in zip(dates, bounced):
-        writer.writerow([date, price])
-
-print(f'Generated CSV: {output_file}')
+        plt.show()

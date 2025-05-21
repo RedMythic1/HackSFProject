@@ -1,4 +1,50 @@
-so currently we have a stock backtesting portion of the website.
+Currently, we have a stock backtesting portion on the website.
 
-Its quite basic, only implementing buys and sells. I plan to add options as well as a price predicter.
-This should allign with the websties general goal of improving tech and financial literacy
+It's quite basic, only implementing buys and sells. I plan to add options as well as a price predictor. This should align with the website's general goal of improving tech and financial literacy.
+
+How this would work:
+
+Stock price is related to buyers and sellers. Conditions that affect buyers and sellers include: news, stock price, buy volume, and sell volume.
+
+If we ignore news (since we don't have reliable information for that), then the main factors become previous stock price, buy volume, and sell volume.
+
+Now, we can represent every single price on a stock price graph as a 5+1 dimensional vector (the extra dimension is for the change in price from the previous share, for training purposes).
+
+The vector is: [Price, buy_vol, bid_price, sell_vol, ask_price, change from previous price]
+
+---
+
+Pseudologic for an Attention Block on 6D Vectors (Plain English):
+
+Given:
+- Input: A sequence of n vectors, each with 6 numbers (features) describing the stock at a given time.
+
+Goal:
+- For each vector in the sequence, create a new vector that is a smart combination of all the vectors in the sequence, where the combination weights are learned by the model.
+
+1. Linear Projections (Feature Transformations)
+   - For each input vector (6 numbers):
+     - Create a "query" vector by multiplying the input by a learnable matrix (the weighted query matrix).
+     - Create a "key" vector by multiplying the input by another learnable matrix (the weighted key matrix).
+     - Create a "value" vector by multiplying the input by a third learnable matrix (the weighted value matrix).
+     - These matrices are learned during training and determine how the model transforms the input features for attention.
+
+2. Compute Attention Scores
+   - For every pair of vectors in the sequence:
+     - Calculate a score by taking the dot product (a kind of similarity measure) between the query vector of one and the key vector of the other.
+     - This score tells us how much attention one vector should pay to another.
+
+3. Softmax Normalization
+   - For each vector:
+     - Convert all its attention scores into positive weights that add up to 1, using the softmax function. This makes the scores comparable and usable as weights.
+
+4. Weighted Sum
+   - For each vector:
+     - Multiply each value vector in the sequence by its corresponding attention weight, and sum them all up. This gives a new vector that is a blend of all the value vectors, with more weight given to the most relevant ones.
+
+5. (Optional) Output Linear Layer
+   - You can further transform the output vector with another learnable matrix if desired.
+
+This process allows the model to focus on the most relevant parts of the sequence for each time step, learning what matters most for predicting stock behavior. 
+
+We then take the final attentionized 6 dimensional vector and multiply it by a 6x6 matrix to refine, then a 6d weight vector to collapse it all.
