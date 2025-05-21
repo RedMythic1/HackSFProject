@@ -1,0 +1,4 @@
+so currently we have a stock backtesting portion of the website.
+
+Its quite basic, only implementing buys and sells. I plan to add options as well as a price predicter.
+This should allign with the websties general goal of improving tech and financial literacy

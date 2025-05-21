@@ -5,12 +5,9 @@ import numpy as np
 def binomial_coefficients(m, p):
     coeffs = []
     for k in range(m + 1):
-        if k%2 == 0:
-            coeff = comb(m, k) * (p ** k) * ((1 - p) ** (m - k))
-            coeffs.append(coeff)
-        else:
-            coeff = comb(m, k) * ((1-p) ** k) * ((1 - (1-p)) ** (m - k))
-            coeffs.append(coeff)
+        coeff = comb(m, k) * (p ** k) * ((1 - p) ** (m - k))
+        coeffs.append(coeff)
+        
     return coeffs
 
 if __name__ == "__main__":
