@@ -48,3 +48,11 @@ Goal:
 This process allows the model to focus on the most relevant parts of the sequence for each time step, learning what matters most for predicting stock behavior. 
 
 We then take the final attentionized 6 dimensional vector and multiply it by a 6x6 matrix to refine, then a 6d weight vector to collapse it all.
+
+For autoregression:
+
+We take the newly generated vector, and use it to predict the next one. 
+In other words, we see if it can accurately predict a price. We also need to normalize and sigmoid everything.
+I guess this means we need to divide all vectors by their magnitude.
+
+Now that we have done that, I am currently tryna get it so that it can predict 50 points before user input...
