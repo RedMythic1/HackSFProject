@@ -5,6 +5,8 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import random
+from matplotlib.widgets import Cursor
+import cmath
 
 # Try to import skopt for Bayesian optimization
 try:
@@ -49,21 +51,22 @@ class ResidualSubtractionNet(nn.Module):
 print(f"\n=== Processing {file} ===")
 df = pd.read_csv(os.path.join(data_dir, file))
 df["PriceChange"] = df["Price"].diff().fillna(0)
-cols = ["Price", "PriceChange", "Bid_Price", "Ask_Price", "Buy_Vol", "Sell_Vol"]
+df["TotalVolume"] = df["Buy_Vol"] + df["Sell_Vol"]
+cols = ["Price", "PriceChange", "Bid_Price", "Ask_Price", "TotalVolume"]
 data = df[cols].values.astype(np.float32)
 
 # PHASE 1: Train intensively ONLY on points 0-399 until prediction for point 400 is very good
 train_data = data[:400]  # Points 0-399
 X_train = torch.tensor(train_data[:-1], dtype=torch.float32)  # Points 0-398
-y_train = torch.tensor([row[0] for row in train_data[1:]], dtype=torch.float32)  # Points 1-399 (prices)
+y_train = torch.tensor([row[0] for row in train_data[1:]], dtype=torch.float32)  # Points 1-399 (total volumes)
 
 # Create and train the model
-model = ResidualSubtractionNet(input_dim=6, num_layers=3)
+model = ResidualSubtractionNet(input_dim=5, num_layers=5)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 loss_fn = nn.MSELoss()
 
 # Training until prediction for point 400 is very good
-target_point_400 = data[400][0]  # The actual price at point 400
+target_point_400 = data[400][0]  # The actual total volume at point 400
 max_epochs = 1000000
 required_good_epochs = 10
 target_error = 0.5  # Target squared error threshold
@@ -110,8 +113,8 @@ with torch.no_grad():
     for i in range(400, 500): # Predict points 400 to 499
         # Input for predicting point 'i' is all actual data up to (but not including) 'i'
         X_pred_input = torch.tensor(data[:i], dtype=torch.float32) 
-        pred_next = model(X_pred_input)[-1].item() # Predict price at point 'i'
-        real_next = data[i][0] # Actual price at point 'i'
+        pred_next = model(X_pred_input)[-1].item() # Predict total volume at point 'i'
+        real_next = data[i][0] # Actual total volume at point 'i'
         sq_err = (pred_next - real_next) ** 2
         abs_err = abs(pred_next - real_next)
         pct_err = (abs_err / real_next) * 100
@@ -140,7 +143,7 @@ print(f"Sum of Squared Errors: {total_error:.6f}")
 print(f"Average Percentage Error: {mape:.2f}%")
 print(f"Number of predictions: {len(squared_errors)}")
 
-# Predict the final price using all previous data (for bar plot)
+# Predict the final total volume using all previous data (for bar plot)
 model.eval()
 with torch.no_grad():
     X_pred_all = torch.stack([torch.tensor(row) for row in data[:-1]])
@@ -149,20 +152,20 @@ with torch.no_grad():
     abs_err_last = abs(pred_last_val - actual_last_val)
     pct_err_last = (abs_err_last / actual_last_val) * 100
     
-    print(f"\nPredicted final price (using all data): {pred_last_val:.4f}")
-    print(f"Actual final price:    {actual_last_val:.4f}")
+    print(f"\nPredicted final total volume (using all data): {pred_last_val:.4f}")
+    print(f"Actual final total volume:    {actual_last_val:.4f}")
     print(f"Absolute error: {abs_err_last:.4f}")
     print(f"Percentage error: {pct_err_last:.2f}%")
 
-# --- PLOT: Bar plot for final price ---
+# --- PLOT: Bar plot for final total volume ---
 # plt.figure(figsize=(7, 4))
 # x_bar = np.arange(1) # Use a different variable name for bar plot x-axis
 # width = 0.35
 # plt.bar(x_bar - width/2, pred_last_val, width, label='Predicted')
 # plt.bar(x_bar + width/2, actual_last_val, width, label='Actual')
-# plt.xticks(x_bar, ["Price"], rotation=20)
+# plt.xticks(x_bar, ["Total Volume"], rotation=20)
 # plt.ylabel('Value')
-# plt.title(f'Predicted vs Actual Final Price\n{file}')
+# plt.title(f'Predicted vs Actual Final Total Volume\n{file}')
 # plt.legend()
 # plt.tight_layout()
 # plt.show()
@@ -293,12 +296,95 @@ print(f"Model-only MAPE: {model_only_mape:.2f}%")
 print(f"PID improves MSE by: {improvement_mse:.2f}%")
 print(f"PID improves percentage error by: {improvement_mape:.2f}%")
 
-plt.figure(figsize=(10, 5))
-plt.plot(range(411, 500), pid_walk_actuals, label='Actual', linestyle='-')
-plt.plot(range(411, 500), pid_walk_preds, label='PID Corrected Predicted', linestyle='--')
-plt.xlabel('Time Step')
-plt.ylabel('Value')
-plt.title(f'PID Walk-forward Prediction vs Actual (points 411 to 499) for {file}')
-plt.legend()
+# --- Combined 3-graph plot: normal, PID, and difference ---
+fig, axs = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
+
+# 1. Normal predictions vs actual
+axs[0].plot(range(411, 500), pid_walk_actuals, label='Actual', linestyle='-')
+model.eval()
+normal_preds = [model(torch.tensor(data[:i], dtype=torch.float32))[-1].item() for i in range(411, 500)]
+axs[0].plot(range(411, 500), normal_preds, label='Normal Predicted', linestyle='--')
+axs[0].set_ylabel('Value')
+axs[0].set_title('Normal Predictions vs Actual')
+axs[0].legend()
+
+# 2. PID-corrected predictions vs actual
+axs[1].plot(range(411, 500), pid_walk_actuals, label='Actual', linestyle='-')
+axs[1].plot(range(411, 500), pid_walk_preds, label='PID Corrected Predicted', linestyle='--')
+axs[1].set_ylabel('Value')
+axs[1].set_title('PID-corrected Predictions vs Actual')
+axs[1].legend()
+
+# 3. Difference between PID and normal predictions
+diff = np.array(pid_walk_preds) - np.array(normal_preds)
+axs[2].plot(range(411, 500), diff, color='purple', label='PID - Normal')
+axs[2].set_xlabel('Time Step')
+axs[2].set_ylabel('Difference')
+axs[2].set_title('Difference: PID - Normal Prediction')
+axs[2].legend()
+
+# Add interactive crosshair (XY follower) to all subplots
+for ax in axs:
+    Cursor(ax, horizOn=True, vertOn=True, useblit=True, color='red', linewidth=1)
+
+plt.tight_layout()
+plt.show()
+
+# --- Complex-plane PID walk-forward prediction for points 411-499 ---
+complex_pid_walk_preds = []
+complex_pid_walk_actuals = []
+complex_integral = 0 + 0j
+complex_prev_error = 0 + 0j
+
+print("\nWalk-forward prediction for points 411-499 (with complex-plane PID correction):")
+with torch.no_grad():
+    for i in range(411, 500):
+        # Model prediction
+        X_input = torch.tensor(data[:i], dtype=torch.float32)
+        pred_val = model(X_input)[-1].item()
+        actual_val = data[i][0]
+        theta = i  # or scale as needed
+        z_pred = pred_val * cmath.exp(1j * theta)
+        z_actual = actual_val * cmath.exp(1j * theta)
+        complex_error = z_actual - z_pred
+        complex_integral += complex_error
+        complex_derivative = complex_error - complex_prev_error
+        complex_pid_correction = Kp * complex_error + Ki * complex_integral + Kd * complex_derivative
+        complex_prev_error = complex_error
+        z_pid = z_pred + complex_pid_correction
+        price_pid = abs(z_pid)  # Use magnitude as the corrected price
+        complex_pid_walk_preds.append(price_pid)
+        complex_pid_walk_actuals.append(actual_val)
+        print(f"  Point {i}: Model={pred_val:.4f}, Complex PID Adjusted={price_pid:.4f}, Actual={actual_val:.4f}")
+
+# --- Plot: Add complex PID to the 3-graph plot ---
+fig, axs = plt.subplots(3, 1, figsize=(14, 14), sharex=True)
+
+# 1. Normal predictions vs actual
+axs[0].plot(range(411, 500), pid_walk_actuals, label='Actual', linestyle='-')
+axs[0].plot(range(411, 500), normal_preds, label='Normal Predicted', linestyle='--')
+axs[0].set_ylabel('Value')
+axs[0].set_title('Normal Predictions vs Actual')
+axs[0].legend()
+
+# 2. PID-corrected predictions vs actual (real PID and complex PID)
+axs[1].plot(range(411, 500), pid_walk_actuals, label='Actual', linestyle='-')
+axs[1].plot(range(411, 500), pid_walk_preds, label='PID Corrected Predicted (Real)', linestyle='--')
+axs[1].plot(range(411, 500), complex_pid_walk_preds, label='PID Corrected Predicted (Complex Magnitude)', linestyle=':')
+axs[1].set_ylabel('Value')
+axs[1].set_title('PID-corrected Predictions vs Actual')
+axs[1].legend()
+
+# 3. Difference between PID and normal predictions
+axs[2].plot(range(411, 500), diff, color='purple', label='PID - Normal')
+axs[2].plot(range(411, 500), np.array(complex_pid_walk_preds) - np.array(normal_preds), color='orange', label='Complex PID - Normal', linestyle=':')
+axs[2].set_xlabel('Time Step')
+axs[2].set_ylabel('Difference')
+axs[2].set_title('Difference: PID - Normal Prediction')
+axs[2].legend()
+
+for ax in axs:
+    Cursor(ax, horizOn=True, vertOn=True, useblit=True, color='red', linewidth=1)
+
 plt.tight_layout()
 plt.show() 

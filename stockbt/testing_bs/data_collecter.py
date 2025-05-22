@@ -4,8 +4,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
+import time
 
-def scrape_yahoo_finance_selenium(ticker, prev_price=None):
+def scrape_yahoo_finance_selenium(ticker, prev_price=None, prev_total_vol=None):
     url = f"https://finance.yahoo.com/quote/{ticker}"
     options = Options()
     options.add_argument("--headless")
@@ -16,18 +17,18 @@ def scrape_yahoo_finance_selenium(ticker, prev_price=None):
     driver.set_page_load_timeout(20)
     try:
         driver.get(url)
-    except Exception:
+    except Exception as e:
         driver.quit()
-        print("Failed to load page or extract data.")
-        return None
+        print(f"Failed to load page or extract data. Exception: {e}")
+        return None, None
 
     wait = WebDriverWait(driver, 15)
     try:
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "span[data-testid='qsp-price']")))
-    except Exception:
+    except Exception as e:
         driver.quit()
-        print("Failed to load page or extract data.")
-        return None
+        print(f"Failed to load page or extract data. Exception: {e}")
+        return None, None
 
     html = driver.page_source
     soup = BeautifulSoup(html, "html.parser")
@@ -43,37 +44,59 @@ def scrape_yahoo_finance_selenium(ticker, prev_price=None):
     elif price_value is not None:
         price_change = 0.0
 
-    # Extract Bid/Ask and Volumes
+    # Extract Bid/Ask
     value_elems = soup.find_all(class_="value yf-1jj98ts")
-    bid_price = ask_price = buy_vol = sell_vol = None
+    bid_price = ask_price = None
     bid_found = ask_found = False
     for elem in value_elems:
         text = elem.text.strip()
         if 'x' in text:
-            price, volume = text.split('x', 1)
+            price, _ = text.split('x', 1)
             price = price.strip().replace(',', '')
-            volume = volume.strip().replace(',', '')
             try:
                 price_f = float(price)
-                volume_i = int(volume)
             except ValueError:
                 continue
             if not bid_found:
                 bid_price = price_f
-                buy_vol = volume_i
                 bid_found = True
             elif not ask_found:
                 ask_price = price_f
-                sell_vol = volume_i
                 ask_found = True
             if bid_found and ask_found:
                 break
 
+    # Extract total volume
+    total_vol_elem = soup.find("fin-streamer", attrs={"data-field": "regularMarketVolume"})
+    total_vol = None
+    if total_vol_elem and total_vol_elem.get("data-value"):
+        total_vol_str = total_vol_elem["data-value"].replace(',', '')
+        try:
+            total_vol = int(total_vol_str)
+        except ValueError:
+            total_vol = None
+
+    # Calculate change in total volume
+    total_vol_change = None
+    if total_vol is not None and prev_total_vol is not None:
+        total_vol_change = total_vol - prev_total_vol
+    elif total_vol is not None:
+        total_vol_change = 0
+
     driver.quit()
 
-    vector = [price_value, price_change, bid_price, ask_price, buy_vol, sell_vol]
+    vector = [price_value, price_change, bid_price, ask_price, total_vol_change]
     print(vector)
-    return vector
+    return price_value, total_vol, vector
 
 if __name__ == "__main__":
-    scrape_yahoo_finance_selenium("NVDA")
+    ticker = "NVDA"
+    prev_price = None
+    prev_total_vol = None
+    while True:
+        price, total_vol, vector = scrape_yahoo_finance_selenium(ticker, prev_price, prev_total_vol)
+        if price is not None:
+            prev_price = price
+        if total_vol is not None:
+            prev_total_vol = total_vol
+        time.sleep(10)  # Wait 10 seconds between scrapes
