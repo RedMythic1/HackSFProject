@@ -55,6 +55,50 @@ interface BacktestErrorResult {
 // Combined type
 type BacktestResult = BacktestSuccessResult | BacktestErrorResult;
 
+// Add interfaces for the stock prediction API response
+interface StockPredictionSuccessResult {
+    status: 'success';
+    dataset_used: string;
+    graphs: Array<{
+        title: string;
+        data: string; // Base64 encoded image
+    }>;
+    prediction_data: {
+        pid_walk_preds: number[];
+        pid_walk_actuals: number[];
+        pid_mse: number;
+        points_range: number[];
+    };
+    pid_tuning: {
+        best_parameters: {
+            Kp: number;
+            Ki: number;
+            Kd: number;
+        };
+        tuning_results: Array<{
+            Kp: number;
+            Ki: number;
+            Kd: number;
+            MSE: number;
+        }>;
+    };
+    training_progress: Array<{
+        epoch: number;
+        predicted: number;
+        actual: number;
+        error: number;
+        message?: string;
+    }>;
+    summary: string;
+}
+
+interface StockPredictionErrorResult {
+    status: 'error';
+    error: string;
+}
+
+type StockPredictionResult = StockPredictionSuccessResult | StockPredictionErrorResult;
+
 class BacktestingController {
     private strategyInput: HTMLTextAreaElement | null;
     private runBacktestBtn: HTMLElement | null;
@@ -66,6 +110,7 @@ class BacktestingController {
     private generatedCode: HTMLElement | null;
     private priceChart: Chart | null = null;
     private balanceChart: Chart | null = null;
+    private testNewFeatureBtn: HTMLElement | null;
     
     constructor() {
         logFrontend('BacktestingController constructor started');
@@ -86,9 +131,13 @@ class BacktestingController {
         this.successRate = document.getElementById('success-rate');
         this.generatedCode = document.getElementById('generated-code');
         
+        // Add element for test new feature button
+        this.testNewFeatureBtn = document.getElementById('test-new-feature-btn');
+        
         logFrontend('initElements finished', {
             strategyInputExists: !!this.strategyInput,
-            runBacktestBtnExists: !!this.runBacktestBtn
+            runBacktestBtnExists: !!this.runBacktestBtn,
+            testNewFeatureExists: !!this.testNewFeatureBtn
         });
     }
     
@@ -102,6 +151,17 @@ class BacktestingController {
             logFrontend('Event listener added to Run Backtest button');
         } else {
             logFrontend('Run Backtest button not found', 'WARN');
+        }
+        
+        // Add event listener for Test New Feature button
+        if (this.testNewFeatureBtn) {
+            this.testNewFeatureBtn.addEventListener('click', () => {
+                logFrontend('Test New Feature button clicked');
+                this.runStockPrediction();
+            });
+            logFrontend('Event listener added to Test New Feature button');
+        } else {
+            logFrontend('Test New Feature button not found', 'WARN');
         }
         
         // Add event listeners for chart tabs
@@ -423,6 +483,152 @@ class BacktestingController {
             }
         });
         logFrontend('initWebSocket finished');
+    }
+
+    private async runStockPrediction(): Promise<void> {
+        logFrontend('runStockPrediction started');
+        
+        // Show prediction section and loading indicator
+        const predictionSection = document.getElementById('prediction-section');
+        const predictionLoadingIndicator = document.getElementById('prediction-loading-indicator');
+        const predictionResultsContainer = document.getElementById('prediction-results-container');
+        
+        if (predictionSection) {
+            predictionSection.style.display = 'block';
+        }
+        
+        if (predictionLoadingIndicator) {
+            predictionLoadingIndicator.style.display = 'block';
+        }
+        
+        if (predictionResultsContainer) {
+            predictionResultsContainer.style.display = 'none';
+        }
+        
+        // Hide backtest results if they're showing
+        if (this.resultsContainer) {
+            this.resultsContainer.style.display = 'none';
+        }
+        
+        // Scroll to prediction section
+        predictionSection?.scrollIntoView({ behavior: 'smooth' });
+        
+        try {
+            logFrontend('Calling fetchStockPrediction');
+            const result = await this.fetchStockPrediction();
+            logFrontend('fetchStockPrediction returned', result);
+            this.displayStockPredictionResults(result);
+        } catch (error) {
+            logFrontend('Error in runStockPrediction catch block', error);
+            console.error('Error running stock prediction:', error);
+            alert('An error occurred while running stock prediction. Please try again.');
+        } finally {
+            logFrontend('runStockPrediction finally block');
+            if (predictionLoadingIndicator) {
+                predictionLoadingIndicator.style.display = 'none';
+            }
+        }
+        logFrontend('runStockPrediction finished');
+    }
+    
+    private async fetchStockPrediction(): Promise<StockPredictionResult> {
+        logFrontend('fetchStockPrediction started');
+        try {
+            logFrontend('Sending GET request to /api/stock_prediction');
+            const response = await fetch('/api/stock_prediction', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            logFrontend('Response status from /api/stock_prediction:', response.status);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                logFrontend(`Server error: ${response.status} ${response.statusText}. Response text: ${errorText}`, 'ERROR');
+                console.error(`Server error: ${response.status} ${response.statusText}`);
+                console.error('Error response text:', errorText);
+                throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            logFrontend('Parsed JSON result from /api/stock_prediction:', result);
+            return result as StockPredictionResult;
+        } catch (error: any) {
+            logFrontend('Error in fetchStockPrediction catch block', error);
+            console.error('API call error:', error);
+            return {
+                status: 'error',
+                error: error instanceof Error ? error.message : String(error)
+            };
+        }
+    }
+    
+    private displayStockPredictionResults(result: StockPredictionResult): void {
+        logFrontend('displayStockPredictionResults started with result:', result);
+        
+        const predictionResultsContainer = document.getElementById('prediction-results-container');
+        
+        if (result.status === 'error') {
+            this.showPredictionError(result.error);
+            return;
+        }
+        
+        // Display results
+        if (predictionResultsContainer) {
+            predictionResultsContainer.style.display = 'block';
+        }
+        
+        // Set dataset used
+        const datasetUsedElement = document.getElementById('dataset-used');
+        if (datasetUsedElement) {
+            datasetUsedElement.textContent = result.dataset_used;
+        }
+        
+        // Set MSE
+        const mseElement = document.getElementById('pid-mse');
+        if (mseElement) {
+            mseElement.textContent = result.prediction_data.pid_mse.toFixed(6);
+        }
+        
+        // Set PID parameters
+        const pidParamsElement = document.getElementById('pid-params');
+        if (pidParamsElement) {
+            const params = result.pid_tuning.best_parameters;
+            pidParamsElement.textContent = `Kp=${params.Kp.toFixed(2)}, Ki=${params.Ki.toFixed(2)}, Kd=${params.Kd.toFixed(2)}`;
+        }
+        
+        // Set graph
+        const graphElement = document.getElementById('pid-graph') as HTMLImageElement;
+        if (graphElement && result.graphs.length > 0) {
+            graphElement.src = `data:image/png;base64,${result.graphs[0].data}`;
+        }
+        
+        // Set explanation
+        const explanationElement = document.getElementById('prediction-explanation');
+        if (explanationElement) {
+            explanationElement.textContent = result.summary;
+        }
+        
+        logFrontend('displayStockPredictionResults finished');
+    }
+    
+    private showPredictionError(errorMessage: string): void {
+        logFrontend('showPredictionError started with message:', errorMessage);
+        
+        const predictionResultsContainer = document.getElementById('prediction-results-container');
+        if (predictionResultsContainer) {
+            predictionResultsContainer.innerHTML = `
+                <div class="error-message">
+                    <h3>Error Running Stock Prediction</h3>
+                    <p>${errorMessage}</p>
+                </div>
+            `;
+            predictionResultsContainer.style.display = 'block';
+        }
+        
+        logFrontend('showPredictionError finished');
     }
 }
 

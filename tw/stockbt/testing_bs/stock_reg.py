@@ -16,12 +16,12 @@ except ImportError:
 
 # Directory containing all CSV files
 data_dir = "/Users/avneh/Code/HackSFProject/stockbt/testing_bs/data_folder"
-file = "stock_data_1.csv"  # Use stock_data_1.csv explicitly
+files = [f for f in os.listdir(data_dir) if f.endswith('.csv') and f != 'random_test_data.csv']
 
-# Check if the file exists
-file_path = os.path.join(data_dir, file)
-if not os.path.exists(file_path):
-    raise RuntimeError(f'{file} not found in data_folder.')
+# Pick one random file
+if not files:
+    raise RuntimeError('No CSV files found in data_folder.')
+file = random.choice(files)
 
 class ResidualSubtractionNet(nn.Module):
     def __init__(self, input_dim, num_layers=10):
@@ -51,15 +51,15 @@ X_train = torch.tensor(train_data[:-1], dtype=torch.float32)  # Points 0-398
 y_train = torch.tensor([row[0] for row in train_data[1:]], dtype=torch.float32)  # Points 1-399 (prices)
 
 # Create and train the model
-model = ResidualSubtractionNet(input_dim=6, num_layers=3)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+model = ResidualSubtractionNet(input_dim=6, num_layers=10)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.00005)
 loss_fn = nn.MSELoss()
 
 # Training until prediction for point 400 is very good
 target_point_400 = data[400][0]  # The actual price at point 400
 max_epochs = 1000000
-required_good_epochs = 10
-target_error = 0.5  # Target squared error threshold
+required_good_epochs = 1000
+target_error = 0.15  # Target squared error threshold
 pred_error = float('inf')
 
 # New: Track consecutive epochs below error threshold
@@ -94,8 +94,6 @@ for epoch in range(max_epochs):
 
 # PHASE 2: Use trained model to predict points 400-499 WITHOUT further training, using expanding window of actuals
 squared_errors = []
-absolute_errors = []
-percentage_errors = []
 
 print("\nUsing trained model to predict points 400-499 (walk-forward with actuals):")
 model.eval()
@@ -106,31 +104,16 @@ with torch.no_grad():
         pred_next = model(X_pred_input)[-1].item() # Predict price at point 'i'
         real_next = data[i][0] # Actual price at point 'i'
         sq_err = (pred_next - real_next) ** 2
-        abs_err = abs(pred_next - real_next)
-        pct_err = (abs_err / real_next) * 100
-        
         squared_errors.append(sq_err)
-        absolute_errors.append(abs_err)
-        percentage_errors.append(pct_err)
-        
         print(f"Point {i}: Predicted={pred_next:.4f}, Actual={real_next:.4f}, Squared Error={sq_err:.4f}")
 
 # Compute mean squared error over all predictions
 squared_errors = np.array(squared_errors)
-absolute_errors = np.array(absolute_errors)
-percentage_errors = np.array(percentage_errors)
-
 mse = np.mean(squared_errors)
-mae = np.mean(absolute_errors)
-mape = np.mean(percentage_errors)
 total_error = np.sum(squared_errors)
-
 print(f"\nResults over points 400-499:")
 print(f"Mean Squared Error (MSE): {mse:.6f}")
-print(f"Mean Absolute Error (MAE): {mae:.6f}")
-print(f"Mean Absolute Percentage Error (MAPE): {mape:.2f}%")
 print(f"Sum of Squared Errors: {total_error:.6f}")
-print(f"Average Percentage Error: {mape:.2f}%")
 print(f"Number of predictions: {len(squared_errors)}")
 
 # Predict the final price using all previous data (for bar plot)
@@ -139,13 +122,9 @@ with torch.no_grad():
     X_pred_all = torch.stack([torch.tensor(row) for row in data[:-1]])
     pred_last_val = model(X_pred_all)[-1].item()
     actual_last_val = data[-1][0]
-    abs_err_last = abs(pred_last_val - actual_last_val)
-    pct_err_last = (abs_err_last / actual_last_val) * 100
-    
     print(f"\nPredicted final price (using all data): {pred_last_val:.4f}")
     print(f"Actual final price:    {actual_last_val:.4f}")
-    print(f"Absolute error: {abs_err_last:.4f}")
-    print(f"Percentage error: {pct_err_last:.2f}%")
+    print(f"Absolute error: {np.abs(pred_last_val - actual_last_val):.4f}")
 
 # --- PLOT: Bar plot for final price ---
 plt.figure(figsize=(7, 4))
@@ -163,26 +142,14 @@ plt.show()
 # --- Walk-forward simulation for points 401-410 (no PID) ---
 walk_preds_401_410 = []
 walk_actuals_401_410 = []
-walk_percentage_errors_401_410 = []
-
 print("\nWalk-forward simulation for points 401-410 (no PID):")
 with torch.no_grad():
     for i in range(401, 411):
         X_input = torch.tensor(data[:i], dtype=torch.float32)
         pred_val = model(X_input)[-1].item()
-        actual_val = data[i][0]
-        sq_err = (pred_val - actual_val) ** 2
-        pct_err = (abs(pred_val - actual_val) / actual_val) * 100
-        
         walk_preds_401_410.append(pred_val)
-        walk_actuals_401_410.append(actual_val)
-        walk_percentage_errors_401_410.append(pct_err)
-        
-        print(f"  Point {i}: Predicted={pred_val:.4f}, Actual={actual_val:.4f}, Squared Error={sq_err:.4f}, Percentage Error={pct_err:.2f}%")
-
-    # Show average percentage error for this range
-    avg_pct_err_401_410 = np.mean(walk_percentage_errors_401_410)
-    print(f"  Average Percentage Error (points 401-410): {avg_pct_err_401_410:.2f}%")
+        walk_actuals_401_410.append(data[i][0])
+        print(f"  Point {i}: Predicted={pred_val:.4f}, Actual={data[i][0]:.4f}, Squared Error={(pred_val - data[i][0])**2:.4f}")
 
 # --- PID parameter tuning using Bayesian optimization on points 401-410 ---
 best_pid = {'Kp': 0.5, 'Ki': 0.01, 'Kd': 0.1}  # Default values
@@ -227,7 +194,6 @@ prev_error = 0
 pid_walk_preds = []
 pid_walk_actuals = []
 pid_errors = []
-pid_percentage_errors = []
 
 print("\nWalk-forward prediction for points 411-499 (with tuned PID correction):")
 with torch.no_grad():
@@ -241,50 +207,13 @@ with torch.no_grad():
         pid_correction = Kp * error + Ki * integral + Kd * derivative
         prev_error = error
         pid_pred = pred_val + pid_correction
-        
         pid_walk_preds.append(pid_pred)
         pid_walk_actuals.append(actual_val)
-        
-        sq_err = (pid_pred - actual_val) ** 2
-        pct_err = (abs(pid_pred - actual_val) / actual_val) * 100
-        
-        pid_errors.append(sq_err)
-        pid_percentage_errors.append(pct_err)
-        
-        print(f"  Point {i}: Model={pred_val:.4f}, PID Adjusted={pid_pred:.4f}, Actual={actual_val:.4f}, Squared Error={sq_err:.4f}, Percentage Error={pct_err:.2f}%")
-
+        pid_errors.append((pid_pred - actual_val) ** 2)
+        print(f"  Point {i}: Model={pred_val:.4f}, PID Adjusted={pid_pred:.4f}, Actual={actual_val:.4f}, Squared Error={pid_errors[-1]:.4f}")
 n_points = 89  # 411-499 inclusive
 pid_mse = np.sum(pid_errors) / n_points
-pid_mape = np.mean(pid_percentage_errors)
-
 print(f"\nPID Walk-forward MSE (points 411 to 499, divided by 89): {pid_mse:.6f}")
-print(f"PID Walk-forward MAPE (Mean Absolute Percentage Error): {pid_mape:.2f}%")
-
-# Calculate improvement compared to non-PID predictions
-model_only_errors = []
-model_only_pct_errors = []
-
-with torch.no_grad():
-    for i in range(411, 500):
-        X_input = torch.tensor(data[:i], dtype=torch.float32)
-        pred_val = model(X_input)[-1].item()
-        actual_val = data[i][0]
-        sq_err = (pred_val - actual_val) ** 2
-        pct_err = (abs(pred_val - actual_val) / actual_val) * 100
-        model_only_errors.append(sq_err)
-        model_only_pct_errors.append(pct_err)
-
-model_only_mse = np.mean(model_only_errors)
-model_only_mape = np.mean(model_only_pct_errors)
-
-improvement_mse = (1 - (pid_mse / model_only_mse)) * 100
-improvement_mape = (1 - (pid_mape / model_only_mape)) * 100
-
-print(f"\nComparison with model without PID:")
-print(f"Model-only MSE: {model_only_mse:.6f}")
-print(f"Model-only MAPE: {model_only_mape:.2f}%")
-print(f"PID improves MSE by: {improvement_mse:.2f}%")
-print(f"PID improves percentage error by: {improvement_mape:.2f}%")
 
 plt.figure(figsize=(10, 5))
 plt.plot(range(411, 500), pid_walk_actuals, label='Actual', linestyle='-')

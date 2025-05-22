@@ -39,21 +39,32 @@ RUN ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3 && \
     ln -sf /usr/local/bin/pip3.9 /usr/local/bin/pip3 && \
     ln -sf /usr/local/bin/pip3 /usr/local/bin/pip
 
-# Copy package files and install dependencies
+# Upgrade pip and install essential tools
+RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel
+
+# Copy package files and install Node.js dependencies
 COPY package.json package-lock.json ./
 RUN npm install
 
 # Copy the Python requirements separately
 COPY requirements-fly.txt ./requirements.txt
 
-# Install Python dependencies with optimized settings
-RUN pip3 install --no-cache-dir --disable-pip-version-check -r requirements.txt
+# Install numpy FIRST to ensure all other packages are built against the same version
+RUN pip3 install --no-cache-dir numpy==1.21.6
 
-# Install g4f and pycryptodome directly to ensure they are compiled for this environment
-RUN pip3 install --no-cache-dir pycryptodome==3.22.0 g4f==0.5.2.4
+# Install torch separately as it's a large package
+RUN pip3 install --no-cache-dir torch==1.13.1
+
+# Now install the rest of the dependencies excluding numpy and torch which we already installed
+RUN grep -v "numpy\|torch" requirements.txt > other_requirements.txt && \
+    pip3 install --no-cache-dir -r other_requirements.txt && \
+    rm other_requirements.txt
 
 # Copy the rest of the application
 COPY . .
+
+# Create necessary directories for stock prediction
+RUN mkdir -p /app/stockbt/testing_bs/data_folder
 
 # Create a .env file to specify we want to use the system-installed packages
 RUN echo "USE_SYSTEM_PACKAGES=true" > .env

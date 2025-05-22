@@ -30,7 +30,10 @@
                 
                 <div class="strategy-form">
                     <textarea id="strategy-input" rows="10" placeholder="Example: Buy when the price drops below the 10-day moving average and sell when it rises above the 20-day moving average"></textarea>
-                    <button id="run-backtest-btn" class="primary-button">Run Backtest</button>
+                    <div class="button-group">
+                        <button id="run-backtest-btn" class="primary-button">Run Backtest</button>
+                        <button id="test-new-feature-btn" class="secondary-button">Test New Feature: PID Prediction</button>
+                    </div>
                 </div>
             </section>
             
@@ -87,6 +90,46 @@
                         <h3>Dataset Information</h3>
                         <div id="dataset-name">Unknown Dataset</div>
                         <div id="dataset-size">0 data points</div>
+                    </div>
+                </div>
+            </section>
+            
+            <section class="prediction-section" id="prediction-section" style="display: none;">
+                <div id="prediction-loading-indicator" style="display: none;">
+                    <p>Running stock prediction with PID control, please wait...</p>
+                    <div class="spinner"></div>
+                </div>
+                
+                <div id="prediction-results-container" style="display: none;">
+                    <h2>Stock Prediction with PID Control</h2>
+                    
+                    <div class="results-summary">
+                        <div class="result-card">
+                            <h3>Dataset Used</h3>
+                            <div id="dataset-used" class="result-value">stock_data_1.csv</div>
+                        </div>
+                        
+                        <div class="result-card">
+                            <h3>Mean Squared Error</h3>
+                            <div id="pid-mse" class="result-value">0.0000</div>
+                        </div>
+                        
+                        <div class="result-card">
+                            <h3>Best PID Parameters</h3>
+                            <div id="pid-params" class="result-value">Kp=0.5, Ki=0.01, Kd=0.1</div>
+                        </div>
+                    </div>
+                    
+                    <div class="prediction-graph-container">
+                        <h3>PID-Corrected Prediction vs Actual</h3>
+                        <div id="prediction-graph">
+                            <img id="pid-graph" src="" alt="PID Graph" style="width: 100%; max-width: 800px;">
+                        </div>
+                    </div>
+                    
+                    <div class="explanation-container">
+                        <h3>How It Works</h3>
+                        <div id="prediction-explanation" class="explanation"></div>
                     </div>
                 </div>
             </section>
