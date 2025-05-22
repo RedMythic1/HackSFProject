@@ -6,46 +6,24 @@ import os
 import matplotlib.pyplot as plt
 
 # Directory containing all CSV files
-data_dir = "stockbt/testing_bs/data_folder"
+data_dir = "/Users/avneh/Code/HackSFProject/stockbt/testing_bs/data_folder"
 files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
 
-# Attention block similar to your original, with bias and num_layers for dense layers
-class DeepSelfAttention(nn.Module):
-    def __init__(self, d_model, num_dense_layers=3, num_qkv_projections=1): # Renamed num_layers to num_dense_layers
+class ResidualSubtractionNet(nn.Module):
+    def __init__(self, input_dim, num_layers=10):
         super().__init__()
-        self.num_qkv_projections = num_qkv_projections
-        # QKV layers based on num_qkv_projections
-        self.queries = nn.ModuleList([nn.Linear(d_model, d_model, bias=True) for _ in range(num_qkv_projections)])
-        self.keys = nn.ModuleList([nn.Linear(d_model, d_model, bias=True) for _ in range(num_qkv_projections)])
-        self.values = nn.ModuleList([nn.Linear(d_model, d_model, bias=True) for _ in range(num_qkv_projections)])
-        
-        self.dense_layers = nn.ModuleList([nn.Linear(d_model, d_model, bias=True) for _ in range(num_dense_layers)])
-        self.final_weight = nn.Parameter(torch.randn(d_model, 1))
-        self.final_bias = nn.Parameter(torch.randn(1))
-        self.act = nn.ReLU()
+        self.num_layers = num_layers
+        self.layers = nn.ModuleList([
+            nn.Linear(input_dim, input_dim) for _ in range(num_layers)
+        ])
+        self.final = nn.Linear(input_dim, 1)
 
     def forward(self, x):
-        attn_outputs = []
-        # Iterate through each QKV projection
-        for i in range(self.num_qkv_projections):
-            Q = self.queries[i](x)
-            K = self.keys[i](x)
-            V = self.values[i](x)
-            attn_scores = torch.matmul(Q, K.T) / np.sqrt(x.shape[1])
-            attn_weights = torch.softmax(attn_scores, dim=1)
-            attended = torch.matmul(attn_weights, V)
-            attn_outputs.append(attended)
-        
-        # Average the outputs of all QKV projections
-        if self.num_qkv_projections > 0:
-            out = torch.stack(attn_outputs).mean(dim=0)
-        else: # Should not happen if num_qkv_projections >= 1
-            out = x 
-
-        for layer in self.dense_layers:
-            out = self.act(layer(out))
-        out = out @ self.final_weight + self.final_bias
-        return out.squeeze(-1)
+        out = x
+        for layer in self.layers:
+            h = layer(out)
+            out = out - h
+        return self.final(out).squeeze(-1)
 
 for file in files:
     print(f"\n=== Processing {file} ===")
@@ -60,33 +38,19 @@ for file in files:
     y_train = torch.tensor([row[0] for row in train_data[1:]], dtype=torch.float32)  # Points 1-399 (prices)
     
     # Create and train the model
-    model = DeepSelfAttention(d_model=6, num_dense_layers=1, num_qkv_projections=10) 
-    
-    # Dynamic learning rate parameters
-    base_lr = 1.0
-    min_lr = 0.001
-    max_lr = 10.0
-    lr_momentum = 0.09
-    error_history = []
-    lr_history = []
-    random_step_prob = 0.1  # Probability of taking a random step
-    random_step_size = 0.8  # Maximum size of random step
-    
-    # Plateau detection parameters
-    plateau_window = 50  # Number of epochs to check for plateau
-    plateau_threshold = 0.1  # Maximum allowed error change to consider as plateau
-    plateau_spike_factor = 50.0  # How much to multiply LR by when plateau detected
-    
-    optimizer = torch.optim.Adam(model.parameters(), lr=base_lr)
+    model = ResidualSubtractionNet(input_dim=6, num_layers=10)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
     loss_fn = nn.MSELoss()
     
     # Training until prediction for point 400 is very good
     target_point_400 = data[400][0]  # The actual price at point 400
     max_epochs = 1000000
-    target_error = 0.1  # Target squared error threshold
-    min_good_epochs = 400 # Minimum epochs for a "good" fit
+    target_error = 0.5  # Target squared error threshold
     pred_error = float('inf')
-    epochs_at_target_error = 0
+    
+    # New: Track consecutive epochs below error threshold
+    consecutive_good_epochs = 0
+    required_good_epochs = 1000
     
     print(f"Beginning intensive training on points 0-399 to predict point 400...")
     for epoch in range(max_epochs):
@@ -95,99 +59,25 @@ for file in files:
         pred = model(X_train)
         loss = loss_fn(pred, y_train)
         loss.backward()
-        
-        # Dynamic learning rate adjustment based on error derivative
-        current_error = loss.item()
-        error_history.append(current_error)
-        
-        if len(error_history) > 1:
-            error_derivative = error_history[-1] - error_history[-2]
-            
-            # Check for plateau if we have enough history
-            is_plateau = False
-            if len(error_history) >= plateau_window:
-                recent_errors = error_history[-plateau_window:]
-                error_range = max(recent_errors) - min(recent_errors)
-                error_std = np.std(recent_errors)
-                
-                # Detect plateau: small range of error values and low standard deviation
-                if error_range < plateau_threshold and error_std < plateau_threshold/2:
-                    is_plateau = True
-                    print(f"  Plateau detected at epoch {epoch}! Spiking learning rate...")
-                    new_lr = min(max_lr, optimizer.param_groups[0]['lr'] * plateau_spike_factor)
-                else:
-                    # Regular learning rate adjustment
-                    if error_derivative < 0:  # Error is decreasing
-                        new_lr = min(max_lr, optimizer.param_groups[0]['lr'] * (1 + 0.1 * abs(error_derivative)))
-                    else:  # Error is increasing
-                        new_lr = max(min_lr, optimizer.param_groups[0]['lr'] * (1 - 0.1 * abs(error_derivative)))
-            else:
-                # Regular learning rate adjustment for early epochs
-                if error_derivative < 0:  # Error is decreasing
-                    new_lr = min(max_lr, optimizer.param_groups[0]['lr'] * (1 + 0.1 * abs(error_derivative)))
-                else:  # Error is increasing
-                    new_lr = max(min_lr, optimizer.param_groups[0]['lr'] * (1 - 0.1 * abs(error_derivative)))
-            
-            # Apply momentum to learning rate changes (less momentum during plateau spikes)
-            current_lr = optimizer.param_groups[0]['lr']
-            momentum_factor = 0.01 if is_plateau else lr_momentum
-            smoothed_lr = momentum_factor * current_lr + (1 - momentum_factor) * new_lr
-            
-            # Add random perturbation with probability random_step_prob
-            # Higher probability during plateaus
-            current_random_prob = random_step_prob * 2 if is_plateau else random_step_prob
-            if np.random.random() < current_random_prob:
-                # More aggressive random steps during plateaus
-                current_random_size = random_step_size * 2 if is_plateau else random_step_size
-                random_factor = 1 + (np.random.random() * 2 - 1) * current_random_size
-                smoothed_lr *= random_factor
-            
-            # Keep learning rate within bounds
-            smoothed_lr = np.clip(smoothed_lr, min_lr, max_lr)
-            optimizer.param_groups[0]['lr'] = smoothed_lr
-            lr_history.append(smoothed_lr)
-        
         optimizer.step()
         
         model.eval()
         with torch.no_grad():
             X_400_input = torch.tensor(data[:400], dtype=torch.float32)  # Input for predicting point 400 is points 0-399
             pred_400 = model(X_400_input)[-1].item()
-            current_pred_error = (pred_400 - target_point_400) ** 2
+            pred_error = (pred_400 - target_point_400) ** 2
         
-        if epoch % 100 == 0 or current_pred_error <= target_error:
-            print(f"  Epoch {epoch}: Predicted={pred_400:.4f}, Actual={target_point_400:.4f}, Error={current_pred_error:.6f}, LR={optimizer.param_groups[0]['lr']:.6f}")
-            
-        if current_pred_error <= target_error:
-            epochs_at_target_error += 1
-            if epochs_at_target_error >= min_good_epochs:
-                print(f"  Reached target error for {min_good_epochs} consecutive epochs. Stopping training at epoch {epoch}.")
-                break
+        if pred_error <= target_error:
+            consecutive_good_epochs += 1
         else:
-            # Reset counter if error goes above target
-            epochs_at_target_error = 0 
-            
-    # Check if training finished due to max_epochs without satisfying min_good_epochs
-    if epochs_at_target_error < min_good_epochs and epoch == max_epochs -1:
-        print(f"  Warning: Max epochs reached, but target error not held for {min_good_epochs} epochs.")
-    
-    # Plot learning rate and error history
-    if len(lr_history) > 0:
-        plt.figure(figsize=(12, 6))
-        plt.subplot(2, 1, 1)
-        plt.plot(lr_history)
-        plt.title('Learning Rate History')
-        plt.ylabel('Learning Rate')
-        plt.grid(True)
+            consecutive_good_epochs = 0
         
-        plt.subplot(2, 1, 2)
-        plt.plot(error_history)
-        plt.title('Training Error History')
-        plt.xlabel('Epoch')
-        plt.ylabel('Error')
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
+        if epoch % 100 == 0 or consecutive_good_epochs >= required_good_epochs:
+            print(f"  Epoch {epoch}: Predicted={pred_400:.4f}, Actual={target_point_400:.4f}, Error={pred_error:.6f}, Good epochs: {consecutive_good_epochs}")
+        
+        if consecutive_good_epochs >= required_good_epochs:
+            print(f"  Reached {required_good_epochs} consecutive good epochs at epoch {epoch}. Stopping training.")
+            break
     
     # PHASE 2: Use trained model to predict points 400-499 WITHOUT further training, using expanding window of actuals
     squared_errors = []
@@ -236,29 +126,44 @@ for file in files:
     plt.tight_layout()
     plt.show()
 
-    # --- Autoregressive prediction for last 100 points (separate analysis) ---
-    start_idx_autoreg = max(0, len(data) - 100)
-    if len(data) > start_idx_autoreg + 1:
-        auto_preds = []
-        auto_actuals = []
-        # Initialize history with actual data up to start_idx_autoreg
-        auto_history = [torch.tensor(row) for row in data[:start_idx_autoreg]] 
-        for i in range(start_idx_autoreg, len(data)):
-            X_auto = torch.stack(auto_history) 
-            with torch.no_grad():
-                pred_val = model(X_auto)[-1].item()
-            auto_preds.append(pred_val)
-            auto_actuals.append(data[i][0])
-            # For next step, use the predicted price in a full 6D vector based on current real data
-            next_vec_autoreg = data[i].copy() 
-            next_vec_autoreg[0] = pred_val 
-            auto_history.append(torch.tensor(next_vec_autoreg))
-        plt.figure(figsize=(10, 5))
-        plt.plot(range(start_idx_autoreg, len(data)), auto_actuals, label='Actual', linestyle='-')
-        plt.plot(range(start_idx_autoreg, len(data)), auto_preds, label='Predicted', linestyle='--')
-        plt.xlabel('Time Step')
-        plt.ylabel('Value')
-        plt.title(f'Autoregressive Prediction vs Actual (1 dim) for {file}')
-        plt.legend()
-        plt.tight_layout()
-        plt.show() 
+    # --- PID-corrected walk-forward prediction for last 100 points ---
+    # PID parameters (tune as needed)
+    Kp = 0.5
+    Ki = 0.01
+    Kd = 0.1
+    
+    integral = 0
+    prev_error = 0
+    pid_walk_preds = []
+    pid_walk_actuals = []
+    pid_errors = []
+    
+    print("\nWalk-forward prediction for last 100 points (with pseudo PID correction):")
+    start_idx = max(0, len(data) - 100)
+    with torch.no_grad():
+        for i in range(start_idx, len(data)):
+            X_input = torch.tensor(data[:i], dtype=torch.float32)
+            pred_val = model(X_input)[-1].item()
+            actual_val = data[i][0]
+            error = actual_val - pred_val
+            integral += error
+            derivative = error - prev_error
+            pid_correction = Kp * error + Ki * integral + Kd * derivative
+            prev_error = error
+            pid_pred = pred_val + pid_correction
+            pid_walk_preds.append(pid_pred)
+            pid_walk_actuals.append(actual_val)
+            pid_errors.append((pid_pred - actual_val) ** 2)
+            print(f"  Point {i}: Model={pred_val:.4f}, PID Adjusted={pid_pred:.4f}, Actual={actual_val:.4f}, Squared Error={pid_errors[-1]:.4f}")
+    pid_mse = np.mean(pid_errors)
+    print(f"\nPID Walk-forward MSE (last 100 points): {pid_mse:.6f}")
+    
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(start_idx, len(data)), pid_walk_actuals, label='Actual', linestyle='-')
+    plt.plot(range(start_idx, len(data)), pid_walk_preds, label='PID Corrected Predicted', linestyle='--')
+    plt.xlabel('Time Step')
+    plt.ylabel('Value')
+    plt.title(f'PID Walk-forward Prediction vs Actual (last 100 points) for {file}')
+    plt.legend()
+    plt.tight_layout()
+    plt.show() 

@@ -30,6 +30,12 @@ sys.path.insert(0, package_dir)
 import g4f
 import numpy as np
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../stockbt')))
+try:
+    from master_allocater import bellcurve_allocation
+except ImportError:
+    bellcurve_allocation = None  # Will copy code if needed
+
 try:
     import matplotlib
     matplotlib.use('Agg')  # Use Agg backend which doesn't require a display
@@ -965,34 +971,49 @@ Code:
     return result
 
 def enhance_user_prompt(user_input):
-    """Enhances the user's input with additional instructions and constraints.
-    Adds specificity to user's general description of a trading algorithm.
-    """
+    """Enhances the user's input with additional instructions and constraints, including multi-stock portfolio and bellcurve allocation requirements."""
+    MULTISTOCK_PROMPT = '''
+**MULTI-STOCK PORTFOLIO REQUIREMENT:**
+- The strategy must support trading and allocating capital across multiple stocks (not just one).
+- The code must be able to load multiple CSV files from the data folder/database, each representing a different stock's price series.
+- For portfolio allocation, use a bell-curve (Gaussian/binomial) allocation method as in the following function:
+
+def bellcurve_allocation(dict):
+    balance = dict["balance"]
+    stocks = dict["stocks"]
+    m = 1000
+    allocs = []
+    for stock in stocks:
+        p = 1 - stock["risk"] / 100
+        alloc = balance * (p ** 2)
+        allocs.append(alloc)
+    # Normalize allocations to sum to balance
+    total = sum(allocs)
+    scaled = [a * balance / total for a in allocs]
+    return {stocks[i]["ticker"]: scaled[i] for i in range(len(stocks))}
+
+- The AI's code must use this or a similar allocation method to distribute capital among stocks based on their risk.
+- The backtest must simulate trading for each stock in the portfolio, using the allocated capital for each.
+- The AI must generate code that can handle a list of stocks, each with its own price series and risk parameter.
+- The final output should include portfolio-level performance as well as per-stock results.
+'''
     enhanced_prompt = f"""
-# TRADING STRATEGY TASK
+You are an expert trading strategy developer. Your task is to MINIMALLY refine the user's trading strategy while preserving ~90% of the original content.
 
-Create a complete Python implementation of the trading strategy described below. The code should be creative, realistic, and follow these guidelines:
-
-## User's Trading Strategy Description:
+**Original Strategy:**
 {user_input}
 
-## Implementation Requirements:
-1. Define a function called `trading_strategy(params)` that implements the user's strategy
-2. Define a function called `get_user_params()` that returns any parameters needed
-3. Use the `close` price array for your calculations
-4. Return a tuple containing (profit_loss, buy_points, sell_points, balance_over_time)
+**Your Task:**
+1. Preserve approximately 90% of the original text
+2. Only fix grammatical errors and improve clarity
+3. Replace vague terms with more precise technical terminology where appropriate
+4. Add missing context ONLY when absolutely necessary (e.g., if 'mia khalifa method' is mentioned, briefly define what this method entails in trading terms)
+5. DO NOT completely restructure or rewrite the strategy
 
-## You have available:
-- `close`: an array of daily closing prices
-- `dates`: matching dates for the close prices
+Provide ONLY the enhanced strategy description. DO NOT include explanations, introductions, or any text outside the improved strategy itself.
 
-Your code should be creative while respecting the user's intent. Feel free to interpret the strategy in a way that makes most sense to you. While you should aim for profitability, focus more on implementing exactly what the user described.
-
-IMPORTANT: I want you to use your own approach to implement the strategy, not a rigid template. If the user's description is vague, use your best judgment to fill in the details in a way that's still true to their core idea.
-
-I need your response to contain valid Python code - do not include explanations or notes unless they're comments within the code.
+{MULTISTOCK_PROMPT}
 """
-    
     return enhanced_prompt
 
 def filter_trade_points(points, close):
