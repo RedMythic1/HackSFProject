@@ -16,7 +16,14 @@ except ImportError:
 
 # Directory containing all CSV files
 data_dir = "/Users/avneh/Code/HackSFProject/stockbt/testing_bs/data_folder"
-file = "stock_data_1.csv"  # Use stock_data_1.csv explicitly
+
+# Get list of all CSV files in the directory
+csv_files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
+if not csv_files:
+    raise RuntimeError('No CSV files found in data_folder.')
+
+# Select a random file
+file = random.choice(csv_files)
 
 # Check if the file exists
 file_path = os.path.join(data_dir, file)
@@ -148,17 +155,17 @@ with torch.no_grad():
     print(f"Percentage error: {pct_err_last:.2f}%")
 
 # --- PLOT: Bar plot for final price ---
-plt.figure(figsize=(7, 4))
-x_bar = np.arange(1) # Use a different variable name for bar plot x-axis
-width = 0.35
-plt.bar(x_bar - width/2, pred_last_val, width, label='Predicted')
-plt.bar(x_bar + width/2, actual_last_val, width, label='Actual')
-plt.xticks(x_bar, ["Price"], rotation=20)
-plt.ylabel('Value')
-plt.title(f'Predicted vs Actual Final Price\n{file}')
-plt.legend()
-plt.tight_layout()
-plt.show()
+# plt.figure(figsize=(7, 4))
+# x_bar = np.arange(1) # Use a different variable name for bar plot x-axis
+# width = 0.35
+# plt.bar(x_bar - width/2, pred_last_val, width, label='Predicted')
+# plt.bar(x_bar + width/2, actual_last_val, width, label='Actual')
+# plt.xticks(x_bar, ["Price"], rotation=20)
+# plt.ylabel('Value')
+# plt.title(f'Predicted vs Actual Final Price\n{file}')
+# plt.legend()
+# plt.tight_layout()
+# plt.show()
 
 # --- Walk-forward simulation for points 401-410 (no PID) ---
 walk_preds_401_410 = []
