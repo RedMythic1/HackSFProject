@@ -1160,6 +1160,32 @@ def enhance_user_prompt(original_prompt):
     print("\n=== ENHANCING USER PROMPT ===")
     print(f"Original prompt: {original_prompt[:100]}...")
     
+    MULTISTOCK_PROMPT = '''
+**MULTI-STOCK PORTFOLIO REQUIREMENT:**
+- The strategy must support trading and allocating capital across multiple stocks (not just one).
+- The code must be able to load multiple CSV files from the data folder/database, each representing a different stock's price series.
+- For portfolio allocation, use a bell-curve (Gaussian/binomial) allocation method as in the following function:
+
+def bellcurve_allocation(dict):
+    balance = dict["balance"]
+    stocks = dict["stocks"]
+    m = 1000
+    allocs = []
+    for stock in stocks:
+        p = 1 - stock["risk"] / 100
+        alloc = balance * (p ** 2)
+        allocs.append(alloc)
+    # Normalize allocations to sum to balance
+    total = sum(allocs)
+    scaled = [a * balance / total for a in allocs]
+    return {stocks[i]["ticker"]: scaled[i] for i in range(len(stocks))}
+
+- The AI's code must use this or a similar allocation method to distribute capital among stocks based on their risk.
+- The backtest must simulate trading for each stock in the portfolio, using the allocated capital for each.
+- The AI must generate code that can handle a list of stocks, each with its own price series and risk parameter.
+- The final output should include portfolio-level performance as well as per-stock results.
+'''
+
     enhancement_prompt = f"""
 You are an expert trading strategy developer. Your task is to MINIMALLY refine the user's trading strategy while preserving ~90% of the original content.
 
@@ -1176,6 +1202,30 @@ You are an expert trading strategy developer. Your task is to MINIMALLY refine t
 The user values their original ideas - your job is just to make minor improvements while keeping their intent intact.
 
 Provide ONLY the enhanced strategy description. DO NOT include explanations, introductions, or any text outside the improved strategy itself.
+
+**MULTI-STOCK PORTFOLIO REQUIREMENT:**
+- The strategy must support trading and allocating capital across multiple stocks (not just one).
+- The code must be able to load multiple CSV files from the data folder/database, each representing a different stock's price series.
+- For portfolio allocation, use a bell-curve (Gaussian/binomial) allocation method as in the following function:
+
+def bellcurve_allocation(dict):
+    balance = dict["balance"]
+    stocks = dict["stocks"]
+    m = 1000
+    allocs = []
+    for stock in stocks:
+        p = 1 - stock["risk"] / 100
+        alloc = balance * (p ** 2)
+        allocs.append(alloc)
+    # Normalize allocations to sum to balance
+    total = sum(allocs)
+    scaled = [a * balance / total for a in allocs]
+    return {stocks[i]["ticker"]: scaled[i] for i in range(len(stocks))}
+
+- The AI's code must use this or a similar allocation method to distribute capital among stocks based on their risk.
+- The backtest must simulate trading for each stock in the portfolio, using the allocated capital for each.
+- The AI must generate code that can handle a list of stocks, each with its own price series and risk parameter.
+- The final output should include portfolio-level performance as well as per-stock results.
 """
 
     try:

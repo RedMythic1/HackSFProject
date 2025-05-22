@@ -56,3 +56,10 @@ In other words, we see if it can accurately predict a price. We also need to nor
 I guess this means we need to divide all vectors by their magnitude.
 
 Now that we have done that, I am currently tryna get it so that it can predict 50 points before user input...
+
+
+Important Params:
+Self Sample rate. If you were to decrease it, your model accuracy goes way down
+I think we may have to improve our attention blocks. We could include all n-order derivatives within the input vector, however that means that our vectors go from:
+10 d vectors to n d vectors, which becomes a pain during training, as we need to dynamically update the dimensions. Even though we have this tool,
+I would prefer if it was not in use.
