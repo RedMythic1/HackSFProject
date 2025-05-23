@@ -23,6 +23,32 @@ TARGET_BIDASK = ["Bid_Price", "Ask_Price"]
 print(f"Using columns: {FEATURES1 + [TARGET_PRICE]}")
 df = pd.read_csv(file_path)
 
+# Set dynamic end based on CSV length
+num_rows = len(df)
+
+# Define ratios
+train_ratio = 0.6
+pid_ratio = 0.2
+# pred_ratio = 0.2  # (rest)
+
+# Compute split indices
+train_end = int(train_ratio * num_rows)
+pid_start = train_end
+pid_end = train_end + int(pid_ratio * num_rows)
+pred_start = pid_end
+pred_end = num_rows  # exclusive
+
+# Ensure all indices are within bounds
+train_end = min(train_end, num_rows - 1)
+pid_start = min(pid_start, num_rows - 1)
+pid_end = min(pid_end, num_rows - 1)
+pred_start = min(pred_start, num_rows - 1)
+pred_end = min(pred_end, num_rows - 1)
+
+print(f"Train: 0 to {train_end-1}")
+print(f"PID/Validation: {pid_start} to {pid_end-1}")
+print(f"Prediction: {pred_start} to {pred_end-1}")
+
 data1 = df[FEATURES1 + [TARGET_PRICE]].values.astype(np.float32)
 feature_indices1 = {f: i for i, f in enumerate(FEATURES1 + [TARGET_PRICE])}
 
@@ -59,18 +85,11 @@ class BidAskNet(nn.Module):
 # --- Dynamic hyperparameters ---
 INIT_NUM_LAYERS = 1
 INIT_LR = 1e-5
-INIT_TARGET_ERROR = 11
+INIT_TARGET_ERROR = 0.5
 SWITCH_EPOCH = 500000
 NEW_NUM_LAYERS = 5
 NEW_LR = 5*1e-6
 NEW_TARGET_ERROR = 2
-
-# --- Data split for new regime ---
-train_end = 250
-pid_start = 251
-pid_end = 305  # inclusive
-pred_start = 306
-pred_end = 499  # inclusive (or min(pred_end, data1.shape[0]-1) if you want to be robust)
 
 # --- Train Model 1: Predict next price ---
 train_data1 = data1[:train_end]
@@ -84,7 +103,7 @@ optimizer1 = torch.optim.Adam(model1.parameters(), lr=lr)
 scheduler1 = ReduceLROnPlateau(optimizer1, mode='min', factor=0.5, patience=500, min_lr=1e-7)
 loss_fn = nn.MSELoss()
 max_epochs = 1000000
-required_good_epochs = 10
+required_good_epochs = 100
 consecutive_good_epochs = 0
 # Use train_end for validation/checkpoint
 val_idx = train_end
@@ -180,14 +199,13 @@ for epoch in range(max_epochs):
 print(f"\n--- Bidirectional Autoregressive + PID tuning (train till {train_end}, PID {pid_start}-{pid_end}, predict {pred_start}-{pred_end}) ---")
 
 start_idx = pid_start
-max_idx = data1.shape[0] - 1
-pred_end = min(pred_end, max_idx)
-end_idx = pred_end + 1
+future_steps = 50
+end_idx = min(pred_end + 1 + future_steps, num_rows + future_steps)  # Extend beyond available data
 
-# Prepare actuals
-actual_price = [data1[i, -1] for i in range(start_idx, end_idx)]
-actual_bid = [data1[i, feature_indices1["Bid_Price"]] for i in range(start_idx, end_idx)]
-actual_ask = [data1[i, feature_indices1["Ask_Price"]] for i in range(start_idx, end_idx)]
+# Prepare actuals (only available up to pred_end)
+actual_price = [data1[i, -1] for i in range(start_idx, min(pred_end + 1, num_rows))]
+actual_bid = [data1[i, feature_indices1["Bid_Price"]] for i in range(start_idx, min(pred_end + 1, num_rows))]
+actual_ask = [data1[i, feature_indices1["Ask_Price"]] for i in range(start_idx, min(pred_end + 1, num_rows))]
 
 # Initial input for walk-forward
 input_seq = [row.copy() for row in data1[:start_idx]]
@@ -195,7 +213,7 @@ ar_price = []
 ar_bid = []
 ar_ask = []
 
-# Generate pure autoregressive forecast for points pid_start to pred_end
+# Generate autoregressive forecast for points pid_start to pred_end + future_steps
 for i in range(start_idx, end_idx):
     prev_vec = input_seq[-1].copy()
     X_input1 = torch.tensor(prev_vec[:-1], dtype=torch.float32).unsqueeze(0)
@@ -213,14 +231,24 @@ for i in range(start_idx, end_idx):
     ar_ask.append(bidask_pred[1])
     input_seq.append(new_vec)
 
-# --- PID tuning on points 251-305 (first 55 of forecast) with decaying integral ---
-def pid_tune_on_first_n_decay(pred_series, actual_series, n, label, decay=0.98):
+# --- PID tuning on a separate validation window ---
+# Validation window as a ratio of the PID window
+val_ratio = 0.5  # Use 50% of the PID window for validation
+pid_window_len = pid_end - pid_start
+val_start = pid_start
+val_end = pid_start + int(val_ratio * pid_window_len)
+val_idx0 = 0  # relative to ar_price/actual_price, which start at pid_start
+val_idx1 = val_end - pid_start
+val_idx1 = min(val_idx1, len(ar_price))  # ensure in bounds
+
+# PID tuning function (tune only on validation window)
+def pid_tune_on_validation_window(pred_series, actual_series, idx0, idx1, label, decay=0.98):
     def pid_objective(params):
         Kp, Ki, Kd = params
         integral = 0
         prev_error = 0
         pid_preds = []
-        for idx in range(n):
+        for idx in range(idx0, idx1):
             pred_val = pred_series[idx]
             actual_val = actual_series[idx]
             error = actual_val - pred_val
@@ -230,7 +258,7 @@ def pid_tune_on_first_n_decay(pred_series, actual_series, n, label, decay=0.98):
             prev_error = error
             pid_pred = pred_val + pid_correction
             pid_preds.append(pid_pred)
-        mse = np.mean((np.array(pid_preds) - np.array(actual_series[:n])) ** 2)
+        mse = np.mean((np.array(pid_preds) - np.array(actual_series[idx0:idx1])) ** 2)
         return mse
     space = [
         Real(0.0, 2.0, name='Kp'),
@@ -239,7 +267,7 @@ def pid_tune_on_first_n_decay(pred_series, actual_series, n, label, decay=0.98):
     ]
     res = gp_minimize(pid_objective, space, n_calls=30, random_state=42, verbose=True)
     best_pid = {'Kp': res.x[0], 'Ki': res.x[1], 'Kd': res.x[2]}
-    print(f"Best PID parameters for {label} (first {n}, decay={decay}): Kp={best_pid['Kp']:.4f}, Ki={best_pid['Ki']:.4f}, Kd={best_pid['Kd']:.4f}")
+    print(f"Best PID parameters for {label} (validation {val_start}-{val_end}, decay={decay}): Kp={best_pid['Kp']:.4f}, Ki={best_pid['Ki']:.4f}, Kd={best_pid['Kd']:.4f}")
     # Apply PID correction to the full sequence
     pid_preds = []
     integral = 0
@@ -256,29 +284,49 @@ def pid_tune_on_first_n_decay(pred_series, actual_series, n, label, decay=0.98):
         pid_preds.append(pid_pred)
     return pid_preds
 
-ar_pid_price = pid_tune_on_first_n_decay(ar_price, actual_price, pid_end-pid_start+1, 'ar_price', decay=0.98)
+ar_pid_price = pid_tune_on_validation_window(ar_price, actual_price, val_idx0, val_idx1, 'ar_price', decay=0.98)
 
 # --- Correction: 301-305 average abs diff adjustment (now within PID/correction window, so no leakage) ---
 corr_start = 301
 corr_end = 305
 corr_idx0 = corr_start - pid_start  # index in ar_price/actual_price
 corr_idx1 = corr_end - pid_start + 1
-avg_abs_diff = np.mean(np.abs(np.array(actual_price[corr_idx0:corr_idx1]) - np.array(ar_pid_price[corr_idx0:corr_idx1])))
-print(f"Average abs diff (|actual - predicted|) for {corr_start}-{corr_end}: {avg_abs_diff:.6f}")
-adjusted_ar_pid_price = [p - avg_abs_diff for p in ar_pid_price]
 
-# Compute and print MSE for points 306-499 only (with correction)
-pred_eval_start = pred_start - pid_start  # index in ar_price/actual_price
-mse_ar_pid = np.mean((np.array(adjusted_ar_pid_price[pred_eval_start:]) - np.array(actual_price[pred_eval_start:])) ** 2)
-print(f"MSE of corrected pure autoregressive forecast (points {pred_start}-{pred_end}): {mse_ar_pid:.6f}")
+# Check if the correction indices are valid
+if corr_idx0 >= 0 and corr_idx1 <= len(actual_price) and corr_idx0 < corr_idx1:
+    avg_abs_diff = np.mean(np.abs(np.array(actual_price[corr_idx0:corr_idx1]) - np.array(ar_pid_price[corr_idx0:corr_idx1])))
+    print(f"Average abs diff (|actual - predicted|) for {corr_start}-{corr_end}: {avg_abs_diff:.6f}")
+    adjusted_ar_pid_price = [p - avg_abs_diff for p in ar_pid_price]
+else:
+    print(f"Correction range {corr_start}-{corr_end} is outside available data range. Skipping correction.")
+    adjusted_ar_pid_price = ar_pid_price.copy()
 
-# Plot only the pure autoregressive forecast vs actual, with correction (exclude PID-tuning region)
-plt.figure(figsize=(10, 5))
-plt.plot(range(pred_start, pred_end+1), actual_price[pred_eval_start:], label='Actual Price', linestyle='-')
-plt.plot(range(pred_start, pred_end+1), adjusted_ar_pid_price[pred_eval_start:], label='Autoregressive Forecast Price (PID+avg abs diff corrected)', linestyle=':')
-plt.xlabel('Time Step')
-plt.ylabel('Price')
-plt.title(f'Pure Autoregressive Forecast (PID-tuned on {pid_start}-{pid_end}, avg abs diff {corr_start}-{corr_end}) vs Actual (points {pred_start} to {pred_end}) for {file}')
-plt.legend()
+# Ensure pred_eval_start is defined
+pred_eval_start = pred_start - pid_start
+
+# Create subplot layout
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+
+# Plot 1: Predicted vs actual values (only for the range where we have actual data)
+actual_range_end = len(actual_price)
+ax1.plot(range(pred_start, pred_start + actual_range_end), actual_price[pred_eval_start:], label='Actual', linestyle='-')
+ax1.plot(range(pred_start, pred_start + actual_range_end), adjusted_ar_pid_price[pred_eval_start:actual_range_end], label='Predicted', linestyle='--')
+ax1.set_xlabel('Time Step')
+ax1.set_ylabel('Price')
+ax1.set_title('Predicted vs Actual Prices')
+ax1.legend()
+ax1.grid(True, alpha=0.3)
+
+# Plot 2: Future predictions (beyond available data)
+future_start_idx = pred_end + 1
+future_predictions = ar_price[len(actual_price):]  # Get predictions beyond actual data
+future_time_steps = range(future_start_idx, future_start_idx + len(future_predictions))
+ax2.plot(future_time_steps, future_predictions, label='Future Predictions', linestyle='-', color='red')
+ax2.set_xlabel('Time Step')
+ax2.set_ylabel('Price')
+ax2.set_title(f'Future Price Predictions ({len(future_predictions)} steps ahead)')
+ax2.legend()
+ax2.grid(True, alpha=0.3)
+
 plt.tight_layout()
 plt.show() 

@@ -1,102 +1,76 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from bs4 import BeautifulSoup
-import time
+import os
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockTradesRequest, StockQuotesRequest
+from datetime import datetime, timedelta
+from bisect import bisect_left
+import pandas as pd
 
-def scrape_yahoo_finance_selenium(ticker, prev_price=None, prev_total_vol=None):
-    url = f"https://finance.yahoo.com/quote/{ticker}"
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-    driver = webdriver.Chrome(options=options)
-    driver.set_page_load_timeout(20)
-    try:
-        driver.get(url)
-    except Exception as e:
-        driver.quit()
-        print(f"Failed to load page or extract data. Exception: {e}")
-        return None, None
+API_KEY = "PK6TOP0STK4VO996JZ5Q"
+API_SECRET = "PiNdt7ccSjzydlk35W5GOR5q9Ng1tAc6VEiSADeY"
 
-    wait = WebDriverWait(driver, 15)
-    try:
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "span[data-testid='qsp-price']")))
-    except Exception as e:
-        driver.quit()
-        print(f"Failed to load page or extract data. Exception: {e}")
-        return None, None
+client = StockHistoricalDataClient(API_KEY, API_SECRET)
 
-    html = driver.page_source
-    soup = BeautifulSoup(html, "html.parser")
+symbol = "WOLF"
 
-    # Extract the main price
-    price_elem = soup.find("span", attrs={"data-testid": "qsp-price"})
-    price_value = float(price_elem.text.replace(',', '').strip()) if price_elem and price_elem.text.strip().replace('.', '', 1).replace(',', '').isdigit() else None
+end = datetime.now()
+start = end - timedelta(days=1)
 
-    # Calculate price change
-    price_change = None
-    if price_value is not None and prev_price is not None:
-        price_change = price_value - prev_price
-    elif price_value is not None:
-        price_change = 0.0
+# Fetch trades (prices)
+trades_request = StockTradesRequest(
+    symbol_or_symbols=[symbol],
+    start=start,
+    end=end,
+    limit=500
+)
+trades = client.get_stock_trades(trades_request)
+trades = trades[symbol]
 
-    # Extract Bid/Ask
-    value_elems = soup.find_all(class_="value yf-1jj98ts")
-    bid_price = ask_price = None
-    bid_found = ask_found = False
-    for elem in value_elems:
-        text = elem.text.strip()
-        if 'x' in text:
-            price, _ = text.split('x', 1)
-            price = price.strip().replace(',', '')
-            try:
-                price_f = float(price)
-            except ValueError:
-                continue
-            if not bid_found:
-                bid_price = price_f
-                bid_found = True
-            elif not ask_found:
-                ask_price = price_f
-                ask_found = True
-            if bid_found and ask_found:
-                break
+# Print the first trade to inspect its structure
+print('First trade:', trades[0])
 
-    # Extract total volume
-    total_vol_elem = soup.find("fin-streamer", attrs={"data-field": "regularMarketVolume"})
-    total_vol = None
-    if total_vol_elem and total_vol_elem.get("data-value"):
-        total_vol_str = total_vol_elem["data-value"].replace(',', '')
-        try:
-            total_vol = int(total_vol_str)
-        except ValueError:
-            total_vol = None
+# Fetch quotes (bid/ask)
+quotes_request = StockQuotesRequest(
+    symbol_or_symbols=[symbol],
+    start=start,
+    end=end,
+    limit=500
+)
+quotes = client.get_stock_quotes(quotes_request)
+quotes = quotes[symbol]
 
-    # Calculate change in total volume
-    total_vol_change = None
-    if total_vol is not None and prev_total_vol is not None:
-        total_vol_change = total_vol - prev_total_vol
-    elif total_vol is not None:
-        total_vol_change = 0
+trade_times = [trade.timestamp.timestamp() for trade in trades]
+quote_times = [quote.timestamp.timestamp() for quote in quotes]
 
-    driver.quit()
+def find_closest_index(sorted_list, value):
+    pos = bisect_left(sorted_list, value)
+    if pos == 0:
+        return 0
+    if pos == len(sorted_list):
+        return len(sorted_list) - 1
+    before = sorted_list[pos - 1]
+    after = sorted_list[pos]
+    if after - value < value - before:
+        return pos
+    else:
+        return pos - 1
 
-    vector = [price_value, price_change, bid_price, ask_price, total_vol_change]
-    print(vector)
-    return price_value, total_vol, vector
+combined_data = []
 
-if __name__ == "__main__":
-    ticker = "NVDA"
-    prev_price = None
-    prev_total_vol = None
-    while True:
-        price, total_vol, vector = scrape_yahoo_finance_selenium(ticker, prev_price, prev_total_vol)
-        if price is not None:
-            prev_price = price
-        if total_vol is not None:
-            prev_total_vol = total_vol
-        time.sleep(10)  # Wait 10 seconds between scrapes
+for trade in trades:
+    trade_ts = trade.timestamp.timestamp()
+    q_idx = find_closest_index(quote_times, trade_ts)
+    quote = quotes[q_idx]
+    if abs(quote.timestamp.timestamp() - trade_ts) < 1.0:
+        combined_data.append([quote.bid_price, quote.ask_price, trade.price])
+
+print(f"Combined {len(combined_data)} data points [Bid, Ask, Price]:")
+for v in combined_data:
+    print(v)
+
+# Save to CSV for use in gen_autoregressive.py
+DATA_DIR = os.path.join(os.path.dirname(__file__), 'data_folder')
+os.makedirs(DATA_DIR, exist_ok=True)
+output_path = os.path.join(DATA_DIR, f"{symbol}.csv")
+df = pd.DataFrame(combined_data, columns=["Bid_Price", "Ask_Price", "Price"])
+df.to_csv(output_path, index=False)
+print(f"Saved {len(df)} rows to {output_path}")
