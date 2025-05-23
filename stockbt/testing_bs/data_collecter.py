@@ -10,10 +10,10 @@ API_SECRET = "PiNdt7ccSjzydlk35W5GOR5q9Ng1tAc6VEiSADeY"
 
 client = StockHistoricalDataClient(API_KEY, API_SECRET)
 
-symbol = "WOLF"
+symbol = "AAPL"
 
 end = datetime.now()
-start = end - timedelta(days=1)
+start = end - timedelta(days=0.1)
 
 # Fetch trades (prices)
 trades_request = StockTradesRequest(

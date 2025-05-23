@@ -20,37 +20,22 @@ FEATURES2 = ["Price"]
 TARGET_PRICE = "Price"
 TARGET_BIDASK = ["Bid_Price", "Ask_Price"]
 
-print(f"Using columns: {FEATURES1 + [TARGET_PRICE]}")
+print(f"Using columns for Model 1 input: {FEATURES1}")
 df = pd.read_csv(file_path)
 
 # Set dynamic end based on CSV length
 num_rows = len(df)
 
-# Define ratios
-train_ratio = 0.6
-pid_ratio = 0.2
-# pred_ratio = 0.2  # (rest)
+if num_rows < 2:
+    raise ValueError("Not enough data. Need at least 2 rows to train on all data and predict the next.")
 
-# Compute split indices
-train_end = int(train_ratio * num_rows)
-pid_start = train_end
-pid_end = train_end + int(pid_ratio * num_rows)
-pred_start = pid_end
-pred_end = num_rows  # exclusive
+print(f"Total rows in dataset: {num_rows}")
+print(f"Training models on all {num_rows} rows to predict the hypothetical next point (row {num_rows}).")
 
-# Ensure all indices are within bounds
-train_end = min(train_end, num_rows - 1)
-pid_start = min(pid_start, num_rows - 1)
-pid_end = min(pid_end, num_rows - 1)
-pred_start = min(pred_start, num_rows - 1)
-pred_end = min(pred_end, num_rows - 1)
+data1 = df[FEATURES1 + [TARGET_PRICE]].values.astype(np.float32) # Used for Model 1
+feature_indices1 = {f: i for i, f in enumerate(FEATURES1 + [TARGET_PRICE])} # To map feature names to indices in data1
 
-print(f"Train: 0 to {train_end-1}")
-print(f"PID/Validation: {pid_start} to {pid_end-1}")
-print(f"Prediction: {pred_start} to {pred_end-1}")
-
-data1 = df[FEATURES1 + [TARGET_PRICE]].values.astype(np.float32)
-feature_indices1 = {f: i for i, f in enumerate(FEATURES1 + [TARGET_PRICE])}
+data2 = df[["Price", "Bid_Price", "Ask_Price"]].values.astype(np.float32) # Used for Model 2
 
 # Model 1: [Bid_Price, Ask_Price, Price] at t -> Price at t+1
 class PriceNet(nn.Module):
@@ -83,18 +68,32 @@ class BidAskNet(nn.Module):
         return self.final(out)
 
 # --- Dynamic hyperparameters ---
-INIT_NUM_LAYERS = 1
+INIT_NUM_LAYERS = 5
 INIT_LR = 1e-5
-INIT_TARGET_ERROR = 0.5
+INIT_TARGET_ERROR = 0.01
 SWITCH_EPOCH = 500000
 NEW_NUM_LAYERS = 5
 NEW_LR = 5*1e-6
 NEW_TARGET_ERROR = 2
 
 # --- Train Model 1: Predict next price ---
-train_data1 = data1[:train_end]
-X_train1 = torch.tensor(train_data1[:-1, :-1], dtype=torch.float32)  # All features except last col (Price at t)
-y_train1 = torch.tensor(train_data1[1:, -1], dtype=torch.float32)    # Price at t+1
+# Model 1 trains on features from data[0...num_rows-2] to predict prices for data[1...num_rows-1]
+train_data1_m1 = data1[:num_rows-1] # Use data up to second to last row for features, last row for target
+if len(train_data1_m1) < 1: # Needs at least one pair for training if num_rows = 2
+    raise ValueError("Not enough data to form a training pair for Model 1.")
+
+X_train1 = torch.tensor(train_data1_m1[:-1, :-1], dtype=torch.float32)  # Input features: data[0...num_rows-2, features_m1]
+y_train1 = torch.tensor(train_data1_m1[1:, -1], dtype=torch.float32)    # Target price: data[1...num_rows-1, price_idx]
+
+if X_train1.shape[0] == 0 and num_rows > 1: # If num_rows is 1, this will be empty but caught by initial check
+    # This case implies num_rows = 2, train_data1_m1 has 1 row, so X_train1 is empty. This is expected for num_rows=2.
+    # For num_rows=2, training happens effectively via validation step if epochs are run.
+    # However, with current early stopping logic, it might stop if target_error is too low.
+    # A single point prediction based on that is fine.
+    print("[Model1] Warning: X_train1 is empty, this is expected if num_rows=2. Model effectively trains on validation logic.")
+elif X_train1.shape[0] == 0 and num_rows <=1:
+     raise ValueError("Model 1 training input X_train1 is empty.")
+
 num_layers = INIT_NUM_LAYERS
 lr = INIT_LR
 target_error = INIT_TARGET_ERROR
@@ -105,24 +104,30 @@ loss_fn = nn.MSELoss()
 max_epochs = 1000000
 required_good_epochs = 100
 consecutive_good_epochs = 0
-# Use train_end for validation/checkpoint
-val_idx = train_end
-val_input = torch.tensor(data1[val_idx-1, :-1], dtype=torch.float32).unsqueeze(0)
-target_val = data1[val_idx, -1]
+# Validation for Model 1: Use features from num_rows-2 to predict price at num_rows-1 (last actual point)
+val_idx_m1 = num_rows - 1 
+val_input_m1 = torch.tensor(data1[val_idx_m1-1, :-1], dtype=torch.float32).unsqueeze(0) # Features from num_rows-2
+target_val_m1 = data1[val_idx_m1, -1] # Actual price at num_rows-1
+
 for epoch in range(max_epochs):
     model1.train()
-    optimizer1.zero_grad()
-    pred = model1(X_train1)
-    loss = loss_fn(pred, y_train1)
-    loss.backward()
-    optimizer1.step()
+    if X_train1.shape[0] > 0: # Only train if there's training data
+        optimizer1.zero_grad()
+        pred = model1(X_train1)
+        loss = loss_fn(pred, y_train1)
+        loss.backward()
+        optimizer1.step()
+        scheduler1.step(loss.item())
+    else: # If no training data (num_rows=2), rely on initial weights or skip optimizer step
+        loss = torch.tensor(float('inf')) # Effectively, no training loss to report or step scheduler on
+
     model1.eval()
     with torch.no_grad():
-        pred_val = model1(val_input).item()
-        pred_error = (pred_val - target_val) ** 2
-    scheduler1.step(loss.item())
+        pred_val = model1(val_input_m1).item()
+        pred_error = (pred_val - target_val_m1) ** 2 # Error for the last point
+
     if epoch % 100 == 0 or consecutive_good_epochs >= required_good_epochs:
-        print(f"[Model1] Epoch {epoch}: MSE to point {val_idx} = {pred_error:.6f}, Good epochs: {consecutive_good_epochs}, LR: {optimizer1.param_groups[0]['lr']:.2e}, num_layers: {num_layers}, target_error: {target_error}")
+        print(f"[Model1] Epoch {epoch}: MSE to point {val_idx_m1} = {pred_error:.6f}, Good epochs: {consecutive_good_epochs}, LR: {optimizer1.param_groups[0]['lr']:.2e}, num_layers: {num_layers}, target_error: {target_error}")
     if pred_error <= target_error:
         consecutive_good_epochs += 1
     else:
@@ -145,10 +150,14 @@ for epoch in range(max_epochs):
         scheduler1 = ReduceLROnPlateau(optimizer1, mode='min', factor=0.5, patience=500, min_lr=1e-7)
 
 # --- Train Model 2: Predict next Bid/Ask from next Price ---
-data2 = df[["Price", "Bid_Price", "Ask_Price"]].values.astype(np.float32)
-train_data2 = data2[:train_end+1]  # 0-train_end for t+1
-X_train2 = torch.tensor(train_data2[1:, [0]], dtype=torch.float32)  # Price at t+1
-Y_train2 = torch.tensor(train_data2[1:, 1:3], dtype=torch.float32)  # Bid/Ask at t+1
+# Model 2 input: Price at t, Output: Bid/Ask at t. Trains on all available data [0...num_rows-1]
+train_data2_m2 = data2 # All data from index 0 to num_rows-1
+X_train2 = torch.tensor(train_data2_m2[:, [0]], dtype=torch.float32)  # Price at t (0 to num_rows-1)
+Y_train2 = torch.tensor(train_data2_m2[:, 1:3], dtype=torch.float32)  # Bid/Ask at t (0 to num_rows-1)
+
+if X_train2.shape[0] == 0:
+    raise ValueError("Model 2 training input X_train2 is empty.")
+
 num_layers2 = INIT_NUM_LAYERS
 lr2 = INIT_LR
 target_error2 = INIT_TARGET_ERROR
@@ -156,10 +165,11 @@ model2 = BidAskNet(input_dim=1, num_layers=num_layers2)
 optimizer2 = torch.optim.Adam(model2.parameters(), lr=lr2)
 scheduler2 = ReduceLROnPlateau(optimizer2, mode='min', factor=0.5, patience=500, min_lr=1e-7)
 consecutive_good_epochs = 0
-# Use train_end for validation/checkpoint
-val_idx2 = train_end
-val_input2 = torch.tensor(data2[val_idx2, [0]], dtype=torch.float32).unsqueeze(0)
-target_val2 = data2[val_idx2, 1:3]
+# Validation for Model 2: Use Price at num_rows-1 to predict Bid/Ask at num_rows-1 (last actual point)
+val_idx_m2 = num_rows - 1 
+val_input_m2 = torch.tensor(data2[val_idx_m2, [0]], dtype=torch.float32).unsqueeze(0) # Price at num_rows-1
+target_val_m2 = data2[val_idx_m2, 1:3] # Actual Bid/Ask at num_rows-1
+
 for epoch in range(max_epochs):
     model2.train()
     optimizer2.zero_grad()
@@ -167,13 +177,15 @@ for epoch in range(max_epochs):
     loss = loss_fn(pred, Y_train2)
     loss.backward()
     optimizer2.step()
+
     model2.eval()
     with torch.no_grad():
-        pred_val2 = model2(val_input2).squeeze(0).numpy()
-        pred_error = np.mean((pred_val2 - target_val2) ** 2)
+        pred_val2 = model2(val_input_m2).squeeze(0).numpy()
+        pred_error = np.mean((pred_val2 - target_val_m2) ** 2) # Error for point predict_idx-1
+
     scheduler2.step(loss.item())
     if epoch % 100 == 0 or consecutive_good_epochs >= required_good_epochs:
-        print(f"[Model2] Epoch {epoch}: MSE to point {val_idx2} = {pred_error:.6f}, Good epochs: {consecutive_good_epochs}, LR: {optimizer2.param_groups[0]['lr']:.2e}, num_layers: {num_layers2}, target_error: {target_error2}")
+        print(f"[Model2] Epoch {epoch}: MSE to point {val_idx_m2} = {pred_error:.6f}, Good epochs: {consecutive_good_epochs}, LR: {optimizer2.param_groups[0]['lr']:.2e}, num_layers: {num_layers2}, target_error: {target_error2}")
     if pred_error <= target_error2:
         consecutive_good_epochs += 1
     else:
@@ -195,138 +207,83 @@ for epoch in range(max_epochs):
         optimizer2 = torch.optim.Adam(model2.parameters(), lr=lr2)
         scheduler2 = ReduceLROnPlateau(optimizer2, mode='min', factor=0.5, patience=500, min_lr=1e-7)
 
-# --- Autoregressive + PID tuning and prediction ---
-print(f"\n--- Bidirectional Autoregressive + PID tuning (train till {train_end}, PID {pid_start}-{pid_end}, predict {pred_start}-{pred_end}) ---")
+# --- Predict the NEXT HYPOTHETICAL point (index num_rows) ---
+print(f"\n--- Predicting the HYPOTHETICAL next point (after index {num_rows-1}) ---")
 
-start_idx = pid_start
-future_steps = 50
-end_idx = min(pred_end + 1 + future_steps, num_rows + future_steps)  # Extend beyond available data
+# Get the features from the VERY LAST actual data point to predict the next price
+# These are from data1 at row num_rows-1
+input_features_m1_future = torch.tensor(data1[num_rows-1, :-1], dtype=torch.float32).unsqueeze(0)
 
-# Prepare actuals (only available up to pred_end)
-actual_price = [data1[i, -1] for i in range(start_idx, min(pred_end + 1, num_rows))]
-actual_bid = [data1[i, feature_indices1["Bid_Price"]] for i in range(start_idx, min(pred_end + 1, num_rows))]
-actual_ask = [data1[i, feature_indices1["Ask_Price"]] for i in range(start_idx, min(pred_end + 1, num_rows))]
+# Predict the NEXT price using Model 1
+model1.eval()
+with torch.no_grad():
+    predicted_next_price = model1(input_features_m1_future).item()
 
-# Initial input for walk-forward
-input_seq = [row.copy() for row in data1[:start_idx]]
-ar_price = []
-ar_bid = []
-ar_ask = []
+print(f"Predicted Next Hypothetical Price: {predicted_next_price:.4f}")
 
-# Generate autoregressive forecast for points pid_start to pred_end + future_steps
-for i in range(start_idx, end_idx):
-    prev_vec = input_seq[-1].copy()
-    X_input1 = torch.tensor(prev_vec[:-1], dtype=torch.float32).unsqueeze(0)
-    with torch.no_grad():
-        price_pred = model1(X_input1).item()
-    X_input2 = torch.tensor([[price_pred]], dtype=torch.float32)
-    with torch.no_grad():
-        bidask_pred = model2(X_input2).squeeze(0).numpy()
-    new_vec = prev_vec.copy()
-    new_vec[feature_indices1["Price"]] = price_pred
-    new_vec[feature_indices1["Bid_Price"]] = bidask_pred[0]
-    new_vec[feature_indices1["Ask_Price"]] = bidask_pred[1]
-    ar_price.append(price_pred)
-    ar_bid.append(bidask_pred[0])
-    ar_ask.append(bidask_pred[1])
-    input_seq.append(new_vec)
+# Prepare input for Model 2: the predicted_next_price
+input_price_m2_future = torch.tensor([[predicted_next_price]], dtype=torch.float32)
 
-# --- PID tuning on a separate validation window ---
-# Validation window as a ratio of the PID window
-val_ratio = 0.5  # Use 50% of the PID window for validation
-pid_window_len = pid_end - pid_start
-val_start = pid_start
-val_end = pid_start + int(val_ratio * pid_window_len)
-val_idx0 = 0  # relative to ar_price/actual_price, which start at pid_start
-val_idx1 = val_end - pid_start
-val_idx1 = min(val_idx1, len(ar_price))  # ensure in bounds
+# Predict the NEXT Bid/Ask using Model 2 with the predicted price
+model2.eval()
+with torch.no_grad():
+    predicted_next_bidask = model2(input_price_m2_future).squeeze(0).numpy()
 
-# PID tuning function (tune only on validation window)
-def pid_tune_on_validation_window(pred_series, actual_series, idx0, idx1, label, decay=0.98):
-    def pid_objective(params):
-        Kp, Ki, Kd = params
-        integral = 0
-        prev_error = 0
-        pid_preds = []
-        for idx in range(idx0, idx1):
-            pred_val = pred_series[idx]
-            actual_val = actual_series[idx]
-            error = actual_val - pred_val
-            integral = decay * integral + error
-            derivative = error - prev_error
-            pid_correction = Kp * error + Ki * integral + Kd * derivative
-            prev_error = error
-            pid_pred = pred_val + pid_correction
-            pid_preds.append(pid_pred)
-        mse = np.mean((np.array(pid_preds) - np.array(actual_series[idx0:idx1])) ** 2)
-        return mse
-    space = [
-        Real(0.0, 2.0, name='Kp'),
-        Real(0.0, 0.2, name='Ki'),
-        Real(0.0, 1.0, name='Kd'),
-    ]
-    res = gp_minimize(pid_objective, space, n_calls=30, random_state=42, verbose=True)
-    best_pid = {'Kp': res.x[0], 'Ki': res.x[1], 'Kd': res.x[2]}
-    print(f"Best PID parameters for {label} (validation {val_start}-{val_end}, decay={decay}): Kp={best_pid['Kp']:.4f}, Ki={best_pid['Ki']:.4f}, Kd={best_pid['Kd']:.4f}")
-    # Apply PID correction to the full sequence
-    pid_preds = []
-    integral = 0
-    prev_error = 0
-    for idx in range(len(pred_series)):
-        pred_val = pred_series[idx]
-        actual_val = actual_series[idx]
-        error = actual_val - pred_val
-        integral = decay * integral + error
-        derivative = error - prev_error
-        pid_correction = best_pid['Kp'] * error + best_pid['Ki'] * integral + best_pid['Kd'] * derivative
-        prev_error = error
-        pid_pred = pred_val + pid_correction
-        pid_preds.append(pid_pred)
-    return pid_preds
+predicted_next_bid = predicted_next_bidask[0]
+predicted_next_ask = predicted_next_bidask[1]
 
-ar_pid_price = pid_tune_on_validation_window(ar_price, actual_price, val_idx0, val_idx1, 'ar_price', decay=0.98)
+print(f"Predicted Next Hypothetical Bid: {predicted_next_bid:.4f}")
+print(f"Predicted Next Hypothetical Ask: {predicted_next_ask:.4f}")
 
-# --- Correction: 301-305 average abs diff adjustment (now within PID/correction window, so no leakage) ---
-corr_start = 301
-corr_end = 305
-corr_idx0 = corr_start - pid_start  # index in ar_price/actual_price
-corr_idx1 = corr_end - pid_start + 1
+# --- Performance Metrics for the Last Point Prediction ---
+# No actual data for the hypothetical next point, so no direct MSE here.
+# Training validation errors give an indication of model fit to historical data.
+print(f"\n--- METRICS FOR LAST ACTUAL POINT (VALIDATION DURING TRAINING) ---")
+# Re-calculate validation error for the last actual point for clarity, if desired, or use stored values.
+# For Model 1 (Price prediction for point num_rows-1)
+val_input_m1_check = torch.tensor(data1[num_rows-2, :-1], dtype=torch.float32).unsqueeze(0)
+actual_last_price_val = data1[num_rows-1, -1]
+with torch.no_grad():
+    pred_last_price_val = model1(val_input_m1_check).item()
+price_val_mse = (pred_last_price_val - actual_last_price_val) ** 2
+print(f"Model 1 Validation MSE (predicting price for point {num_rows-1}): {price_val_mse:.6f}")
 
-# Check if the correction indices are valid
-if corr_idx0 >= 0 and corr_idx1 <= len(actual_price) and corr_idx0 < corr_idx1:
-    avg_abs_diff = np.mean(np.abs(np.array(actual_price[corr_idx0:corr_idx1]) - np.array(ar_pid_price[corr_idx0:corr_idx1])))
-    print(f"Average abs diff (|actual - predicted|) for {corr_start}-{corr_end}: {avg_abs_diff:.6f}")
-    adjusted_ar_pid_price = [p - avg_abs_diff for p in ar_pid_price]
-else:
-    print(f"Correction range {corr_start}-{corr_end} is outside available data range. Skipping correction.")
-    adjusted_ar_pid_price = ar_pid_price.copy()
+# For Model 2 (Bid/Ask prediction for point num_rows-1, using its actual price)
+val_input_m2_check = torch.tensor(data2[num_rows-1, [0]], dtype=torch.float32).unsqueeze(0)
+actual_last_bidask_val = data2[num_rows-1, 1:3]
+with torch.no_grad():
+    pred_last_bidask_val = model2(val_input_m2_check).squeeze(0).numpy()
+bidask_val_mse = np.mean((pred_last_bidask_val - actual_last_bidask_val) ** 2)
+print(f"Model 2 Validation MSE (predicting bid/ask for point {num_rows-1}): {bidask_val_mse:.6f}")
 
-# Ensure pred_eval_start is defined
-pred_eval_start = pred_start - pid_start
 
-# Create subplot layout
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+# --- Plotting the Predicted Next Point ---
+fig, axs = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
 
-# Plot 1: Predicted vs actual values (only for the range where we have actual data)
-actual_range_end = len(actual_price)
-ax1.plot(range(pred_start, pred_start + actual_range_end), actual_price[pred_eval_start:], label='Actual', linestyle='-')
-ax1.plot(range(pred_start, pred_start + actual_range_end), adjusted_ar_pid_price[pred_eval_start:actual_range_end], label='Predicted', linestyle='--')
-ax1.set_xlabel('Time Step')
-ax1.set_ylabel('Price')
-ax1.set_title('Predicted vs Actual Prices')
-ax1.legend()
-ax1.grid(True, alpha=0.3)
+bar_labels = [f'Predicted P(N+1)']
+price_value = [predicted_next_price]
+axs[0].bar(bar_labels, price_value, color=['cyan'])
+axs[0].set_ylabel('Price')
+axs[0].set_title(f'Hypothetical Next Point (after Index {num_rows-1}) - Price Prediction')
+for i, v in enumerate(price_value):
+    axs[0].text(i, v + 0.001 * abs(v) if v != 0 else 0.01, f"{v:.4f}", color='black', ha='center')
 
-# Plot 2: Future predictions (beyond available data)
-future_start_idx = pred_end + 1
-future_predictions = ar_price[len(actual_price):]  # Get predictions beyond actual data
-future_time_steps = range(future_start_idx, future_start_idx + len(future_predictions))
-ax2.plot(future_time_steps, future_predictions, label='Future Predictions', linestyle='-', color='red')
-ax2.set_xlabel('Time Step')
-ax2.set_ylabel('Price')
-ax2.set_title(f'Future Price Predictions ({len(future_predictions)} steps ahead)')
-ax2.legend()
-ax2.grid(True, alpha=0.3)
+bid_value = [predicted_next_bid]
+axs[1].bar([f'Predicted B(N+1)'], bid_value, color=['lime'])
+axs[1].set_ylabel('Price')
+axs[1].set_title(f'Hypothetical Next Point - Bid Prediction')
+for i, v in enumerate(bid_value):
+    axs[1].text(i, v + 0.001 * abs(v) if v != 0 else 0.01, f"{v:.4f}", color='black', ha='center')
 
+ask_value = [predicted_next_ask]
+axs[2].bar([f'Predicted A(N+1)'], ask_value, color=['magenta'])
+axs[2].set_ylabel('Price')
+axs[2].set_title(f'Hypothetical Next Point - Ask Prediction')
+for i, v in enumerate(ask_value):
+    axs[2].text(i, v + 0.001 * abs(v) if v != 0 else 0.01, f"{v:.4f}", color='black', ha='center')
+
+plt.xlabel(f'Prediction for Hypothetical Point after Index {num_rows-1}')
 plt.tight_layout()
-plt.show() 
+plt.show()
+
+print(f"\n✅ Hypothetical next point prediction complete.") 
