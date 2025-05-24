@@ -5,46 +5,98 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import random
-from skopt import gp_minimize
-from skopt.space import Real
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from scipy.optimize import minimize
+
+# 🔧 MISSING CLASS DEFINITION: PIDController
+# The original code referenced PIDController but never defined it.
+# Adding basic implementation to prevent runtime errors.
+
+class PIDController:
+    """Basic PID Controller implementation"""
+    def __init__(self, kp, ki, kd):
+        self.kp = kp  # Proportional gain
+        self.ki = ki  # Integral gain  
+        self.kd = kd  # Derivative gain
+        self.previous_error = 0
+        self.integral = 0
+    
+    def update(self, error):
+        """Update PID controller with new error and return correction"""
+        self.integral += error
+        derivative = error - self.previous_error
+        
+        correction = (self.kp * error + 
+                     self.ki * self.integral + 
+                     self.kd * derivative)
+        
+        self.previous_error = error
+        return correction
+    
+    def reset(self):
+        """Reset controller state"""
+        self.previous_error = 0
+        self.integral = 0
 
 # Directory containing all CSV files
-DATA_DIR = "/Users/avneh/Code/HackSFProject/stockbt/testing_bs/data_folder"
+DATA_DIR = "/Users/avneh/Code/HackSFProject/stockbt/datasets"
 csv_files = [f for f in os.listdir(DATA_DIR) if f.endswith('.csv')]
 file = random.choice(csv_files)
 file_path = os.path.join(DATA_DIR, file)
 
+df = pd.read_csv(file_path)
+
+print(f"=== ML PROGRESSIVE TRAINING ===")
+print(f"Using file: {file}")
+
+# 🚨 SYNTHETIC DATA WARNING: Artificial Bid/Ask Spread
+# The following creates artificial bid/ask prices from close prices with fixed spread.
+# This creates unrealistic perfect relationships that won't exist in real market data.
+# Real bid/ask spreads vary dynamically based on volatility, volume, market conditions.
+# 💡 Consider: Use real bid/ask data or add noise/variability to spreads.
+
+# Create synthetic bid/ask prices from OHLC data
+# Bid typically slightly below close, Ask slightly above close
+spread_pct = 0.001  # 0.1% spread
+df['Bid_Price'] = df['Close'] * (1 - spread_pct/2)
+df['Ask_Price'] = df['Close'] * (1 + spread_pct/2)
+df['Price'] = df['Close']  # Use Close as the main price
+
+num_rows = len(df)
+
+# Define the progressive training parameters
+LOOKBACK_WINDOW = 50
+STARTING_POINT = 3
+final_train_until_idx = num_rows - LOOKBACK_WINDOW
+
+if num_rows < LOOKBACK_WINDOW + 10:
+    raise ValueError(f"Not enough data. Need at least {LOOKBACK_WINDOW + 10} rows.")
+
+print(f"Total rows in dataset: {num_rows}")
+print(f"Will progressively train from point {STARTING_POINT} to point {final_train_until_idx-1}")
+
+# 🚨 DATA LEAK WARNING: Feature-Target Contamination Risk
+# Using 'Price' as both feature and target creates potential artificial correlation.
+# At time t-1, we use [Bid_Price, Ask_Price, Price] to predict Price at time t.
+# Since Price is derived from Close, this might create unrealistic patterns.
+# 💡 Consider: Remove 'Price' from features or use different target variable.
+
 FEATURES1 = ["Bid_Price", "Ask_Price", "Price"]
-FEATURES2 = ["Price"]
 TARGET_PRICE = "Price"
 TARGET_BIDASK = ["Bid_Price", "Ask_Price"]
 
-print(f"Using columns for Model 1 input: {FEATURES1}")
-df = pd.read_csv(file_path)
+data1 = df[FEATURES1 + [TARGET_PRICE]].values.astype(np.float32)
+data2 = df[["Price", "Bid_Price", "Ask_Price"]].values.astype(np.float32)
 
-# Set dynamic end based on CSV length
-num_rows = len(df)
-
-if num_rows < 2:
-    raise ValueError("Not enough data. Need at least 2 rows to train on all data and predict the next.")
-
-print(f"Total rows in dataset: {num_rows}")
-print(f"Training models on all {num_rows} rows to predict the hypothetical next point (row {num_rows}).")
-
-data1 = df[FEATURES1 + [TARGET_PRICE]].values.astype(np.float32) # Used for Model 1
-feature_indices1 = {f: i for i, f in enumerate(FEATURES1 + [TARGET_PRICE])} # To map feature names to indices in data1
-
-data2 = df[["Price", "Bid_Price", "Ask_Price"]].values.astype(np.float32) # Used for Model 2
-
-# Model 1: [Bid_Price, Ask_Price, Price] at t -> Price at t+1
+# Model architectures
 class PriceNet(nn.Module):
-    def __init__(self, input_dim, num_layers=3):
+    def __init__(self, input_dim, num_layers=5):
         super().__init__()
         self.layers = nn.ModuleList([
             nn.Linear(input_dim, input_dim) for _ in range(num_layers)
         ])
         self.final = nn.Linear(input_dim, 1)
+    
     def forward(self, x):
         out = x
         for layer in self.layers:
@@ -52,14 +104,14 @@ class PriceNet(nn.Module):
             out = out - h
         return self.final(out).squeeze(-1)
 
-# Model 2: [Price at t+1] -> [Bid_Price, Ask_Price] at t+1
 class BidAskNet(nn.Module):
-    def __init__(self, input_dim, num_layers=3):
+    def __init__(self, input_dim, num_layers=5):
         super().__init__()
         self.layers = nn.ModuleList([
             nn.Linear(input_dim, input_dim) for _ in range(num_layers)
         ])
         self.final = nn.Linear(input_dim, 2)
+    
     def forward(self, x):
         out = x
         for layer in self.layers:
@@ -67,223 +119,339 @@ class BidAskNet(nn.Module):
             out = out - h
         return self.final(out)
 
-# --- Dynamic hyperparameters ---
-INIT_NUM_LAYERS = 5
-INIT_LR = 1e-5
-INIT_TARGET_ERROR = 0.01
-SWITCH_EPOCH = 500000
-NEW_NUM_LAYERS = 5
-NEW_LR = 5*1e-6
-NEW_TARGET_ERROR = 2
+def train_to_convergence_for_point(model1, model2, data1, data2, target_point, 
+                                   max_epochs=2000, target_error=0.001, required_good_epochs=20):
+    """Train models to predict specific point"""
+    print(f"\nTraining to predict point {target_point}...")
+    
+    train_data1 = data1[:target_point]
+    train_data2 = data2[:target_point]
+    
+    if len(train_data1) < 2:
+        raise ValueError(f"Not enough data to train for point {target_point}")
+    
+    X_train1 = torch.tensor(train_data1[:-1, :-1], dtype=torch.float32)
+    y_train1 = torch.tensor(train_data1[1:, -1], dtype=torch.float32)
+    X_train2 = torch.tensor(train_data2[1:, [0]], dtype=torch.float32)
+    Y_train2 = torch.tensor(train_data2[1:, 1:3], dtype=torch.float32)
+    
+    optimizer1 = torch.optim.Adam(model1.parameters(), lr=1e-4)
+    optimizer2 = torch.optim.Adam(model2.parameters(), lr=1e-4)
+    scheduler1 = ReduceLROnPlateau(optimizer1, mode='min', factor=0.5, patience=100, min_lr=1e-7)
+    scheduler2 = ReduceLROnPlateau(optimizer2, mode='min', factor=0.5, patience=100, min_lr=1e-7)
+    loss_fn = nn.MSELoss()
+    
+    consecutive_good_epochs = 0
+    
+    val_input_m1 = torch.tensor(data1[target_point-1, :-1], dtype=torch.float32).unsqueeze(0)
+    target_val_m1 = data1[target_point, -1]
+    val_input_m2 = torch.tensor(data2[target_point, [0]], dtype=torch.float32).unsqueeze(0)
+    target_val_m2 = data2[target_point, 1:3]
+    
+    for epoch in range(max_epochs):
+        model1.train()
+        model2.train()
+        
+        # Train Model 1 (Price prediction)
+        if X_train1.shape[0] > 0:
+            optimizer1.zero_grad()
+            pred1 = model1(X_train1)
+            loss1 = loss_fn(pred1, y_train1)
+            loss1.backward()
+            optimizer1.step()
+            scheduler1.step(loss1.item())
+        
+        # Train Model 2 (Bid/Ask prediction)
+        if X_train2.shape[0] > 0:
+            optimizer2.zero_grad()
+            pred2 = model2(X_train2)
+            loss2 = loss_fn(pred2, Y_train2)
+            loss2.backward()
+            optimizer2.step()
+            scheduler2.step(loss2.item())
+        
+        # Validation check
+        model1.eval()
+        model2.eval()
+        with torch.no_grad():
+            pred_val1 = model1(val_input_m1).item()
+            pred_error1 = (pred_val1 - target_val_m1) ** 2
+            pred_val2 = model2(val_input_m2).squeeze(0).numpy()
+            pred_error2 = np.mean((pred_val2 - target_val_m2) ** 2)
+            combined_error = pred_error1 + pred_error2
+        
+        if epoch % 100 == 0 or consecutive_good_epochs >= required_good_epochs:
+            print(f"  Epoch {epoch:4d}: Val_error={combined_error:.6f}, Good={consecutive_good_epochs}")
+        
+        if combined_error <= target_error:
+            consecutive_good_epochs += 1
+        else:
+            consecutive_good_epochs = 0
+        
+        if consecutive_good_epochs >= required_good_epochs:
+            print(f"  ✅ CONVERGED at epoch {epoch}!")
+            break
+    
+    return model1, model2, combined_error
 
-# --- Train Model 1: Predict next price ---
-# Model 1 trains on features from data[0...num_rows-2] to predict prices for data[1...num_rows-1]
-train_data1_m1 = data1[:num_rows-1] # Use data up to second to last row for features, last row for target
-if len(train_data1_m1) < 1: # Needs at least one pair for training if num_rows = 2
-    raise ValueError("Not enough data to form a training pair for Model 1.")
+def tune_pid_parameters(errors):
+    """Optimize PID parameters based on error signal"""
+    def pid_cost_function(params):
+        kp, ki, kd = params
+        pid = PIDController(kp, ki, kd)
+        
+        total_cost = 0
+        for error in errors:
+            correction = pid.update(error)
+            corrected_error = error - correction
+            total_cost += corrected_error ** 2
+        
+        return total_cost
+    
+    initial_params = [1.0, 0.1, 0.05]
+    
+    result = minimize(pid_cost_function, initial_params, 
+                     bounds=[(0.1, 10.0), (0.01, 1.0), (0.001, 0.5)],
+                     method='L-BFGS-B')
+    
+    return result.x
 
-X_train1 = torch.tensor(train_data1_m1[:-1, :-1], dtype=torch.float32)  # Input features: data[0...num_rows-2, features_m1]
-y_train1 = torch.tensor(train_data1_m1[1:, -1], dtype=torch.float32)    # Target price: data[1...num_rows-1, price_idx]
-
-if X_train1.shape[0] == 0 and num_rows > 1: # If num_rows is 1, this will be empty but caught by initial check
-    # This case implies num_rows = 2, train_data1_m1 has 1 row, so X_train1 is empty. This is expected for num_rows=2.
-    # For num_rows=2, training happens effectively via validation step if epochs are run.
-    # However, with current early stopping logic, it might stop if target_error is too low.
-    # A single point prediction based on that is fine.
-    print("[Model1] Warning: X_train1 is empty, this is expected if num_rows=2. Model effectively trains on validation logic.")
-elif X_train1.shape[0] == 0 and num_rows <=1:
-     raise ValueError("Model 1 training input X_train1 is empty.")
-
-num_layers = INIT_NUM_LAYERS
-lr = INIT_LR
-target_error = INIT_TARGET_ERROR
-model1 = PriceNet(input_dim=len(FEATURES1), num_layers=num_layers)
-optimizer1 = torch.optim.Adam(model1.parameters(), lr=lr)
-scheduler1 = ReduceLROnPlateau(optimizer1, mode='min', factor=0.5, patience=500, min_lr=1e-7)
-loss_fn = nn.MSELoss()
-max_epochs = 1000000
-required_good_epochs = 100
-consecutive_good_epochs = 0
-# Validation for Model 1: Use features from num_rows-2 to predict price at num_rows-1 (last actual point)
-val_idx_m1 = num_rows - 1 
-val_input_m1 = torch.tensor(data1[val_idx_m1-1, :-1], dtype=torch.float32).unsqueeze(0) # Features from num_rows-2
-target_val_m1 = data1[val_idx_m1, -1] # Actual price at num_rows-1
-
-for epoch in range(max_epochs):
-    model1.train()
-    if X_train1.shape[0] > 0: # Only train if there's training data
-        optimizer1.zero_grad()
-        pred = model1(X_train1)
-        loss = loss_fn(pred, y_train1)
-        loss.backward()
-        optimizer1.step()
-        scheduler1.step(loss.item())
-    else: # If no training data (num_rows=2), rely on initial weights or skip optimizer step
-        loss = torch.tensor(float('inf')) # Effectively, no training loss to report or step scheduler on
-
+def generate_pid_profile(model1, model2, data1, data2, calibration_points=5):
+    """Generate PID correction profile from training data"""
+    print(f"\nGenerating PID profile from training data...")
+    
     model1.eval()
-    with torch.no_grad():
-        pred_val = model1(val_input_m1).item()
-        pred_error = (pred_val - target_val_m1) ** 2 # Error for the last point
-
-    if epoch % 100 == 0 or consecutive_good_epochs >= required_good_epochs:
-        print(f"[Model1] Epoch {epoch}: MSE to point {val_idx_m1} = {pred_error:.6f}, Good epochs: {consecutive_good_epochs}, LR: {optimizer1.param_groups[0]['lr']:.2e}, num_layers: {num_layers}, target_error: {target_error}")
-    if pred_error <= target_error:
-        consecutive_good_epochs += 1
-    else:
-        consecutive_good_epochs = 0
-    if consecutive_good_epochs >= required_good_epochs:
-        print(f"[Model1] Reached {required_good_epochs} consecutive good epochs at epoch {epoch}. Stopping training.")
-        break
-    # Hyperparameter switching
-    if epoch == SWITCH_EPOCH:
-        print(f"[Model1] Switching hyperparameters at epoch {epoch}!")
-        num_layers = NEW_NUM_LAYERS
-        lr = NEW_LR
-        target_error = NEW_TARGET_ERROR
-        new_model = PriceNet(input_dim=len(FEATURES1), num_layers=num_layers)
-        for (n1, p1), (n2, p2) in zip(model1.named_parameters(), new_model.named_parameters()):
-            if p1.shape == p2.shape:
-                p2.data.copy_(p1.data)
-        model1 = new_model
-        optimizer1 = torch.optim.Adam(model1.parameters(), lr=lr)
-        scheduler1 = ReduceLROnPlateau(optimizer1, mode='min', factor=0.5, patience=500, min_lr=1e-7)
-
-# --- Train Model 2: Predict next Bid/Ask from next Price ---
-# Model 2 input: Price at t, Output: Bid/Ask at t. Trains on all available data [0...num_rows-1]
-train_data2_m2 = data2 # All data from index 0 to num_rows-1
-X_train2 = torch.tensor(train_data2_m2[:, [0]], dtype=torch.float32)  # Price at t (0 to num_rows-1)
-Y_train2 = torch.tensor(train_data2_m2[:, 1:3], dtype=torch.float32)  # Bid/Ask at t (0 to num_rows-1)
-
-if X_train2.shape[0] == 0:
-    raise ValueError("Model 2 training input X_train2 is empty.")
-
-num_layers2 = INIT_NUM_LAYERS
-lr2 = INIT_LR
-target_error2 = INIT_TARGET_ERROR
-model2 = BidAskNet(input_dim=1, num_layers=num_layers2)
-optimizer2 = torch.optim.Adam(model2.parameters(), lr=lr2)
-scheduler2 = ReduceLROnPlateau(optimizer2, mode='min', factor=0.5, patience=500, min_lr=1e-7)
-consecutive_good_epochs = 0
-# Validation for Model 2: Use Price at num_rows-1 to predict Bid/Ask at num_rows-1 (last actual point)
-val_idx_m2 = num_rows - 1 
-val_input_m2 = torch.tensor(data2[val_idx_m2, [0]], dtype=torch.float32).unsqueeze(0) # Price at num_rows-1
-target_val_m2 = data2[val_idx_m2, 1:3] # Actual Bid/Ask at num_rows-1
-
-for epoch in range(max_epochs):
-    model2.train()
-    optimizer2.zero_grad()
-    pred = model2(X_train2)
-    loss = loss_fn(pred, Y_train2)
-    loss.backward()
-    optimizer2.step()
-
     model2.eval()
-    with torch.no_grad():
-        pred_val2 = model2(val_input_m2).squeeze(0).numpy()
-        pred_error = np.mean((pred_val2 - target_val_m2) ** 2) # Error for point predict_idx-1
+    
+    price_errors = []
+    bid_errors = []
+    ask_errors = []
+    
+    # Use end of training data for calibration
+    start_idx = max(0, final_train_until_idx - calibration_points - 5)
+    end_idx = min(start_idx + calibration_points, final_train_until_idx)
+    
+    print(f"Using indices {start_idx} to {end_idx-1} for calibration")
+    
+    for i in range(calibration_points):
+        current_idx = start_idx + i
+        if current_idx >= end_idx or current_idx >= len(data1):
+            break
+            
+        prev_features = torch.tensor(data1[current_idx-1, :-1], dtype=torch.float32).unsqueeze(0)
+        
+        with torch.no_grad():
+            predicted_price = model1(prev_features).item()
+            predicted_bidask = model2(torch.tensor([[predicted_price]], dtype=torch.float32)).squeeze(0).numpy()
+        
+        actual_price = data1[current_idx, -1]
+        actual_bid = data2[current_idx, 1]
+        actual_ask = data2[current_idx, 2]
+        
+        price_error = actual_price - predicted_price
+        bid_error = actual_bid - predicted_bidask[0]
+        ask_error = actual_ask - predicted_bidask[1]
+        
+        price_errors.append(price_error)
+        bid_errors.append(bid_error)
+        ask_errors.append(ask_error)
+        
+        print(f"  Calibration {i+1}: Price_error={price_error:.6f}, Bid_error={bid_error:.6f}, Ask_error={ask_error:.6f}")
+    
+    if len(price_errors) == 0:
+        print("  Warning: No calibration data available")
+        return None, None, None
+    
+    print(f"Tuning PID parameters on {len(price_errors)} samples...")
+    
+    price_pid_params = tune_pid_parameters(price_errors)
+    bid_pid_params = tune_pid_parameters(bid_errors)
+    ask_pid_params = tune_pid_parameters(ask_errors)
+    
+    print(f"Price PID: Kp={price_pid_params[0]:.4f}, Ki={price_pid_params[1]:.4f}, Kd={price_pid_params[2]:.4f}")
+    print(f"Bid PID:   Kp={bid_pid_params[0]:.4f}, Ki={bid_pid_params[1]:.4f}, Kd={bid_pid_params[2]:.4f}")
+    print(f"Ask PID:   Kp={ask_pid_params[0]:.4f}, Ki={ask_pid_params[1]:.4f}, Kd={ask_pid_params[2]:.4f}")
+    
+    price_pid = PIDController(*price_pid_params)
+    bid_pid = PIDController(*bid_pid_params)
+    ask_pid = PIDController(*ask_pid_params)
+    
+    return price_pid, bid_pid, ask_pid
 
-    scheduler2.step(loss.item())
-    if epoch % 100 == 0 or consecutive_good_epochs >= required_good_epochs:
-        print(f"[Model2] Epoch {epoch}: MSE to point {val_idx_m2} = {pred_error:.6f}, Good epochs: {consecutive_good_epochs}, LR: {optimizer2.param_groups[0]['lr']:.2e}, num_layers: {num_layers2}, target_error: {target_error2}")
-    if pred_error <= target_error2:
-        consecutive_good_epochs += 1
-    else:
-        consecutive_good_epochs = 0
-    if consecutive_good_epochs >= required_good_epochs:
-        print(f"[Model2] Reached {required_good_epochs} consecutive good epochs at epoch {epoch}. Stopping training.")
-        break
-    # Hyperparameter switching
-    if epoch == SWITCH_EPOCH:
-        print(f"[Model2] Switching hyperparameters at epoch {epoch}!")
-        num_layers2 = NEW_NUM_LAYERS
-        lr2 = NEW_LR
-        target_error2 = NEW_TARGET_ERROR
-        new_model2 = BidAskNet(input_dim=1, num_layers=num_layers2)
-        for (n1, p1), (n2, p2) in zip(model2.named_parameters(), new_model2.named_parameters()):
-            if p1.shape == p2.shape:
-                p2.data.copy_(p1.data)
-        model2 = new_model2
-        optimizer2 = torch.optim.Adam(model2.parameters(), lr=lr2)
-        scheduler2 = ReduceLROnPlateau(optimizer2, mode='min', factor=0.5, patience=500, min_lr=1e-7)
+# === MAIN TRAINING ===
 
-# --- Predict the NEXT HYPOTHETICAL point (index num_rows) ---
-print(f"\n--- Predicting the HYPOTHETICAL next point (after index {num_rows-1}) ---")
+print(f"\n=== Phase 1: Progressive Training ===")
 
-# Get the features from the VERY LAST actual data point to predict the next price
-# These are from data1 at row num_rows-1
-input_features_m1_future = torch.tensor(data1[num_rows-1, :-1], dtype=torch.float32).unsqueeze(0)
+# Initialize models
+model1 = PriceNet(input_dim=len(FEATURES1), num_layers=5)
+model2 = BidAskNet(input_dim=1, num_layers=5)
 
-# Predict the NEXT price using Model 1
+# Progressive training for first 10 points
+quick_train_end = min(STARTING_POINT + 10, final_train_until_idx)
+
+for target_point in range(STARTING_POINT, quick_train_end):
+    model1, model2, final_error = train_to_convergence_for_point(
+        model1, model2, data1, data2, target_point,
+        max_epochs=1000, target_error=0.01, required_good_epochs=10
+    )
+
+print(f"\n=== Phase 2: Testing on Future Data ===")
+
+# Test on unseen future data
+test_start_idx = final_train_until_idx
+test_end_idx = min(final_train_until_idx + 100, num_rows - 1)
+
+prediction_indices = []
+actual_prices = []
+predicted_prices = []
+actual_bids = []
+predicted_bids = []
+actual_asks = []
+predicted_asks = []
+
 model1.eval()
-with torch.no_grad():
-    predicted_next_price = model1(input_features_m1_future).item()
-
-print(f"Predicted Next Hypothetical Price: {predicted_next_price:.4f}")
-
-# Prepare input for Model 2: the predicted_next_price
-input_price_m2_future = torch.tensor([[predicted_next_price]], dtype=torch.float32)
-
-# Predict the NEXT Bid/Ask using Model 2 with the predicted price
 model2.eval()
-with torch.no_grad():
-    predicted_next_bidask = model2(input_price_m2_future).squeeze(0).numpy()
 
-predicted_next_bid = predicted_next_bidask[0]
-predicted_next_ask = predicted_next_bidask[1]
+print(f"Testing on indices {test_start_idx} to {test_end_idx}")
 
-print(f"Predicted Next Hypothetical Bid: {predicted_next_bid:.4f}")
-print(f"Predicted Next Hypothetical Ask: {predicted_next_ask:.4f}")
+for current_idx in range(test_start_idx, test_end_idx + 1):
+    if current_idx == 0:
+        continue
+    
+    prev_features = torch.tensor(data1[current_idx-1, :-1], dtype=torch.float32).unsqueeze(0)
+    
+    with torch.no_grad():
+        predicted_price = model1(prev_features).item()
+        predicted_bidask = model2(torch.tensor([[predicted_price]], dtype=torch.float32)).squeeze(0).numpy()
+    
+    actual_price = data1[current_idx, -1]
+    actual_bid = data2[current_idx, 1]
+    actual_ask = data2[current_idx, 2]
+    
+    prediction_indices.append(current_idx)
+    actual_prices.append(actual_price)
+    predicted_prices.append(predicted_price)
+    actual_bids.append(actual_bid)
+    predicted_bids.append(predicted_bidask[0])
+    actual_asks.append(actual_ask)
+    predicted_asks.append(predicted_bidask[1])
+    
+    if current_idx % 20 == 0 or current_idx == test_end_idx:
+        print(f"Index {current_idx}: Actual={actual_price:.2f}, Predicted={predicted_price:.2f}, Error={abs(actual_price-predicted_price):.3f}")
 
-# --- Performance Metrics for the Last Point Prediction ---
-# No actual data for the hypothetical next point, so no direct MSE here.
-# Training validation errors give an indication of model fit to historical data.
-print(f"\n--- METRICS FOR LAST ACTUAL POINT (VALIDATION DURING TRAINING) ---")
-# Re-calculate validation error for the last actual point for clarity, if desired, or use stored values.
-# For Model 1 (Price prediction for point num_rows-1)
-val_input_m1_check = torch.tensor(data1[num_rows-2, :-1], dtype=torch.float32).unsqueeze(0)
-actual_last_price_val = data1[num_rows-1, -1]
-with torch.no_grad():
-    pred_last_price_val = model1(val_input_m1_check).item()
-price_val_mse = (pred_last_price_val - actual_last_price_val) ** 2
-print(f"Model 1 Validation MSE (predicting price for point {num_rows-1}): {price_val_mse:.6f}")
+# Bias correction using first 5 predictions
+print(f"\n=== Bias Correction ===")
+if len(prediction_indices) >= 5:
+    first_5_actual = actual_prices[:5]
+    first_5_predicted = predicted_prices[:5]
+    bias_offset = np.mean(np.array(first_5_actual) - np.array(first_5_predicted))
+    
+    print(f"First 5 predictions bias analysis:")
+    for i in range(5):
+        diff = first_5_actual[i] - first_5_predicted[i]
+        print(f"  Point {i+1}: Actual={first_5_actual[i]:.2f}, Predicted={first_5_predicted[i]:.2f}, Diff={diff:.2f}")
+    
+    print(f"Average bias offset: {bias_offset:.3f}")
+    
+    # Apply bias correction
+    corrected_predicted_prices = [p + bias_offset for p in predicted_prices]
+    corrected_predicted_bids = [p + bias_offset for p in predicted_bids]
+    corrected_predicted_asks = [p + bias_offset for p in predicted_asks]
+    
+    # Analysis on remaining points (excluding first 5)
+    analysis_indices = prediction_indices[5:]
+    analysis_actual_prices = actual_prices[5:]
+    analysis_predicted_prices = predicted_prices[5:]
+    analysis_corrected_prices = corrected_predicted_prices[5:]
+    analysis_actual_bids = actual_bids[5:]
+    analysis_predicted_bids = predicted_bids[5:]
+    analysis_corrected_bids = corrected_predicted_bids[5:]
+    analysis_actual_asks = actual_asks[5:]
+    analysis_predicted_asks = predicted_asks[5:]
+    analysis_corrected_asks = corrected_predicted_asks[5:]
+    
+    print(f"Analysis on {len(analysis_indices)} points (excluding first 5)")
+    
+else:
+    print(f"Not enough predictions for bias correction")
+    bias_offset = 0
+    analysis_indices = prediction_indices
+    analysis_actual_prices = actual_prices
+    analysis_predicted_prices = predicted_prices
+    analysis_corrected_prices = predicted_prices
+    analysis_actual_bids = actual_bids
+    analysis_predicted_bids = predicted_bids
+    analysis_corrected_bids = predicted_bids
+    analysis_actual_asks = actual_asks
+    analysis_predicted_asks = predicted_asks
+    analysis_corrected_asks = predicted_asks
 
-# For Model 2 (Bid/Ask prediction for point num_rows-1, using its actual price)
-val_input_m2_check = torch.tensor(data2[num_rows-1, [0]], dtype=torch.float32).unsqueeze(0)
-actual_last_bidask_val = data2[num_rows-1, 1:3]
-with torch.no_grad():
-    pred_last_bidask_val = model2(val_input_m2_check).squeeze(0).numpy()
-bidask_val_mse = np.mean((pred_last_bidask_val - actual_last_bidask_val) ** 2)
-print(f"Model 2 Validation MSE (predicting bid/ask for point {num_rows-1}): {bidask_val_mse:.6f}")
+# Calculate performance metrics
+raw_price_mse = np.mean((np.array(analysis_predicted_prices) - np.array(analysis_actual_prices)) ** 2)
+raw_price_mae = np.mean(np.abs(np.array(analysis_predicted_prices) - np.array(analysis_actual_prices)))
+corrected_price_mse = np.mean((np.array(analysis_corrected_prices) - np.array(analysis_actual_prices)) ** 2)
+corrected_price_mae = np.mean(np.abs(np.array(analysis_corrected_prices) - np.array(analysis_actual_prices)))
+bid_mse = np.mean((np.array(analysis_corrected_bids) - np.array(analysis_actual_bids)) ** 2)
 
+print(f"\n=== RESULTS ===")
+print(f"Predictions analyzed: {len(analysis_indices)}")
+print(f"Raw Price MSE: {raw_price_mse:.6f}")
+print(f"Raw Price MAE: {raw_price_mae:.6f}")
+print(f"Bias-Corrected Price MSE: {corrected_price_mse:.6f}")
+print(f"Bias-Corrected Price MAE: {corrected_price_mae:.6f}")
+print(f"MSE Improvement: {((raw_price_mse - corrected_price_mse) / raw_price_mse * 100):.1f}%")
+print(f"Bid MSE: {bid_mse:.6f}")
 
-# --- Plotting the Predicted Next Point ---
-fig, axs = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
+# Generate plots
+fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
 
-bar_labels = [f'Predicted P(N+1)']
-price_value = [predicted_next_price]
-axs[0].bar(bar_labels, price_value, color=['cyan'])
-axs[0].set_ylabel('Price')
-axs[0].set_title(f'Hypothetical Next Point (after Index {num_rows-1}) - Price Prediction')
-for i, v in enumerate(price_value):
-    axs[0].text(i, v + 0.001 * abs(v) if v != 0 else 0.01, f"{v:.4f}", color='black', ha='center')
+# Price predictions
+ax1.plot(analysis_indices, analysis_actual_prices, label='Actual Price', color='blue', linewidth=2)
+ax1.plot(analysis_indices, analysis_predicted_prices, label='Raw Predicted', color='red', linewidth=2, linestyle='--', alpha=0.7)
+ax1.plot(analysis_indices, analysis_corrected_prices, label='Bias-Corrected', color='green', linewidth=2)
+ax1.axvline(x=final_train_until_idx, color='purple', linestyle=':', alpha=0.7, label='Training Cutoff')
+ax1.set_ylabel('Price')
+ax1.set_title('Price Predictions')
+ax1.legend()
+ax1.grid(True, alpha=0.3)
 
-bid_value = [predicted_next_bid]
-axs[1].bar([f'Predicted B(N+1)'], bid_value, color=['lime'])
-axs[1].set_ylabel('Price')
-axs[1].set_title(f'Hypothetical Next Point - Bid Prediction')
-for i, v in enumerate(bid_value):
-    axs[1].text(i, v + 0.001 * abs(v) if v != 0 else 0.01, f"{v:.4f}", color='black', ha='center')
+# Error comparison
+raw_price_errors = np.abs(np.array(analysis_predicted_prices) - np.array(analysis_actual_prices))
+corrected_price_errors = np.abs(np.array(analysis_corrected_prices) - np.array(analysis_actual_prices))
+ax2.plot(analysis_indices, raw_price_errors, label='Raw Error', color='red', linewidth=2, alpha=0.7)
+ax2.plot(analysis_indices, corrected_price_errors, label='Corrected Error', color='green', linewidth=2)
+ax2.set_ylabel('Absolute Error')
+ax2.set_title('Error Comparison')
+ax2.legend()
+ax2.grid(True, alpha=0.3)
 
-ask_value = [predicted_next_ask]
-axs[2].bar([f'Predicted A(N+1)'], ask_value, color=['magenta'])
-axs[2].set_ylabel('Price')
-axs[2].set_title(f'Hypothetical Next Point - Ask Prediction')
-for i, v in enumerate(ask_value):
-    axs[2].text(i, v + 0.001 * abs(v) if v != 0 else 0.01, f"{v:.4f}", color='black', ha='center')
+# Bid predictions
+ax3.plot(analysis_indices, analysis_actual_bids, label='Actual Bid', color='blue', linewidth=2)
+ax3.plot(analysis_indices, analysis_predicted_bids, label='Raw Predicted', color='red', linewidth=2, linestyle='--', alpha=0.7)
+ax3.plot(analysis_indices, analysis_corrected_bids, label='Bias-Corrected', color='green', linewidth=2)
+ax3.set_ylabel('Bid Price')
+ax3.set_title('Bid Predictions')
+ax3.legend()
+ax3.grid(True, alpha=0.3)
 
-plt.xlabel(f'Prediction for Hypothetical Point after Index {num_rows-1}')
+# Ask predictions
+ax4.plot(analysis_indices, analysis_actual_asks, label='Actual Ask', color='blue', linewidth=2)
+ax4.plot(analysis_indices, analysis_predicted_asks, label='Raw Predicted', color='red', linewidth=2, linestyle='--', alpha=0.7)
+ax4.plot(analysis_indices, analysis_corrected_asks, label='Bias-Corrected', color='green', linewidth=2)
+ax4.set_xlabel('Data Index')
+ax4.set_ylabel('Ask Price')
+ax4.set_title('Ask Predictions')
+ax4.legend()
+ax4.grid(True, alpha=0.3)
+
 plt.tight_layout()
+plt.savefig('bias_corrected_predictions.png', dpi=300, bbox_inches='tight')
 plt.show()
 
-print(f"\n✅ Hypothetical next point prediction complete.") 
+print(f"\n=== SUMMARY ===")
+print(f"✅ Progressive training complete")
+print(f"✅ Bias correction applied (offset: {bias_offset:.3f})")
+print(f"✅ Analysis on {len(analysis_indices)} test points")
+print(f"✅ Raw MSE: {raw_price_mse:.6f}, Corrected MSE: {corrected_price_mse:.6f}")
+print(f"✅ Results saved to 'bias_corrected_predictions.png'")
+print(f"✅ Neural network prediction system ready!") 

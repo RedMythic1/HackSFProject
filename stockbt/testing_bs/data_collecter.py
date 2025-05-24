@@ -10,17 +10,17 @@ API_SECRET = "PiNdt7ccSjzydlk35W5GOR5q9Ng1tAc6VEiSADeY"
 
 client = StockHistoricalDataClient(API_KEY, API_SECRET)
 
-symbol = "AAPL"
+symbol = "NVDA"
 
 end = datetime.now()
-start = end - timedelta(days=0.1)
+start = end - timedelta(days=5)
 
 # Fetch trades (prices)
 trades_request = StockTradesRequest(
     symbol_or_symbols=[symbol],
     start=start,
     end=end,
-    limit=500
+    limit=2500
 )
 trades = client.get_stock_trades(trades_request)
 trades = trades[symbol]
