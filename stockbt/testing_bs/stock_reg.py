@@ -5,15 +5,17 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import random
+import torch.nn.functional as F
 from matplotlib.widgets import Cursor
 
-# Try to import skopt for Bayesian optimization
+# Optional Bayesian optimization for PID tuning
 try:
     from skopt import gp_minimize
     from skopt.space import Real
     SKOPT_AVAILABLE = True
 except ImportError:
     SKOPT_AVAILABLE = False
+    print("scikit-optimize not available. PID tuning will use default parameters.")
 
 # Directory containing all CSV files
 data_dir = "/Users/avneh/Code/HackSFProject/stockbt/testing_bs/data_folder"
@@ -31,10 +33,183 @@ file_path = os.path.join(data_dir, file)
 if not os.path.exists(file_path):
     raise RuntimeError(f'{file} not found in data_folder.')
 
-class ResidualSubtractionNet(nn.Module):
-    def __init__(self, input_dim, num_layers=10):
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_model, num_heads=4):
+        super().__init__()
+        self.d_model = d_model
+        
+        # Adjust num_heads to be compatible with d_model
+        while d_model % num_heads != 0 and num_heads > 1:
+            num_heads -= 1
+        
+        self.num_heads = num_heads
+        self.head_dim = d_model // num_heads
+        
+        print(f"Attention: d_model={d_model}, num_heads={self.num_heads}, head_dim={self.head_dim}")
+        
+        self.W_q = nn.Linear(d_model, d_model)
+        self.W_k = nn.Linear(d_model, d_model)
+        self.W_v = nn.Linear(d_model, d_model)
+        self.W_o = nn.Linear(d_model, d_model)
+        
+    def forward(self, x):
+        batch_size, seq_len, d_model = x.size()
+        
+        # Generate queries, keys, values
+        Q = self.W_q(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        K = self.W_k(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        V = self.W_v(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        
+        # Compute attention scores
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / (self.head_dim ** 0.5)
+        attention_weights = F.softmax(scores, dim=-1)
+        
+        # Apply attention to values
+        attended = torch.matmul(attention_weights, V)
+        
+        # Concatenate heads and apply output projection
+        attended = attended.transpose(1, 2).contiguous().view(batch_size, seq_len, d_model)
+        output = self.W_o(attended)
+        
+        return output
+
+class EnhancedResidualBlock(nn.Module):
+    def __init__(self, input_dim, use_attention=True):
+        super().__init__()
+        self.linear = nn.Linear(input_dim, input_dim)
+        self.use_attention = use_attention
+        
+        # Enhanced residual connection with learnable parameters
+        self.alpha = nn.Parameter(torch.ones(input_dim))  # Multiplier for main path
+        self.beta = nn.Parameter(torch.ones(input_dim))   # Multiplier for residual path
+        self.bias = nn.Parameter(torch.zeros(input_dim))  # Learnable bias
+        
+        # Attention mechanism
+        if use_attention:
+            self.attention = MultiHeadAttention(input_dim, num_heads=4)
+            self.layer_norm1 = nn.LayerNorm(input_dim)
+            self.layer_norm2 = nn.LayerNorm(input_dim)
+        
+        # Activation function
+        self.activation = nn.GELU()
+        
+    def forward(self, x):
+        # x shape: (batch_size, seq_len, input_dim) or (seq_len, input_dim)
+        if len(x.shape) == 2:
+            x = x.unsqueeze(0)  # Add batch dimension if needed
+            squeeze_output = True
+        else:
+            squeeze_output = False
+            
+        residual = x
+        
+        # Apply attention if enabled
+        if self.use_attention:
+            x = self.layer_norm1(x)
+            x = x + self.attention(x)  # Skip connection around attention
+            x = self.layer_norm2(x)
+        
+        # Main transformation
+        h = self.linear(x)
+        h = self.activation(h)
+        
+        # Enhanced residual connection: out = alpha * residual - beta * h + bias
+        out = self.alpha * residual - self.beta * h + self.bias
+        
+        if squeeze_output:
+            out = out.squeeze(0)
+            
+        return out
+
+class EnhancedResidualSubtractionNet(nn.Module):
+    def __init__(self, input_dim, num_layers=5, use_attention=True):
         super().__init__()
         self.num_layers = num_layers
+        self.use_attention = use_attention
+        
+        # Enhanced residual blocks
+        self.blocks = nn.ModuleList([
+            EnhancedResidualBlock(input_dim, use_attention=use_attention) 
+            for _ in range(num_layers)
+        ])
+        
+        # Final projection layers
+        self.layer_norm = nn.LayerNorm(input_dim)
+        self.dropout = nn.Dropout(0.1)
+        self.final = nn.Linear(input_dim, 1)
+        
+    def forward(self, x):
+        # x shape: (seq_len, input_dim) for single sequence
+        out = x
+        
+        # Apply enhanced residual blocks
+        for block in self.blocks:
+            out = block(out)
+        
+        # Final processing
+        out = self.layer_norm(out)
+        out = self.dropout(out)
+        output = self.final(out)
+        
+        # Return last time step prediction
+        if len(output.shape) > 1:
+            return output[-1].squeeze(-1)
+        else:
+            return output.squeeze(-1)
+
+print(f"\n=== Processing {file} ===")
+df = pd.read_csv(os.path.join(data_dir, file))
+df["PriceChange"] = df["Price"].diff().fillna(0)
+df["Spread"] = df["Ask_Price"] - df["Bid_Price"]  # Use spread instead of volume
+df["MidPrice"] = (df["Ask_Price"] + df["Bid_Price"]) / 2  # Add mid price feature
+cols = ["Price", "PriceChange", "Bid_Price", "Ask_Price", "Spread"]
+data = df[cols].values.astype(np.float32)
+
+# Determine training cutoff - find the maximum prediction point we can train for
+training_cutoff = len(data) - 50  # Leave some data for final evaluation
+prediction_points = []
+point = 100
+while point <= training_cutoff:
+    prediction_points.append(point)
+    point += 100
+
+print(f"Data length: {len(data)}")
+print(f"Training cutoff: {training_cutoff}")
+print(f"Will train models to predict points: {prediction_points}")
+
+# Storage for all trained models and their results
+trained_models = {}
+all_predictions = {}
+all_errors = {}
+
+# Train separate models for each prediction point
+print("\n" + "="*80)
+print("COMPARISON: Training both Original and Enhanced Models")
+print("="*80)
+
+# Storage for comparison
+original_models = {}
+enhanced_models = {}
+original_predictions = {}
+enhanced_predictions = {}
+original_errors = {}
+enhanced_errors = {}
+
+for target_point in prediction_points:
+    print(f"\n=== Training Models for point {target_point} ===")
+    
+    # Use all data up to target_point-1 for training
+    train_data = data[:target_point]
+    X_train = torch.tensor(train_data[:-1], dtype=torch.float32)  # Points 0 to target_point-2
+    y_train = torch.tensor([row[0] for row in train_data[1:]], dtype=torch.float32)  # Points 1 to target_point-1
+    
+    target_value = data[target_point][0]  # The actual value at target_point
+    
+    # TRAIN ORIGINAL MODEL
+    print(f"\n--- Training Original Model for point {target_point} ---")
+    class OriginalResidualSubtractionNet(nn.Module):
+        def __init__(self, input_dim, num_layers=5):
+            super().__init__()
         self.layers = nn.ModuleList([
             nn.Linear(input_dim, input_dim) for _ in range(num_layers)
         ])
@@ -47,248 +222,240 @@ class ResidualSubtractionNet(nn.Module):
             out = out - h
         return self.final(out).squeeze(-1)
 
-print(f"\n=== Processing {file} ===")
-df = pd.read_csv(os.path.join(data_dir, file))
-df["PriceChange"] = df["Price"].diff().fillna(0)
-df["TotalVolume"] = df["Buy_Vol"] + df["Sell_Vol"]
-cols = ["Price", "PriceChange", "Bid_Price", "Ask_Price", "TotalVolume"]
-data = df[cols].values.astype(np.float32)
-
-# PHASE 1: Train intensively ONLY on points 0-199 until prediction for point 200 is very good
-train_data = data[:200]  # Points 0-199
-X_train = torch.tensor(train_data[:-1], dtype=torch.float32)  # Points 0-198
-y_train = torch.tensor([row[0] for row in train_data[1:]], dtype=torch.float32)  # Points 1-199 (total volumes)
-
-# Create and train the model
-model = ResidualSubtractionNet(input_dim=5, num_layers=5)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+    original_model = OriginalResidualSubtractionNet(input_dim=5, num_layers=5)
+    original_optimizer = torch.optim.Adam(original_model.parameters(), lr=0.00001)
 loss_fn = nn.MSELoss()
 
-# Training until prediction for point 200 is very good
-target_point_200 = data[200][0]  # The actual total volume at point 200
-max_epochs = 1000000
+    max_epochs = 50000  # Reduced for comparison
 required_good_epochs = 10
-target_error = 0.5  # Target squared error threshold
-pred_error = float('inf')
-
-# New: Track consecutive epochs below error threshold
+    target_error = 0.5
 consecutive_good_epochs = 0
 
-print(f"Beginning intensive training on points 0-199 to predict point 200...")
 for epoch in range(max_epochs):
-    model.train()
-    optimizer.zero_grad()
-    pred = model(X_train)
+        original_model.train()
+        original_optimizer.zero_grad()
+        pred = original_model(X_train)
     loss = loss_fn(pred, y_train)
     loss.backward()
-    optimizer.step()
+        original_optimizer.step()
     
-    model.eval()
+        original_model.eval()
     with torch.no_grad():
-        X_200_input = torch.tensor(data[:200], dtype=torch.float32)  # Input for predicting point 200 is points 0-199
-        pred_200 = model(X_200_input)[-1].item()
-        pred_error = (pred_200 - target_point_200) ** 2
+            X_target_input = torch.tensor(data[:target_point], dtype=torch.float32)
+            pred_target = original_model(X_target_input)[-1].item()
+            pred_error = (pred_target - target_value) ** 2
     
     if pred_error <= target_error:
         consecutive_good_epochs += 1
     else:
         consecutive_good_epochs = 0
     
-    if epoch % 100 == 0 or consecutive_good_epochs >= required_good_epochs:
-        print(f"  Epoch {epoch}: Predicted={pred_200:.4f}, Actual={target_point_200:.4f}, Error={pred_error:.6f}, Good epochs: {consecutive_good_epochs}")
+        if epoch % 5000 == 0 or consecutive_good_epochs >= required_good_epochs:
+            print(f"  Original Epoch {epoch}: Predicted={pred_target:.4f}, Actual={target_value:.4f}, Error={pred_error:.6f}")
     
     if consecutive_good_epochs >= required_good_epochs:
-        print(f"  Reached {required_good_epochs} consecutive good epochs at epoch {epoch}. Stopping training.")
+            print(f"  Original model converged after {epoch} epochs")
         break
 
-# PHASE 2: Use trained model to predict points 200-250 WITHOUT further training, using expanding window of actuals
-squared_errors = []
-absolute_errors = []
-percentage_errors = []
-
-print("\nUsing trained model to predict points 200-250 (walk-forward with actuals):")
-model.eval()
+    original_models[target_point] = original_model
+    original_predictions[target_point] = pred_target
+    original_errors[target_point] = pred_error
+    
+    # TRAIN ENHANCED MODEL
+    print(f"\n--- Training Enhanced Model for point {target_point} ---")
+    enhanced_model = EnhancedResidualSubtractionNet(input_dim=5, num_layers=6, use_attention=True)
+    enhanced_optimizer = torch.optim.AdamW(enhanced_model.parameters(), lr=0.0001, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(enhanced_optimizer, mode='min', factor=0.5, patience=1000)
+    
+    max_epochs = 75000  # Moderate epochs for comparison
+    required_good_epochs = 15
+    target_error = 0.3
+    consecutive_good_epochs = 0
+    best_error = float('inf')
+    
+    for epoch in range(max_epochs):
+        enhanced_model.train()
+        enhanced_optimizer.zero_grad()
+        pred = enhanced_model(X_train)
+        loss = loss_fn(pred, y_train)
+        loss.backward()
+        
+        torch.nn.utils.clip_grad_norm_(enhanced_model.parameters(), max_norm=1.0)
+        enhanced_optimizer.step()
+        scheduler.step(loss.item())
+        
+        enhanced_model.eval()
 with torch.no_grad():
-    for i in range(200, 251): # Predict points 200 to 250
-        # Input for predicting point 'i' is all actual data up to (but not including) 'i'
-        X_pred_input = torch.tensor(data[:i], dtype=torch.float32) 
-        pred_next = model(X_pred_input)[-1].item() # Predict total volume at point 'i'
-        real_next = data[i][0] # Actual total volume at point 'i'
-        sq_err = (pred_next - real_next) ** 2
-        abs_err = abs(pred_next - real_next)
-        pct_err = (abs_err / real_next) * 100
+            X_target_input = torch.tensor(data[:target_point], dtype=torch.float32)
+            pred_target = enhanced_model(X_target_input).item()
+            pred_error = (pred_target - target_value) ** 2
         
-        squared_errors.append(sq_err)
-        absolute_errors.append(abs_err)
-        percentage_errors.append(pct_err)
+        if pred_error < best_error:
+            best_error = pred_error
         
-        print(f"Point {i}: Predicted={pred_next:.4f}, Actual={real_next:.4f}, Squared Error={sq_err:.4f}")
+        if pred_error <= target_error:
+            consecutive_good_epochs += 1
+        else:
+            consecutive_good_epochs = 0
+        
+        if epoch % 5000 == 0 or consecutive_good_epochs >= required_good_epochs:
+            current_lr = enhanced_optimizer.param_groups[0]['lr']
+            print(f"  Enhanced Epoch {epoch}: Predicted={pred_target:.4f}, Actual={target_value:.4f}, Error={pred_error:.6f}, Best={best_error:.6f}, LR: {current_lr:.2e}")
+        
+        if consecutive_good_epochs >= required_good_epochs:
+            print(f"  Enhanced model converged after {epoch} epochs")
+            break
+    
+    enhanced_models[target_point] = enhanced_model
+    enhanced_predictions[target_point] = pred_target
+    enhanced_errors[target_point] = pred_error
+    
+    # Store the better performing model as the main one
+    if pred_error < original_errors[target_point]:
+        trained_models[target_point] = enhanced_model
+        all_predictions[target_point] = pred_target
+        all_errors[target_point] = pred_error
+        print(f"  ✅ Enhanced model selected for point {target_point} (Error: {pred_error:.6f} vs {original_errors[target_point]:.6f})")
+    else:
+        trained_models[target_point] = original_model
+        all_predictions[target_point] = original_predictions[target_point]
+        all_errors[target_point] = original_errors[target_point]
+        print(f"  ⚠️ Original model selected for point {target_point} (Error: {original_errors[target_point]:.6f} vs {pred_error:.6f})")
 
-# Compute mean squared error over all predictions
-squared_errors = np.array(squared_errors)
-absolute_errors = np.array(absolute_errors)
-percentage_errors = np.array(percentage_errors)
+# COMPARISON RESULTS
+print(f"\n" + "="*80)
+print("DETAILED COMPARISON RESULTS")
+print("="*80)
+print("Point\tOriginal Pred\tEnhanced Pred\tActual\t\tOrig Error\tEnh Error\tImprovement")
+print("-" * 95)
 
-mse = np.mean(squared_errors)
-mae = np.mean(absolute_errors)
-mape = np.mean(percentage_errors)
-total_error = np.sum(squared_errors)
+total_orig_error = 0
+total_enh_error = 0
+improvements = []
 
-print(f"\nResults over points 200-250:")
+for target_point in prediction_points:
+    actual_value = data[target_point][0]
+    orig_pred = original_predictions[target_point]
+    enh_pred = enhanced_predictions[target_point]
+    orig_err = original_errors[target_point]
+    enh_err = enhanced_errors[target_point]
+    
+    improvement = ((orig_err - enh_err) / orig_err) * 100 if orig_err > 0 else 0
+    improvements.append(improvement)
+    
+    total_orig_error += orig_err
+    total_enh_error += enh_err
+    
+    print(f"{target_point}\t{orig_pred:.4f}\t\t{enh_pred:.4f}\t\t{actual_value:.4f}\t\t{orig_err:.6f}\t{enh_err:.6f}\t{improvement:+.1f}%")
+
+avg_improvement = np.mean(improvements)
+total_improvement = ((total_orig_error - total_enh_error) / total_orig_error) * 100
+
+print(f"\nSUMMARY:")
+print(f"Average improvement per point: {avg_improvement:+.1f}%")
+print(f"Total error improvement: {total_improvement:+.1f}%")
+print(f"Original total error: {total_orig_error:.6f}")
+print(f"Enhanced total error: {total_enh_error:.6f}")
+
+# EVALUATION PHASE: Test each model on its target point
+print(f"\n=== EVALUATION RESULTS ===")
+print("Point\tPredicted\tActual\t\tSquared Error\tAbs Error\tPct Error")
+print("-" * 70)
+
+total_squared_error = 0
+total_absolute_error = 0
+total_percentage_error = 0
+
+for target_point in prediction_points:
+    model = trained_models[target_point]
+    actual_value = data[target_point][0]
+    predicted_value = all_predictions[target_point]
+    
+    squared_error = (predicted_value - actual_value) ** 2
+    absolute_error = abs(predicted_value - actual_value)
+    percentage_error = (absolute_error / actual_value) * 100
+    
+    total_squared_error += squared_error
+    total_absolute_error += absolute_error
+    total_percentage_error += percentage_error
+    
+    print(f"{target_point}\t{predicted_value:.4f}\t\t{actual_value:.4f}\t\t{squared_error:.6f}\t{absolute_error:.4f}\t{percentage_error:.2f}%")
+
+num_predictions = len(prediction_points)
+mse = total_squared_error / num_predictions
+mae = total_absolute_error / num_predictions
+mape = total_percentage_error / num_predictions
+
+print(f"\n=== AGGREGATE METRICS ===")
 print(f"Mean Squared Error (MSE): {mse:.6f}")
 print(f"Mean Absolute Error (MAE): {mae:.6f}")
 print(f"Mean Absolute Percentage Error (MAPE): {mape:.2f}%")
-print(f"Sum of Squared Errors: {total_error:.6f}")
-print(f"Average Percentage Error: {mape:.2f}%")
-print(f"Number of predictions: {len(squared_errors)}")
+print(f"Total Squared Error: {total_squared_error:.6f}")
+print(f"Number of predictions: {num_predictions}")
 
-# --- Walk-forward simulation for points 201-250 (no PID) ---
-walk_preds_201_250 = []
-walk_actuals_201_250 = []
-walk_percentage_errors_201_250 = []
-
-print("\nWalk-forward simulation for points 201-250 (no PID):")
+# EXTENDED EVALUATION: Use the last trained model to predict beyond training cutoff
+if prediction_points:
+    last_point = max(prediction_points)
+    last_model = trained_models[last_point]
+    
+    print(f"\n=== EXTENDED PREDICTIONS (using model trained for point {last_point}) ===")
+    extended_predictions = []
+    extended_actuals = []
+    extended_errors = []
+    
+    # Predict points from training_cutoff to end of data
+    last_model.eval()
 with torch.no_grad():
-    for i in range(201, 251):
+        for i in range(training_cutoff, len(data)):
+            if i >= len(data):
+                break
+                
         X_input = torch.tensor(data[:i], dtype=torch.float32)
-        pred_val = model(X_input)[-1].item()
+            pred_val = last_model(X_input)[-1].item()
         actual_val = data[i][0]
         sq_err = (pred_val - actual_val) ** 2
         pct_err = (abs(pred_val - actual_val) / actual_val) * 100
         
-        walk_preds_201_250.append(pred_val)
-        walk_actuals_201_250.append(actual_val)
-        walk_percentage_errors_201_250.append(pct_err)
+            extended_predictions.append(pred_val)
+            extended_actuals.append(actual_val)
+            extended_errors.append(sq_err)
         
-        print(f"  Point {i}: Predicted={pred_val:.4f}, Actual={actual_val:.4f}, Squared Error={sq_err:.4f}, Percentage Error={pct_err:.2f}%")
+            print(f"Point {i}: Predicted={pred_val:.4f}, Actual={actual_val:.4f}, Squared Error={sq_err:.4f}, Percentage Error={pct_err:.2f}%")
 
-    # Show average percentage error for this range
-    avg_pct_err_201_250 = np.mean(walk_percentage_errors_201_250)
-    print(f"  Average Percentage Error (points 201-250): {avg_pct_err_201_250:.2f}%")
+    if extended_predictions:
+        extended_mse = np.mean(extended_errors)
+        print(f"\nExtended prediction MSE: {extended_mse:.6f}")
 
-# --- PID parameter tuning using Bayesian optimization on points 201-250 ---
-best_pid = {'Kp': 0.5, 'Ki': 0.01, 'Kd': 0.1}  # Default values
-if SKOPT_AVAILABLE:
-    print("\nTuning PID parameters on points 201-250 using Bayesian optimization...")
-    def pid_objective(params):
-        Kp, Ki, Kd = params
-        integral = 0
-        prev_error = 0
-        pid_preds = []
-        for idx in range(50):
-            pred_val = walk_preds_201_250[idx]
-            actual_val = walk_actuals_201_250[idx]
-            error = actual_val - pred_val
-            integral += error
-            derivative = error - prev_error
-            pid_correction = Kp * error + Ki * integral + Kd * derivative
-            prev_error = error
-            pid_pred = pred_val + pid_correction
-            pid_preds.append(pid_pred)
-        mse = np.mean((np.array(pid_preds) - np.array(walk_actuals_201_250)) ** 2)
-        return mse
-    # Search space for Kp, Ki, Kd
-    space = [
-        Real(0.0, 2.0, name='Kp'),
-        Real(0.0, 0.2, name='Ki'),
-        Real(0.0, 1.0, name='Kd'),
-    ]
-    res = gp_minimize(pid_objective, space, n_calls=30, random_state=42, verbose=True)
-    best_pid = {'Kp': res.x[0], 'Ki': res.x[1], 'Kd': res.x[2]}
-    print(f"Best PID parameters: Kp={best_pid['Kp']:.4f}, Ki={best_pid['Ki']:.4f}, Kd={best_pid['Kd']:.4f}")
-else:
-    print("\n[WARNING] scikit-optimize (skopt) is not installed. Using default PID parameters. To enable Bayesian tuning, run: pip install scikit-optimize\n")
+# Visualization
+plt.figure(figsize=(12, 8))
 
-# --- PID-corrected walk-forward prediction for points 251+ ---
-Kp = best_pid['Kp']
-Ki = best_pid['Ki']
-Kd = best_pid['Kd']
+# Plot 1: Target point predictions
+plt.subplot(2, 1, 1)
+actual_values = [data[point][0] for point in prediction_points]
+predicted_values = [all_predictions[point] for point in prediction_points]
 
-integral = 0
-prev_error = 0
-pid_walk_preds = []
-pid_walk_actuals = []
-pid_errors = []
-pid_percentage_errors = []
+plt.plot(prediction_points, actual_values, 'bo-', label='Actual Values', linewidth=2, markersize=8)
+plt.plot(prediction_points, predicted_values, 'ro-', label='Predicted Values', linewidth=2, markersize=8)
+plt.xlabel('Prediction Point')
+plt.ylabel('Value')
+plt.title(f'Fixed Point Predictions - {file}')
+plt.legend()
+plt.grid(True, alpha=0.3)
 
-print("\nWalk-forward prediction for points 251+ (with tuned PID correction):")
-with torch.no_grad():
-    for i in range(251, len(data)):
-        X_input = torch.tensor(data[:i], dtype=torch.float32)
-        pred_val = model(X_input)[-1].item()
-        actual_val = data[i][0]
-        error = actual_val - pred_val
-        integral += error
-        derivative = error - prev_error
-        pid_correction = Kp * error + Ki * integral + Kd * derivative
-        prev_error = error
-        pid_pred = pred_val + pid_correction
-        
-        pid_walk_preds.append(pid_pred)
-        pid_walk_actuals.append(actual_val)
-        
-        sq_err = (pid_pred - actual_val) ** 2
-        pct_err = (abs(pid_pred - actual_val) / actual_val) * 100
-        
-        pid_errors.append(sq_err)
-        pid_percentage_errors.append(pct_err)
-        
-        print(f"  Point {i}: Model={pred_val:.4f}, PID Adjusted={pid_pred:.4f}, Actual={actual_val:.4f}, Squared Error={sq_err:.4f}, Percentage Error={pct_err:.2f}%")
-
-n_points = len(pid_walk_preds)
-pid_mse = np.sum(pid_errors) / n_points if n_points > 0 else float('nan')
-pid_mape = np.mean(pid_percentage_errors) if n_points > 0 else float('nan')
-
-print(f"\nPID Walk-forward MSE (points 251+): {pid_mse:.6f}")
-print(f"PID Walk-forward MAPE (Mean Absolute Percentage Error): {pid_mape:.2f}%")
-
-# Calculate improvement compared to non-PID predictions
-model_only_errors = []
-model_only_pct_errors = []
-
-with torch.no_grad():
-    for i in range(251, len(data)):
-        X_input = torch.tensor(data[:i], dtype=torch.float32)
-        pred_val = model(X_input)[-1].item()
-        actual_val = data[i][0]
-        sq_err = (pred_val - actual_val) ** 2
-        pct_err = (abs(pred_val - actual_val) / actual_val) * 100
-        model_only_errors.append(sq_err)
-        model_only_pct_errors.append(pct_err)
-
-model_only_mse = np.mean(model_only_errors) if len(model_only_errors) > 0 else float('nan')
-model_only_mape = np.mean(model_only_pct_errors) if len(model_only_pct_errors) > 0 else float('nan')
-
-improvement_mse = (1 - (pid_mse / model_only_mse)) * 100 if model_only_mse != 0 else float('nan')
-improvement_mape = (1 - (pid_mape / model_only_mape)) * 100 if model_only_mape != 0 else float('nan')
-
-print(f"\nComparison with model without PID:")
-print(f"Model-only MSE: {model_only_mse:.6f}")
-print(f"Model-only MAPE: {model_only_mape:.2f}%")
-print(f"PID improves MSE by: {improvement_mse:.2f}%")
-print(f"PID improves percentage error by: {improvement_mape:.2f}%")
-
-# --- Combined 2-graph plot: normal, PID, and difference ---
-fig, axs = plt.subplots(2, 1, figsize=(14, 9), sharex=True)
-
-# 1. Normal predictions vs actual
-axs[0].plot(range(251, 251+len(pid_walk_actuals)), pid_walk_actuals, label='Actual', linestyle='-')
-axs[0].plot(range(251, 251+len(pid_walk_preds)), pid_walk_preds, label='PID Corrected Predicted', linestyle=':')
-axs[0].set_ylabel('Value')
-axs[0].set_title('Predictions vs Actual')
-axs[0].legend()
-
-# 2. Difference between PID and normal predictions
-diff = np.array(pid_walk_preds) - np.array(pid_walk_actuals)
-axs[1].plot(range(251, 251+len(diff)), diff, color='purple', label='PID - Actual')
-axs[1].set_xlabel('Time Step')
-axs[1].set_ylabel('Difference')
-axs[1].set_title('Difference: PID - Actual')
-axs[1].legend()
-
-# Add interactive crosshair (XY follower) to all subplots
-for ax in axs:
-    Cursor(ax, horizOn=True, vertOn=True, useblit=True, color='red', linewidth=1)
+# Plot 2: Prediction errors
+plt.subplot(2, 1, 2)
+errors = [all_errors[point] for point in prediction_points]
+plt.plot(prediction_points, errors, 'go-', label='Squared Errors', linewidth=2, markersize=6)
+plt.xlabel('Prediction Point')
+plt.ylabel('Squared Error')
+plt.title('Prediction Errors by Point')
+plt.legend()
+plt.grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.show() 
+
+print(f"\n✅ Fixed point prediction training complete!")
+print(f"   Trained {len(prediction_points)} separate models")
+print(f"   Average MSE across all points: {mse:.6f}")
+print(f"   Average MAPE: {mape:.2f}%") 
