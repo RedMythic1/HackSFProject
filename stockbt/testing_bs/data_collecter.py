@@ -10,7 +10,7 @@ API_SECRET = "PiNdt7ccSjzydlk35W5GOR5q9Ng1tAc6VEiSADeY"
 
 client = StockHistoricalDataClient(API_KEY, API_SECRET)
 
-symbol = "NVDA"
+symbol = "MSTR"
 
 end = datetime.now()
 start = end - timedelta(days=5)
