@@ -18,7 +18,7 @@ csv_files = [f for f in os.listdir(DATA_DIR) if f.endswith('.csv')]
 
 # If no CSV files found, create sample data
 if not csv_files:
-    print("📁 No CSV files found. Generating sample stock data for demonstration...")
+    print("No CSV files found. Generating sample stock data for demonstration...")
     
     # Generate realistic stock price data
     np.random.seed(42)  # For reproducible results
@@ -52,31 +52,78 @@ if not csv_files:
     })
     
     file = "SAMPLE_STOCK.csv"
-    print(f"📈 Generated sample data: {n_points} points, Price range: ${prices.min():.2f} - ${prices.max():.2f}")
+    print(f"Generated sample data: {n_points} points, Price range: ${prices.min():.2f} - ${prices.max():.2f}")
     
 else:
     file = random.choice(csv_files)
     file_path = os.path.join(DATA_DIR, file)
     df = pd.read_csv(file_path)
 
-print(f"🚀 Enhanced Autoregressive Price Prediction Model with Fourier Analysis")
-print(f"📈 Processing file: {file}")
+print(f"Ensemble Engine - Enhanced Stock Price Prediction with Gradient Feedback")
+print(f"Processing file: {file}")
 
-# === FOURIER TRANSFORM ANALYSIS ===
-print(f"\n🌊 Fourier Transform Analysis...")
+# Create basic lag features first (before Fourier analysis)
+df['Price_Lag1'] = df['Price'].shift(1)
+df['Price_Lag2'] = df['Price'].shift(2) 
+df['Price_Return'] = df['Price'].pct_change()
+df['Bid_Lag1'] = df['Bid_Price'].shift(1)
+df['Ask_Lag1'] = df['Ask_Price'].shift(1)
+df['Spread_Lag1'] = (df['Ask_Price'] - df['Bid_Price']).shift(1)
+
+# Drop NaN rows from lag creation
+df = df.dropna().reset_index(drop=True)
+
+# Set dynamic end based on CSV length
+num_rows = len(df)
+
+# HARD RESTRICTION: Train on exactly half the dataset minus 6 points
+# This ensures we have a large test set and prevents overfitting
+HARD_TRAINING_LIMIT = (num_rows // 2) - 6
+train_until_idx = HARD_TRAINING_LIMIT
+
+# Validate we have enough data for this hard restriction
+MIN_REQUIRED_ROWS = 20  # Need at least 20 rows total (10 for training, 6 for bias+MPC, 4 for prediction)
+if num_rows < MIN_REQUIRED_ROWS:
+    raise ValueError(f"Not enough data. Need at least {MIN_REQUIRED_ROWS} rows, but got {num_rows} rows.")
+
+if train_until_idx <= 0:
+    raise ValueError(f"Training restriction too strict. Half dataset minus 6 = {train_until_idx}. Need at least 1 training point.")
+
+# Calculate remaining indices based on hard training restriction
+bias_point_idx = train_until_idx  # Use this point for bias calculation  
+mpc_start_idx = train_until_idx + 1  # Start MPC from this index
+mpc_end_idx = train_until_idx + 5    # End MPC at this index (5 points for MPC)
+predict_start_idx = train_until_idx + 6  # Start walk forward prediction from this index
+predict_end_idx = num_rows - 1  # Predict up to the last point
+
+# Validate the hard restriction allows for all required phases
+if predict_start_idx >= num_rows:
+    raise ValueError(f"Hard training restriction leaves no data for prediction. Training ends at {train_until_idx}, but dataset only has {num_rows} rows.")
+
+if mpc_end_idx >= num_rows:
+    raise ValueError(f"Hard training restriction leaves insufficient data for MPC phase. Need 5 MPC points starting at {mpc_start_idx}, but dataset only has {num_rows} rows.")
+
+print(f"HARD RESTRICTION APPLIED:")
+print(f"Total rows in dataset: {num_rows}")
+print(f"Training data HARD LIMITED to: {train_until_idx} points ({train_until_idx/num_rows*100:.1f}% of dataset)")
+print(f"Remaining data for testing: {num_rows - train_until_idx} points ({(num_rows - train_until_idx)/num_rows*100:.1f}% of dataset)")
+print(f"Training on data from index 0 to {train_until_idx-1} (inclusive)")
+print(f"Bias calculation at index: {bias_point_idx}")
+print(f"MPC phase from index {mpc_start_idx} to {mpc_end_idx} (5 points)")
+print(f"Walk forward prediction from index {predict_start_idx} to {predict_end_idx} ({predict_end_idx - predict_start_idx + 1} predictions)")
+
+# === FOURIER TRANSFORM ANALYSIS (AFTER HARD RESTRICTION DEFINED) ===
+print(f"Fourier Transform Analysis...")
 
 # CRITICAL FIX: Only use TRAINING data for Fourier analysis to prevent future leak
 # Apply Fourier transform to price series - TRAINING PORTION ONLY
-print(f"🔒 Computing Fourier features using TRAINING data only to prevent data leakage...")
+print(f"Computing Fourier features using TRAINING data only to prevent data leakage...")
 
-# We need to define train_until_idx first to avoid future leak
-# Temporary calculation for Fourier analysis
-temp_lookback = 50
-temp_train_until = len(df) - temp_lookback - 6
-training_price_series = df['Price'].values[:temp_train_until]  # ONLY training data
+# Use the HARD TRAINING RESTRICTION for Fourier analysis
+training_price_series = df['Price'].values[:HARD_TRAINING_LIMIT]  # ONLY training data based on hard restriction
 
 n_training_samples = len(training_price_series)
-print(f"📊 Using {n_training_samples} training samples for Fourier analysis (avoiding {len(df) - n_training_samples} future points)")
+print(f"Using {n_training_samples} training samples for Fourier analysis (HARD RESTRICTED)")
 
 # Compute FFT on TRAINING data only
 price_fft = fft(training_price_series)
@@ -88,7 +135,7 @@ dominant_freq_indices = np.argsort(magnitude[1:n_training_samples//2])[-5:]  # T
 dominant_freqs = freqs[1:n_training_samples//2][dominant_freq_indices]
 dominant_magnitudes = magnitude[1:n_training_samples//2][dominant_freq_indices]
 
-print(f"📊 Dominant Frequencies (from training data only):")
+print(f"Dominant Frequencies (from training data only):")
 for i, (freq, mag) in enumerate(zip(dominant_freqs, dominant_magnitudes)):
     period = 1/abs(freq) if freq != 0 else float('inf')
     print(f"   Freq {i+1}: {freq:.6f} cycles/sample (Period: {period:.1f} samples) | Magnitude: {mag:.2f}")
@@ -136,19 +183,9 @@ def create_fourier_features_no_leak(training_prices, full_prices, n_components=5
 # Generate Fourier features WITHOUT data leakage
 fourier_features = create_fourier_features_no_leak(training_price_series, df['Price'].values, n_components=5)
 
-print(f"✅ Generated Fourier features WITHOUT data leakage:")
+print(f"Generated Fourier features WITHOUT data leakage:")
 print(f"   Training samples used: {n_training_samples}")
-print(f"   Magnitude components: {fourier_features['magnitude'].shape}")
-print(f"   Phase components: {fourier_features['phase'].shape}")
 print(f"   Reconstructed signal RMS error: {np.sqrt(np.mean(fourier_features['residual'][:n_training_samples]**2)):.4f}")
-
-# Create lag features to avoid correlation leak
-df['Price_Lag1'] = df['Price'].shift(1)
-df['Price_Lag2'] = df['Price'].shift(2) 
-df['Price_Return'] = df['Price'].pct_change()
-df['Bid_Lag1'] = df['Bid_Price'].shift(1)
-df['Ask_Lag1'] = df['Ask_Price'].shift(1)
-df['Spread_Lag1'] = (df['Ask_Price'] - df['Bid_Price']).shift(1)
 
 # Add Fourier-based features (lagged to avoid future leak) - USING TRAINING-DERIVED PATTERNS ONLY
 df['Fourier_Trend_Lag1'] = pd.Series(fourier_features['smooth_trend']).shift(1)
@@ -162,30 +199,49 @@ df['Fourier_Magnitude_2'] = fourier_features['magnitude'][2] if len(fourier_feat
 FEATURES1 = ["Price_Lag1", "Price_Lag2", "Price_Return", "Bid_Lag1", "Ask_Lag1", "Spread_Lag1", 
              "Fourier_Trend_Lag1", "Fourier_Residual_Lag1", "Fourier_Magnitude_1", "Fourier_Magnitude_2"]
 
-print(f"🔒 Using LEAK-FREE ENHANCED columns for Model 1 input: {FEATURES1}")
+print(f"Using enhanced columns for Model input: {FEATURES1}")
 
-# Drop NaN rows from lag creation
+# CRITICAL FIX: Drop NaN rows AGAIN after adding Fourier features
+print(f"Data before dropping Fourier NaNs: {len(df)} rows")
 df = df.dropna().reset_index(drop=True)
+print(f"Data after dropping Fourier NaNs: {len(df)} rows")
 
-# Set dynamic end based on CSV length
+# RECALCULATE all indices after second NaN drop
 num_rows = len(df)
 
-# Define the moving window parameters - MODIFIED: Train 6 points earlier for bias + MPC
-LOOKBACK_WINDOW = 50  # Train until n-56, use n-55 for bias, n-54 to n-50 for MPC, then predict n-49 to n-1
-if num_rows < LOOKBACK_WINDOW + 16:  # Need at least some points for training, bias point, MPC points, and prediction window
-    raise ValueError(f"Not enough data. Need at least {LOOKBACK_WINDOW + 16} rows for bias + MPC + moving window prediction.")
+# HARD RESTRICTION: Train on exactly half the dataset minus 6 points (RECALCULATED)
+HARD_TRAINING_LIMIT = (num_rows // 2) - 6
+train_until_idx = HARD_TRAINING_LIMIT
 
-train_until_idx = num_rows - LOOKBACK_WINDOW - 6  # Train on data up to this index (exclusive) - 6 points earlier
-bias_point_idx = train_until_idx  # Use this point for bias calculation
+# Validate we have enough data for this hard restriction
+MIN_REQUIRED_ROWS = 20  # Need at least 20 rows total (10 for training, 6 for bias+MPC, 4 for prediction)
+if num_rows < MIN_REQUIRED_ROWS:
+    raise ValueError(f"Not enough data after Fourier NaN removal. Need at least {MIN_REQUIRED_ROWS} rows, but got {num_rows} rows.")
+
+if train_until_idx <= 0:
+    raise ValueError(f"Training restriction too strict after Fourier NaN removal. Half dataset minus 6 = {train_until_idx}. Need at least 1 training point.")
+
+# Calculate remaining indices based on hard training restriction (RECALCULATED)
+bias_point_idx = train_until_idx  # Use this point for bias calculation  
 mpc_start_idx = train_until_idx + 1  # Start MPC from this index
 mpc_end_idx = train_until_idx + 5    # End MPC at this index (5 points for MPC)
 predict_start_idx = train_until_idx + 6  # Start walk forward prediction from this index
-predict_end_idx = num_rows - 1  # Predict up to (but not including) the last point
+predict_end_idx = num_rows - 1  # Predict up to the last point
 
+# Validate the hard restriction allows for all required phases (RECALCULATED)
+if predict_start_idx >= num_rows:
+    raise ValueError(f"Hard training restriction leaves no data for prediction after Fourier NaN removal. Training ends at {train_until_idx}, but dataset only has {num_rows} rows.")
+
+if mpc_end_idx >= num_rows:
+    raise ValueError(f"Hard training restriction leaves insufficient data for MPC phase after Fourier NaN removal. Need 5 MPC points starting at {mpc_start_idx}, but dataset only has {num_rows} rows.")
+
+print(f"RECALCULATED HARD RESTRICTION (after Fourier NaN removal):")
 print(f"Total rows in dataset: {num_rows}")
+print(f"Training data HARD LIMITED to: {train_until_idx} points ({train_until_idx/num_rows*100:.1f}% of dataset)")
+print(f"Remaining data for testing: {num_rows - train_until_idx} points ({(num_rows - train_until_idx)/num_rows*100:.1f}% of dataset)")
 print(f"Training on data from index 0 to {train_until_idx-1} (inclusive)")
-print(f"Using index {bias_point_idx} for bias calculation")
-print(f"Model Predictive Control from index {mpc_start_idx} to {mpc_end_idx} (5 points)")
+print(f"Bias calculation at index: {bias_point_idx}")
+print(f"MPC phase from index {mpc_start_idx} to {mpc_end_idx} (5 points)")
 print(f"Walk forward prediction from index {predict_start_idx} to {predict_end_idx} ({predict_end_idx - predict_start_idx + 1} predictions)")
 
 # FIXED: Create data with features and separate targets for price, bid, and ask
@@ -195,8 +251,71 @@ data1_bids = df['Bid_Price'].values.astype(np.float32)  # Bid price targets
 data1_asks = df['Ask_Price'].values.astype(np.float32)  # Ask price targets
 feature_indices1 = {f: i for i, f in enumerate(FEATURES1)}
 
-# Model 1: Enhanced Cross-Information Multi-Price Network
-class EnhancedCrossInfoPriceNet(nn.Module):
+# DATA VALIDATION: Check for NaN, infinite, or problematic values
+print(f"\nDATA VALIDATION BEFORE TRAINING:")
+print(f"Features shape: {data1_features.shape}")
+print(f"Prices shape: {data1_prices.shape}")
+
+# Check for NaN values
+features_nan_count = np.isnan(data1_features).sum()
+prices_nan_count = np.isnan(data1_prices).sum()
+bids_nan_count = np.isnan(data1_bids).sum()
+asks_nan_count = np.isnan(data1_asks).sum()
+
+print(f"NaN values - Features: {features_nan_count}, Prices: {prices_nan_count}, Bids: {bids_nan_count}, Asks: {asks_nan_count}")
+
+# Check for infinite values
+features_inf_count = np.isinf(data1_features).sum()
+prices_inf_count = np.isinf(data1_prices).sum()
+bids_inf_count = np.isinf(data1_bids).sum()
+asks_inf_count = np.isinf(data1_asks).sum()
+
+print(f"Infinite values - Features: {features_inf_count}, Prices: {prices_inf_count}, Bids: {bids_inf_count}, Asks: {asks_inf_count}")
+
+# Check feature ranges
+for i, feature_name in enumerate(FEATURES1):
+    feature_col = data1_features[:, i]
+    min_val = np.min(feature_col)
+    max_val = np.max(feature_col)
+    mean_val = np.mean(feature_col)
+    std_val = np.std(feature_col)
+    print(f"  {feature_name}: min={min_val:.6f}, max={max_val:.6f}, mean={mean_val:.6f}, std={std_val:.6f}")
+
+# Check training data range specifically
+print(f"\nTRAINING DATA VALIDATION (indices 0 to {train_until_idx}):")
+train_features_subset = data1_features[:train_until_idx]
+train_prices_subset = data1_prices[:train_until_idx]
+train_bids_subset = data1_bids[:train_until_idx]
+train_asks_subset = data1_asks[:train_until_idx]
+
+print(f"Training features NaN: {np.isnan(train_features_subset).sum()}")
+print(f"Training prices NaN: {np.isnan(train_prices_subset).sum()}")
+print(f"Training bids NaN: {np.isnan(train_bids_subset).sum()}")
+print(f"Training asks NaN: {np.isnan(train_asks_subset).sum()}")
+
+# Check if any training values are too large or too small
+train_features_max = np.max(np.abs(train_features_subset))
+train_prices_max = np.max(np.abs(train_prices_subset))
+print(f"Max absolute training feature value: {train_features_max:.6f}")
+print(f"Max absolute training price value: {train_prices_max:.6f}")
+
+if features_nan_count > 0 or prices_nan_count > 0 or bids_nan_count > 0 or asks_nan_count > 0:
+    raise ValueError(f"Found NaN values in data! Cannot proceed with training.")
+
+if features_inf_count > 0 or prices_inf_count > 0 or bids_inf_count > 0 or asks_inf_count > 0:
+    raise ValueError(f"Found infinite values in data! Cannot proceed with training.")
+
+# Replace any extreme values that might cause numerical issues
+print(f"Clamping extreme values to prevent numerical instability...")
+data1_features = np.clip(data1_features, -1e6, 1e6)
+data1_prices = np.clip(data1_prices, -1e6, 1e6)
+data1_bids = np.clip(data1_bids, -1e6, 1e6)
+data1_asks = np.clip(data1_asks, -1e6, 1e6)
+
+print(f"Data validation completed successfully!")
+
+# Ensemble Engine: Enhanced Cross-Information Multi-Price Network with Gradient Feedback
+class EnsembleEngineNet(nn.Module):
     def __init__(self, input_dim, num_layers=3, hidden_dim=64):
         super().__init__()
         self.input_dim = input_dim
@@ -210,6 +329,26 @@ class EnhancedCrossInfoPriceNet(nn.Module):
         
         # Cross-attention mechanism for information sharing
         self.cross_attention = nn.MultiheadAttention(hidden_dim, num_heads=4, batch_first=True)
+        
+        # ENHANCED: Gradient feedback layers for bid/ask → price information flow
+        self.bid_to_price_feedback = nn.Sequential(
+            nn.Linear(1, hidden_dim // 4),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 4, hidden_dim // 2)
+        )
+        
+        self.ask_to_price_feedback = nn.Sequential(
+            nn.Linear(1, hidden_dim // 4),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 4, hidden_dim // 2)
+        )
+        
+        # Economic relationship encoder (bid-ask spread information)
+        self.spread_encoder = nn.Sequential(
+            nn.Linear(2, hidden_dim // 4),  # [bid, ask] → spread features
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 4, hidden_dim // 2)
+        )
         
         # Separate feature processing for each price type
         self.price_processor = nn.Sequential(
@@ -237,59 +376,76 @@ class EnhancedCrossInfoPriceNet(nn.Module):
             nn.Linear(hidden_dim, hidden_dim // 2)
         )
         
-        # Final prediction heads with cross-information
-        self.price_head = nn.Sequential(
-            nn.Linear(hidden_dim // 2 + hidden_dim // 2, hidden_dim // 4),  # Own features + fused features
-            nn.ReLU(),
-            nn.Linear(hidden_dim // 4, 1)
-        )
-        self.bid_head = nn.Sequential(
+        # STAGE 1: Initial prediction heads
+        self.bid_head_stage1 = nn.Sequential(
             nn.Linear(hidden_dim // 2 + hidden_dim // 2, hidden_dim // 4),
             nn.ReLU(),
             nn.Linear(hidden_dim // 4, 1)
         )
-        self.ask_head = nn.Sequential(
+        self.ask_head_stage1 = nn.Sequential(
             nn.Linear(hidden_dim // 2 + hidden_dim // 2, hidden_dim // 4),
             nn.ReLU(),
             nn.Linear(hidden_dim // 4, 1)
         )
         
-        # Ensemble weights for final prediction combination
-        self.ensemble_weights = nn.Parameter(torch.ones(3) / 3)  # Equal initial weights
+        # STAGE 2: Enhanced price head with bid/ask feedback
+        price_input_dim = (hidden_dim // 2) + (hidden_dim // 2) + (hidden_dim // 2) + (hidden_dim // 2)  # base + fused + bid_feedback + ask_feedback
+        self.price_head_enhanced = nn.Sequential(
+            nn.Linear(price_input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, 1)
+        )
         
-    def forward(self, x):
+        # STAGE 3: Iterative refinement layers
+        self.refinement_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(hidden_dim // 2 + 3, hidden_dim // 2),  # features + [price, bid, ask]
+                nn.ReLU(),
+                nn.Linear(hidden_dim // 2, 1)
+            ) for _ in range(2)  # 2 refinement iterations
+        ])
+        
+        # Economic constraint enforcement
+        self.constraint_weights = nn.Parameter(torch.tensor([1.0, 1.0, 1.0]))  # [price_weight, bid_weight, ask_weight]
+        
+        # Confidence estimation for gradient weighting
+        self.confidence_estimator = nn.Sequential(
+            nn.Linear(hidden_dim // 2, hidden_dim // 4),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 4, 3),  # confidence for [price, bid, ask]
+            nn.Sigmoid()
+        )
+        
+    def forward(self, x, training_mode=True):
         batch_size = x.size(0)
         
         # Shared feature extraction with residual connections
         out = x
         for layer in self.shared_layers:
             h = layer(out)
-            # Apply residual connection if dimensions match
             if out.size(-1) == h.size(-1):
-                out = out - h  # Residual subtraction as in original
+                out = out - h  # Residual subtraction
             else:
                 out = h
         
-        # Prepare for cross-attention (add sequence dimension)
-        shared_features = out.unsqueeze(1)  # [batch, 1, hidden_dim]
+        # Prepare for cross-attention
+        shared_features = out.unsqueeze(1)
         
-        # Create three copies for price, bid, ask processing
-        price_query = shared_features
-        bid_query = shared_features
-        ask_query = shared_features
+        # Create queries for price, bid, ask
+        queries = torch.cat([shared_features, shared_features, shared_features], dim=1)
         
-        # Stack queries for multi-head attention
-        queries = torch.cat([price_query, bid_query, ask_query], dim=1)  # [batch, 3, hidden_dim]
-        
-        # Apply cross-attention to enable information sharing
+        # Apply cross-attention
         attended_features, attention_weights = self.cross_attention(queries, queries, queries)
         
-        # Extract attended features for each price type
-        price_attended = attended_features[:, 0, :]  # [batch, hidden_dim]
+        # Extract attended features
+        price_attended = attended_features[:, 0, :]
         bid_attended = attended_features[:, 1, :]
         ask_attended = attended_features[:, 2, :]
         
-        # Process each price type separately
+        # Process each price type
         price_features = self.price_processor(price_attended)
         bid_features = self.bid_processor(bid_attended)
         ask_features = self.ask_processor(ask_attended)
@@ -298,28 +454,73 @@ class EnhancedCrossInfoPriceNet(nn.Module):
         fused_features = torch.cat([price_features, bid_features, ask_features], dim=-1)
         shared_info = self.fusion_layer(fused_features)
         
-        # Final predictions with both individual and shared information
-        price_input = torch.cat([price_features, shared_info], dim=-1)
+        # STAGE 1: Initial bid/ask predictions
         bid_input = torch.cat([bid_features, shared_info], dim=-1)
         ask_input = torch.cat([ask_features, shared_info], dim=-1)
         
-        price_pred = self.price_head(price_input).squeeze(-1)
-        bid_pred = self.bid_head(bid_input).squeeze(-1)
-        ask_pred = self.ask_head(ask_input).squeeze(-1)
+        bid_pred_stage1 = self.bid_head_stage1(bid_input).squeeze(-1)
+        ask_pred_stage1 = self.ask_head_stage1(ask_input).squeeze(-1)
+
+        # STAGE 2: Enhanced price prediction with bid/ask feedback
+        if training_mode:
+            # During training, enable gradients for feedback
+            bid_feedback = self.bid_to_price_feedback(bid_pred_stage1.unsqueeze(-1))
+            ask_feedback = self.ask_to_price_feedback(ask_pred_stage1.unsqueeze(-1))
+        else:
+            # During inference, use detached values to prevent gradient loops
+            bid_feedback = self.bid_to_price_feedback(bid_pred_stage1.detach().unsqueeze(-1))
+            ask_feedback = self.ask_to_price_feedback(ask_pred_stage1.detach().unsqueeze(-1))
         
-        # Apply ensemble weighting (learnable combination)
-        weights = F.softmax(self.ensemble_weights, dim=0)
+        # Economic relationship encoding
+        spread_input = torch.stack([bid_pred_stage1, ask_pred_stage1], dim=-1)
+        spread_features = self.spread_encoder(spread_input)
         
-        # Ensure bid ≤ price ≤ ask constraint through soft constraints
-        # Predict deviations from a base price and apply constraints
-        base_price = price_pred
-        bid_deviation = torch.clamp(bid_pred - base_price, max=0)  # Bid should be ≤ price
-        ask_deviation = torch.clamp(ask_pred - base_price, min=0)  # Ask should be ≥ price
+        # Enhanced price prediction with gradient feedback
+        price_input_enhanced = torch.cat([price_features, shared_info, bid_feedback, ask_feedback], dim=-1)
+        price_pred_enhanced = self.price_head_enhanced(price_input_enhanced).squeeze(-1)
         
-        constrained_bid = base_price + bid_deviation
-        constrained_ask = base_price + ask_deviation
+        # STAGE 3: Iterative refinement
+        current_predictions = torch.stack([price_pred_enhanced, bid_pred_stage1, ask_pred_stage1], dim=-1)
         
-        return price_pred, constrained_bid, constrained_ask, attention_weights
+        refined_predictions = []
+        for refinement_layer in self.refinement_layers:
+            refinement_input = torch.cat([shared_info, current_predictions], dim=-1)
+            refinement_delta = refinement_layer(refinement_input).squeeze(-1)
+            
+            # Apply refinement to price prediction
+            price_refined = price_pred_enhanced + refinement_delta
+            refined_predictions.append(price_refined)
+            
+            # Update current predictions for next iteration
+            current_predictions = torch.stack([price_refined, bid_pred_stage1, ask_pred_stage1], dim=-1)
+        
+        # Final refined price prediction
+        final_price_pred = refined_predictions[-1] if refined_predictions else price_pred_enhanced
+        
+        # Economic constraint enforcement with soft penalties
+        constraint_weights_norm = F.softmax(self.constraint_weights, dim=0)
+        
+        # Ensure bid ≤ price ≤ ask with learnable constraints
+        bid_violation = torch.relu(bid_pred_stage1 - final_price_pred)  # Penalty if bid > price
+        ask_violation = torch.relu(final_price_pred - ask_pred_stage1)  # Penalty if price > ask
+        
+        # Apply soft constraints
+        constrained_price = final_price_pred - 0.1 * (bid_violation + ask_violation)
+        constrained_bid = bid_pred_stage1 - 0.1 * bid_violation
+        constrained_ask = ask_pred_stage1 + 0.1 * ask_violation
+        
+        # Confidence estimation for gradient weighting
+        confidence_scores = self.confidence_estimator(shared_info)
+        
+        return constrained_price, constrained_bid, constrained_ask, attention_weights, confidence_scores, {
+            'bid_stage1': bid_pred_stage1,
+            'ask_stage1': ask_pred_stage1,
+            'price_enhanced': price_pred_enhanced,
+            'price_refined': refined_predictions,
+            'bid_feedback': bid_feedback,
+            'ask_feedback': ask_feedback,
+            'constraint_violations': bid_violation + ask_violation
+        }
 
 # --- Dynamic hyperparameters for faster convergence ---
 INIT_NUM_LAYERS = 1
@@ -348,7 +549,7 @@ if X_train1.shape[0] == 0:
 num_layers = INIT_NUM_LAYERS
 lr = INIT_LR
 target_error = INIT_TARGET_ERROR
-model1 = EnhancedCrossInfoPriceNet(input_dim=len(FEATURES1), num_layers=num_layers)
+model1 = EnsembleEngineNet(input_dim=len(FEATURES1), num_layers=num_layers)
 optimizer1 = torch.optim.Adam(model1.parameters(), lr=lr)
 scheduler1 = ReduceLROnPlateau(optimizer1, mode='min', factor=0.5, patience=200, min_lr=1e-7)
 loss_fn = nn.MSELoss()
@@ -366,31 +567,65 @@ for epoch in range(max_epochs):
     model1.train()
     if X_train1.shape[0] > 0:
         optimizer1.zero_grad()
-        pred_price, pred_bid, pred_ask, attention_weights = model1(X_train1)
+        pred_price, pred_bid, pred_ask, attention_weights, confidence_scores, debug_info = model1(X_train1, training_mode=True)
         
-        # Multi-task loss (weighted combination of all three predictions)
+        # ENHANCED: Confidence-weighted multi-task loss with gradient feedback
         loss_price = loss_fn(pred_price, y_train1_price)
         loss_bid = loss_fn(pred_bid, y_train1_bid)
         loss_ask = loss_fn(pred_ask, y_train1_ask)
-        loss = loss_price + loss_bid + loss_ask  # Equal weighting
         
-        loss.backward()
+        # Confidence weighting (higher confidence = higher loss weight)
+        confidence_price = confidence_scores[:, 0].mean()
+        confidence_bid = confidence_scores[:, 1].mean()
+        confidence_ask = confidence_scores[:, 2].mean()
+        
+        # Weighted losses based on confidence
+        weighted_loss_price = loss_price * confidence_price
+        weighted_loss_bid = loss_bid * confidence_bid
+        weighted_loss_ask = loss_ask * confidence_ask
+        
+        # Economic constraint penalties
+        constraint_penalty = debug_info['constraint_violations'].mean() * 0.1
+        
+        # GRADIENT FEEDBACK: Additional loss for bid/ask → price alignment
+        # Encourage price prediction to be within bid-ask spread
+        price_spread_alignment = torch.mean(
+            torch.relu(pred_bid - pred_price) +  # Price should be >= bid
+            torch.relu(pred_price - pred_ask)    # Price should be <= ask
+        ) * 0.2
+        
+        # Total enhanced loss
+        total_loss = (weighted_loss_price + weighted_loss_bid + weighted_loss_ask + 
+                     constraint_penalty + price_spread_alignment)
+        
+        # GRADIENT FEEDBACK: Compute gradients separately for analysis
+        total_loss.backward()
+        
+        # Gradient clipping for stability
+        torch.nn.utils.clip_grad_norm_(model1.parameters(), max_norm=1.0)
+        
         optimizer1.step()
-        scheduler1.step(loss.item())
+        scheduler1.step(total_loss.item())
+        
+        # Log enhanced training metrics every 100 epochs
+        if epoch % 100 == 0:
+            with torch.no_grad():
+                print(f"   Epoch {epoch}: Price={loss_price:.6f}, Bid={loss_bid:.6f}, Ask={loss_ask:.6f}, Total={total_loss:.6f}")
     else:
-        loss = torch.tensor(float('inf'))
+        total_loss = torch.tensor(float('inf'))
 
     # Walkforward validation every 50 epochs to save computation (increased from 10 for speed)
     if epoch % 50 == 0 or consecutive_good_epochs >= required_good_epochs:
         model1.eval()
         walkforward_errors = []
+        confidence_metrics = []
         
         with torch.no_grad():
             for val_idx in range(walkforward_start, walkforward_end + 1):
                 if val_idx <= 0:
                     continue
                 val_input = torch.tensor(data1_features[val_idx-1], dtype=torch.float32).unsqueeze(0)
-                pred_price, pred_bid, pred_ask, attention_weights = model1(val_input)
+                pred_price, pred_bid, pred_ask, attention_weights, confidence_scores, debug_info = model1(val_input, training_mode=False)
                 
                 # Calculate errors for all three predictions
                 actual_price = data1_prices[val_idx]
@@ -401,15 +636,22 @@ for epoch in range(max_epochs):
                 error_bid = (pred_bid.item() - actual_bid) ** 2
                 error_ask = (pred_ask.item() - actual_ask) ** 2
                 
-                # Combined error (average of all three)
-                combined_error = (error_price + error_bid + error_ask) / 3
-                walkforward_errors.append(combined_error)
+                # Enhanced validation: Weight errors by confidence
+                confidence_weighted_error = (
+                    error_price * confidence_scores[0, 0].item() +
+                    error_bid * confidence_scores[0, 1].item() +
+                    error_ask * confidence_scores[0, 2].item()
+                ) / 3
+                
+                walkforward_errors.append(confidence_weighted_error)
+                confidence_metrics.append(confidence_scores[0].cpu().numpy())
         
-        # Average walkforward validation error
+        # Average walkforward validation error with confidence weighting
         walkforward_mse = np.mean(walkforward_errors) if walkforward_errors else float('inf')
+        avg_confidence = np.mean(confidence_metrics, axis=0) if confidence_metrics else [0, 0, 0]
         
         if epoch % 100 == 0 or consecutive_good_epochs >= required_good_epochs:
-            print(f"[Model1] Epoch {epoch}: Walkforward MSE = {walkforward_mse:.6f}, Good epochs: {consecutive_good_epochs}, LR: {optimizer1.param_groups[0]['lr']:.2e}, num_layers: {num_layers}, target_error: {target_error}")
+            print(f"Epoch {epoch}: Confidence-Weighted MSE = {walkforward_mse:.6f}, Good epochs: {consecutive_good_epochs}")
         
         if walkforward_mse <= target_error:
             consecutive_good_epochs += 1
@@ -417,7 +659,7 @@ for epoch in range(max_epochs):
             consecutive_good_epochs = 0
             
         if consecutive_good_epochs >= required_good_epochs:
-            print(f"[Model1] Reached {required_good_epochs} consecutive good epochs at epoch {epoch}. Stopping training.")
+            print(f"Reached {required_good_epochs} consecutive good epochs at epoch {epoch}. Stopping training.")
             break
     
     # Hyperparameter switching
@@ -426,7 +668,7 @@ for epoch in range(max_epochs):
         num_layers = NEW_NUM_LAYERS
         lr = NEW_LR
         target_error = NEW_TARGET_ERROR
-        new_model = EnhancedCrossInfoPriceNet(input_dim=len(FEATURES1), num_layers=num_layers)
+        new_model = EnsembleEngineNet(input_dim=len(FEATURES1), num_layers=num_layers)
         for (n1, p1), (n2, p2) in zip(model1.named_parameters(), new_model.named_parameters()):
             if p1.shape == p2.shape:
                 p2.data.copy_(p1.data)
@@ -434,8 +676,8 @@ for epoch in range(max_epochs):
         optimizer1 = torch.optim.Adam(model1.parameters(), lr=lr)
         scheduler1 = ReduceLROnPlateau(optimizer1, mode='min', factor=0.5, patience=200, min_lr=1e-7)
 
-# --- Moving Window Prediction with Enhanced Cross-Information and Ensemble ---
-print(f"\n--- Enhanced Cross-Information Prediction with Bias + MPC ---")
+# --- Ensemble Engine Prediction with Enhanced Cross-Information and MPC ---
+print(f"Ensemble Engine Prediction with Bias + MPC")
 
 # Storage for results
 prediction_indices = []
@@ -454,7 +696,7 @@ if bias_point_idx > 0:
     bias_features = torch.tensor(data1_features[bias_point_idx-1], dtype=torch.float32).unsqueeze(0)
     
     with torch.no_grad():
-        bias_pred_price, bias_pred_bid, bias_pred_ask, _ = model1(bias_features)
+        bias_pred_price, bias_pred_bid, bias_pred_ask, attention_weights, confidence_scores, debug_info = model1(bias_features, training_mode=False)
     
     # Calculate bias corrections
     actual_bias_price = data1_prices[bias_point_idx]
@@ -465,20 +707,10 @@ if bias_point_idx > 0:
     bid_bias_correction = actual_bias_bid - bias_pred_bid.item()
     ask_bias_correction = actual_bias_ask - bias_pred_ask.item()
     
-    print(f"🎯 Bias Point {bias_point_idx} Analysis:")
+    print(f"Bias Point {bias_point_idx} Analysis:")
     print(f"  Price: Actual={actual_bias_price:.6f}, Predicted={bias_pred_price.item():.6f}, Bias={price_bias_correction:.6f}")
     print(f"  Bid: Actual={actual_bias_bid:.6f}, Predicted={bias_pred_bid.item():.6f}, Bias={bid_bias_correction:.6f}")
     print(f"  Ask: Actual={actual_bias_ask:.6f}, Predicted={bias_pred_ask.item():.6f}, Bias={ask_bias_correction:.6f}")
-    
-    # Test bias correction on the bias point itself
-    corrected_test_price = bias_pred_price.item() + price_bias_correction
-    corrected_test_bid = bias_pred_bid.item() + bid_bias_correction  
-    corrected_test_ask = bias_pred_ask.item() + ask_bias_correction
-    
-    print(f"✅ Bias Correction Verification:")
-    print(f"  Price: Original={bias_pred_price.item():.6f} → Corrected={corrected_test_price:.6f} (Target: {actual_bias_price:.6f})")
-    print(f"  Bid: Original={bias_pred_bid.item():.6f} → Corrected={corrected_test_bid:.6f} (Target: {actual_bias_bid:.6f})")
-    print(f"  Ask: Original={bias_pred_ask.item():.6f} → Corrected={corrected_test_ask:.6f} (Target: {actual_bias_ask:.6f})")
 else:
     price_bias_correction = 0
     bid_bias_correction = 0
@@ -486,8 +718,7 @@ else:
     print("Warning: Cannot calculate bias - no previous point available")
 
 # Step 2: Model Predictive Control for next 5 points
-print(f"🚨 Step 2: FIXED Model Predictive Control from {mpc_start_idx} to {mpc_end_idx} (NO FUTURE DATA LEAK)...")
-print(f"⚠️  REMOVED future data leakage - MPC now uses only historical patterns")
+print(f"Step 2: Model Predictive Control from {mpc_start_idx} to {mpc_end_idx}")
 
 # MPC horizon and parameters
 mpc_horizon = 5
@@ -503,15 +734,12 @@ for mpc_idx in range(mpc_start_idx, mpc_end_idx + 1):
     
     with torch.no_grad():
         # Get raw prediction
-        raw_pred_price, raw_pred_bid, raw_pred_ask, attention_weights = model1(mpc_input_features)
+        raw_pred_price, raw_pred_bid, raw_pred_ask, attention_weights, confidence_scores, debug_info = model1(mpc_input_features, training_mode=False)
         
         # Apply bias correction
         corrected_price = raw_pred_price.item() + price_bias_correction
         corrected_bid = raw_pred_bid.item() + bid_bias_correction
         corrected_ask = raw_pred_ask.item() + ask_bias_correction
-        
-        # REMOVED DATA LEAK: No longer using future actual prices
-        # Instead, use historical volatility patterns for MPC adjustment
         
         # Historical volatility-based MPC adjustment (using ONLY past data)
         if mpc_idx >= 10:  # Need some history
@@ -522,11 +750,9 @@ for mpc_idx in range(mpc_start_idx, mpc_end_idx + 1):
                 historical_volatility = np.std(historical_returns)
                 recent_trend = np.mean(np.diff(historical_prices[-5:]))  # Recent 5-point trend
                 
-                # MPC adjustment based on historical patterns (NO FUTURE DATA)
-                volatility_adjustment = recent_trend * 0.1  # Reduce weight significantly
-                corrected_price += volatility_adjustment
-                
-                print(f"🔍 MPC {mpc_idx} Historical Analysis: Vol={historical_volatility:.6f}, Trend={recent_trend:.6f}, Adj={volatility_adjustment:.6f}")
+                # MPC adjustment based on historical patterns
+                confidence_weighted_adjustment = recent_trend * 0.1 * confidence_scores[0, 0].item()
+                corrected_price += confidence_weighted_adjustment
             
         # Create ensemble prediction with historical-based MPC adjustment
         spread = corrected_ask - corrected_bid
@@ -555,16 +781,13 @@ for mpc_idx in range(mpc_start_idx, mpc_end_idx + 1):
         'predicted': ensemble_price,
         'error': mpc_error
     })
-    
-    print(f"FIXED MPC {mpc_idx}: Actual={actual_price:.6f}, Raw={raw_pred_price.item():.6f}, Corrected={corrected_price:.6f}, Ensemble={ensemble_price:.6f}, Error={mpc_error:.6f}")
 
 # Calculate MPC performance
 mpc_mae = np.mean(mpc_errors) if mpc_errors else 0
-print(f"LEAK-FREE MPC Performance: MAE = {mpc_mae:.6f}")
+print(f"MPC Performance: MAE = {mpc_mae:.6f}")
 
 # Step 3: Walk forward prediction with FINAL DYNAMIC ERROR OFFSET
-print(f"Step 3: Walk forward prediction with FINAL DYNAMIC ERROR OFFSET from {predict_start_idx} to {predict_end_idx}...")
-print(f"📊 Implementing adaptive error correction: offset[i+1] = abs(predicted[i] - actual[i]) applied AFTER ensemble")
+print(f"Step 3: Walk forward prediction from {predict_start_idx} to {predict_end_idx}")
 
 # Dynamic offset tracking
 dynamic_error_offset = 0.0  # Initialize dynamic offset
@@ -580,7 +803,7 @@ for current_idx in range(predict_start_idx, predict_end_idx + 1):
     
     # Get raw prediction from model
     with torch.no_grad():
-        raw_predicted_price, raw_predicted_bid, raw_predicted_ask, attention_weights = model1(prev_features)
+        raw_predicted_price, raw_predicted_bid, raw_predicted_ask, attention_weights, confidence_scores, debug_info = model1(prev_features, training_mode=False)
     
     # Apply STATIC bias correction (from bias point)
     corrected_price = raw_predicted_price.item() + price_bias_correction
@@ -593,7 +816,11 @@ for current_idx in range(predict_start_idx, predict_end_idx + 1):
         # Invalid spread, use simple average
         base_ensemble_price = (corrected_price + corrected_bid + corrected_ask) / 3
     else:
-        # Weight based on position within spread
+        # Weight based on position within spread - ENHANCED with confidence weighting
+        price_confidence = confidence_scores[0, 0].item()
+        bid_confidence = confidence_scores[0, 1].item()
+        ask_confidence = confidence_scores[0, 2].item()
+        
         if corrected_price < corrected_bid:
             # Price below bid, weight towards bid
             base_ensemble_price = 0.7 * corrected_bid + 0.2 * corrected_price + 0.1 * corrected_ask
@@ -601,25 +828,16 @@ for current_idx in range(predict_start_idx, predict_end_idx + 1):
             # Price above ask, weight towards ask
             base_ensemble_price = 0.7 * corrected_ask + 0.2 * corrected_price + 0.1 * corrected_bid
         else:
-            # Price within spread, use weighted average based on spread position
-            bid_weight = (corrected_ask - corrected_price) / spread
-            ask_weight = (corrected_price - corrected_bid) / spread
-            price_weight = 0.5  # Base weight for direct price prediction
+            # Price within spread, use confidence-weighted average
+            bid_weight = (corrected_ask - corrected_price) / spread * bid_confidence
+            ask_weight = (corrected_price - corrected_bid) / spread * ask_confidence
+            price_weight = 0.5 * price_confidence  # Base weight for direct price prediction
             
             total_weight = bid_weight + ask_weight + price_weight
             base_ensemble_price = (bid_weight * corrected_bid + ask_weight * corrected_ask + price_weight * corrected_price) / total_weight
     
     # FINAL STEP: Apply DYNAMIC error offset AFTER all other corrections
     final_ensemble_price = base_ensemble_price + dynamic_error_offset
-    
-    # Debug: Show first few predictions with full breakdown
-    if current_idx <= predict_start_idx + 3:
-        print(f"🔍 Walk Forward {current_idx} Debug:")
-        print(f"  Raw: Price={raw_predicted_price.item():.6f}")
-        print(f"  + Static Bias: {price_bias_correction:.6f} → {corrected_price:.6f}")
-        print(f"  + Ensemble: → {base_ensemble_price:.6f}")
-        print(f"  + Dynamic Offset: {dynamic_error_offset:.6f} → {final_ensemble_price:.6f}")
-        print(f"  ORDER: Raw → Static Bias → Cross-Info Ensemble → Dynamic Offset")
     
     # Store results
     prediction_indices.append(current_idx)
@@ -661,26 +879,15 @@ for current_idx in range(predict_start_idx, predict_end_idx + 1):
         'momentum_component': previous_dynamic_offset * momentum_decay,
         'error_component': new_error_offset
     })
-    
-    # Debug adaptive offset for first few predictions
-    if current_idx <= predict_start_idx + 3:
-        print(f"🎯 IMPROVED Adaptive Offset Update for NEXT prediction:")
-        print(f"  Base Error: {base_prediction_error:.6f} ({'too low' if base_prediction_error > 0 else 'too high'})")
-        print(f"  Error Magnitude: {current_prediction_error:.6f}")
-        print(f"  Momentum Component: {previous_dynamic_offset * momentum_decay:.6f}")
-        print(f"  Error Component: {new_error_offset:.6f}")
-        print(f"  Next Offset: {previous_dynamic_offset:.6f} → {dynamic_error_offset:.6f}")
-        print(f"  Base Prediction: {base_ensemble_price:.6f} vs Actual: {actual_price:.6f}")
 
 # Display progress for ensemble predictions only
 for i, current_idx in enumerate(prediction_indices):
     error_info = error_offset_history[i] if i < len(error_offset_history) else {'new_offset': 0, 'base_error': 0}
-    base_error_info = f"BaseErr={error_info.get('base_error', 0):.6f}" if 'base_error' in error_info else ""
-    print(f"Walk Forward {current_idx}: Actual={actual_prices[i]:.6f}, 🌟Ensemble={ensemble_predictions[i]:.6f}, Error={abs(ensemble_predictions[i] - actual_prices[i]):.6f}, {base_error_info}, NextOffset={error_info['new_offset']:.6f}")
+    print(f"Walk Forward {current_idx}: Actual={actual_prices[i]:.6f}, Ensemble={ensemble_predictions[i]:.6f}, Error={abs(ensemble_predictions[i] - actual_prices[i]):.6f}")
 
 # Analyze dynamic offset effectiveness
 if error_offset_history:
-    print(f"\n📊 IMPROVED Dynamic Error Offset Analysis:")
+    print(f"\nIMPROVED Dynamic Error Offset Analysis:")
     avg_error = np.mean([h['prediction_error'] for h in error_offset_history])
     avg_base_error = np.mean([abs(h['base_error']) for h in error_offset_history])
     avg_offset = np.mean([abs(h['new_offset']) for h in error_offset_history])
@@ -712,8 +919,8 @@ if error_offset_history:
     direction_effectiveness = (correct_directions / (len(error_offset_history) - 1)) * 100 if len(error_offset_history) > 1 else 0
     print(f"   Direction Effectiveness: {direction_effectiveness:.1f}% (reduced error in next prediction)")
 
-# --- Enhanced Model Performance Metrics with Ensemble Analysis ---
-print(f"\n--- ENSEMBLE + MPC MODEL PERFORMANCE METRICS ---")
+# --- Ensemble Engine Performance Metrics with Gradient Feedback Analysis ---
+print(f"Ensemble Engine Performance Metrics")
 
 if len(actual_prices) > 1:
     # Ensemble performance - for prices
@@ -722,68 +929,19 @@ if len(actual_prices) > 1:
     ensemble_price_mae = np.mean([abs(pred - actual) for pred, actual in zip(ensemble_predictions, actual_prices)])
     ensemble_price_accuracy = np.mean([abs(pred - actual) / abs(actual) for pred, actual in zip(ensemble_predictions, actual_prices)]) * 100
     
-    print(f"🌟 Enhanced Cross-Information Ensemble Performance (Walk Forward):")
+    print(f"Ensemble Engine Performance (Walk Forward):")
     print(f"   Price: MSE: {ensemble_price_mse:.6f} | MAE: {ensemble_price_mae:.6f} | Error %: {ensemble_price_accuracy:.4f}%")
     
     # MPC performance
     if mpc_errors:
         mpc_mse = np.mean([e**2 for e in mpc_errors])
         mpc_accuracy = np.mean([e / pred['actual'] for e, pred in zip(mpc_errors, mpc_predictions_detailed)]) * 100
-        print(f"🎯 Model Predictive Control Performance (5 points):")
+        print(f"Model Predictive Control Performance (5 points):")
         print(f"   Price: MSE: {mpc_mse:.6f} | MAE: {mpc_mae:.6f} | Error %: {mpc_accuracy:.4f}%")
-        
-        # Compare MPC vs Walk Forward
-        mpc_vs_ensemble_improvement = ((ensemble_price_mae - mpc_mae) / ensemble_price_mae) * 100 if ensemble_price_mae > 0 else 0
-        print(f"🔄 MPC vs Walk Forward: {mpc_vs_ensemble_improvement:+.1f}% difference in MAE")
     
-    # Analyze cross-information effectiveness
-    print(f"\n🔍 Cross-Information Analysis:")
-    actual_spreads = [ask - bid for ask, bid in zip(actual_asks, actual_bids)]
-    
-    print(f"   Average Actual Spread: {np.mean(actual_spreads):.4f}")
-    print(f"   Static Bias Corrections Applied: Price={price_bias_correction:.4f}, Bid={bid_bias_correction:.4f}, Ask={ask_bias_correction:.4f}")
-    
-    # Analyze dynamic offset effectiveness
-    if error_offset_history:
-        print(f"\n🎯 Dynamic Error Offset Effectiveness:")
-        
-        # Calculate performance with vs without dynamic offset
-        # We can't easily separate this retrospectively, but we can analyze the offset patterns
-        errors_by_direction = {'positive': [], 'negative': []}
-        for h in error_offset_history:
-            if h['error_direction'] > 0:
-                errors_by_direction['positive'].append(h['prediction_error'])
-            else:
-                errors_by_direction['negative'].append(h['prediction_error'])
-        
-        # Analyze offset adaptation patterns
-        offset_changes = []
-        for i in range(1, len(error_offset_history)):
-            offset_change = abs(error_offset_history[i]['new_offset'] - error_offset_history[i-1]['new_offset'])
-            offset_changes.append(offset_change)
-        
-        print(f"   Positive Error Corrections: {len(errors_by_direction['positive'])} (avg: {np.mean(errors_by_direction['positive']) if errors_by_direction['positive'] else 0:.6f})")
-        print(f"   Negative Error Corrections: {len(errors_by_direction['negative'])} (avg: {np.mean(errors_by_direction['negative']) if errors_by_direction['negative'] else 0:.6f})")
-        print(f"   Average Offset Change: {np.mean(offset_changes) if offset_changes else 0:.6f}")
-        print(f"   Offset Stability: {100 * (1 - np.std(offset_changes) / np.mean(offset_changes)) if offset_changes and np.mean(offset_changes) > 0 else 0:.1f}%")
-        
-        # Calculate adaptive learning rate
-        total_corrections = len(error_offset_history)
-        adaptive_effectiveness = 100 * (1 - np.mean([h['prediction_error'] for h in error_offset_history[-10:]]) / np.mean([h['prediction_error'] for h in error_offset_history[:10]])) if total_corrections >= 20 else 0
-        print(f"   Adaptive Learning Effectiveness: {adaptive_effectiveness:.1f}% (first 10 vs last 10 errors)")
-    
-    # Attention analysis
-    if attention_weights_history:
-        avg_attention = np.mean(attention_weights_history, axis=0)
-        print(f"\n🧠 Cross-Attention Patterns (Price, Bid, Ask):")
-        for i in range(3):
-            attention_str = ", ".join([f"{w:.3f}" for w in avg_attention[0, i, :]])
-            price_type = ["Price", "Bid", "Ask"][i]
-            print(f"     {price_type} → [{attention_str}]")
-    
-    print(f"Evaluation points: Walk Forward={len(actual_prices)}, MPC={len(mpc_errors)}, Dynamic Offsets={len(error_offset_history) if 'error_offset_history' in locals() else 0}")
+    print(f"Evaluation points: Walk Forward={len(actual_prices)}, MPC={len(mpc_errors)}")
 else:
-    print("⚠️  Not enough points for evaluation")
+    print("Not enough points for evaluation")
 
 # --- Compact Plotting with Better Screen Compatibility ---
 fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
@@ -795,14 +953,14 @@ training_prices = data1_prices[:train_until_idx]
 
 ax1.plot(training_indices, training_prices, label='Training Data', color='gray', linewidth=1, alpha=0.7)
 ax1.plot(prediction_indices, actual_prices, label='Actual Price', color='blue', linewidth=2, marker='o', markersize=3)
-ax1.plot(prediction_indices, ensemble_predictions, label='🌟 Cross-Info Ensemble', color='purple', linewidth=3, marker='*', markersize=4)
+ax1.plot(prediction_indices, ensemble_predictions, label='Ensemble', color='purple', linewidth=3, marker='*', markersize=4)
 ax1.axvline(x=train_until_idx, color='red', linestyle='--', alpha=0.8, linewidth=1.5, label=f'Training Cutoff')
 
 # Add some styling to highlight the prediction region
 ax1.axvspan(predict_start_idx, predict_end_idx, alpha=0.1, color='purple', label='Prediction Window')
 
 ax1.set_ylabel('Price ($)', fontsize=10)
-ax1.set_title('Enhanced Cross-Information Price Prediction with Ensemble', fontsize=12, fontweight='bold', pad=10)
+ax1.set_title('Ensemble Engine Price Prediction with Gradient Feedback', fontsize=12, fontweight='bold', pad=10)
 ax1.legend(loc='upper left', fontsize=8)
 ax1.grid(True, alpha=0.3)
 
@@ -811,7 +969,7 @@ ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:.0f}'))
 
 # Add compact text annotations
 recent_training_avg = np.mean(training_prices[-50:]) if len(training_prices) >= 50 else np.mean(training_prices)
-ax1.text(0.02, 0.98, f'Training: {len(training_prices)} pts | Avg: ${recent_training_avg:.0f} | Enhanced with Cross-Info', 
+ax1.text(0.02, 0.98, f'Training: {len(training_prices)} pts | Avg: ${recent_training_avg:.0f} | Ensemble Engine', 
          transform=ax1.transAxes, verticalalignment='top', 
          bbox=dict(boxstyle='round,pad=0.3', facecolor='lightgray', alpha=0.8), fontsize=8)
 
@@ -822,7 +980,7 @@ context_prices = data1_prices[context_start:train_until_idx]
 
 ax2.plot(context_indices, context_prices, label='Recent Context', color='gray', linewidth=1, alpha=0.5)
 ax2.plot(prediction_indices, actual_prices, label='Actual', color='blue', linewidth=3, marker='o', markersize=6)
-ax2.plot(prediction_indices, ensemble_predictions, label='🌟 Cross-Info Ensemble', color='purple', linewidth=3.5, marker='*', markersize=7)
+ax2.plot(prediction_indices, ensemble_predictions, label='Ensemble', color='purple', linewidth=3.5, marker='*', markersize=7)
 ax2.axvline(x=train_until_idx, color='red', linestyle='--', alpha=0.8, linewidth=2)
 
 # EXTREME ZOOM: Focus ONLY on prediction values for y-axis
@@ -837,7 +995,7 @@ ax2.set_ylim(price_min - padding, price_max + padding)
 ax2.set_xlim(predict_start_idx - 2, predict_end_idx + 2)
 
 ax2.set_ylabel('Price ($)', fontsize=11)
-ax2.set_title('EXTREME ZOOM: Prediction Region Analysis', fontsize=13, fontweight='bold', pad=10)
+ax2.set_title('EXTREME ZOOM: Ensemble Engine Prediction Analysis', fontsize=13, fontweight='bold', pad=10)
 ax2.legend(fontsize=9)
 ax2.grid(True, alpha=0.4)
 
@@ -847,7 +1005,7 @@ ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:.3f}'))
 # Add high-precision prediction accuracy text
 if len(actual_prices) > 0:
     ensemble_price_accuracy_display = 100 - ensemble_price_accuracy
-    ax2.text(0.02, 0.02, f'🌟Ensemble Accuracy: {ensemble_price_accuracy_display:.4f}%', 
+    ax2.text(0.02, 0.02, f'Ensemble Accuracy: {ensemble_price_accuracy_display:.4f}%', 
              transform=ax2.transAxes, verticalalignment='bottom', 
              bbox=dict(boxstyle='round,pad=0.4', facecolor='lightblue', alpha=0.9), fontsize=9)
 
@@ -867,7 +1025,7 @@ if len(actual_prices) > 0:
     ax3.set_xlim(predict_start_idx - 2, predict_end_idx + 2)
     
     ax3.set_ylabel('Error ($)', fontsize=10)
-    ax3.set_title('Enhanced Error Analysis: Cross-Information Ensemble Benefits', fontsize=12, fontweight='bold', pad=10)
+    ax3.set_title('Ensemble Engine Error Analysis', fontsize=12, fontweight='bold', pad=10)
     ax3.legend(fontsize=8)
     ax3.grid(True, alpha=0.3)
     
@@ -885,7 +1043,7 @@ ax3.set_xlabel('Data Index', fontsize=10)
 plt.tight_layout(pad=2.0)
 
 # Add a compact main title
-fig.suptitle(f'Stock Price Prediction with Bias Correction Analysis - {file}', fontsize=14, fontweight='bold', y=0.97)
+fig.suptitle(f'Ensemble Engine Stock Price Prediction - {file}', fontsize=14, fontweight='bold', y=0.97)
 
 plt.show()
 
@@ -934,22 +1092,25 @@ if len(training_prices) > 1 and len(actual_prices) > 1:
 plt.tight_layout()
 plt.show()
 
-print(f"\n📊 ENHANCED CROSS-INFORMATION VISUALIZATION SUMMARY:")
-print(f"   📈 Training: {len(training_prices)} pts (0-{train_until_idx-1}) | MPC: {len(mpc_errors)} pts | Walk Forward: {len(actual_prices)} pts ({predict_start_idx}-{predict_end_idx})")
-print(f"   💹 Price range - Training: ${np.min(training_prices):.0f}-${np.max(training_prices):.0f} | Test: ${np.min(actual_prices):.1f}-${np.max(actual_prices):.1f}")
+print(f"Ensemble Engine Visualization Summary:")
+print(f"   Training: {len(training_prices)} pts (0-{train_until_idx-1}) | MPC: {len(mpc_errors)} pts | Walk Forward: {len(actual_prices)} pts ({predict_start_idx}-{predict_end_idx})")
+print(f"   Price range - Training: ${np.min(training_prices):.0f}-${np.max(training_prices):.0f} | Test: ${np.min(actual_prices):.1f}-${np.max(actual_prices):.1f}")
 if len(actual_prices) > 1:
-    print(f"   ⚡ Walk Forward Model - Error: Avg=${ensemble_price_mae:.2f} ({ensemble_price_accuracy:.2f}%) | Max=${np.max(ensemble_price_errors):.2f}")
+    print(f"   Walk Forward Model - Error: Avg=${ensemble_price_mae:.2f} ({ensemble_price_accuracy:.2f}%) | Max=${np.max(ensemble_price_errors):.2f}")
     if mpc_errors:
-        print(f"   🎯 MPC Model - Error: Avg=${mpc_mae:.2f} ({mpc_accuracy:.2f}%) | Max=${np.max(mpc_errors):.2f}")
+        print(f"   MPC Model - Error: Avg=${mpc_mae:.2f} ({mpc_accuracy:.2f}%) | Max=${np.max(mpc_errors):.2f}")
     
-    print(f"   📊 Combined Accuracy - Walk Forward: {100-ensemble_price_accuracy:.2f}% | MPC: {100-mpc_accuracy:.2f}%")
+    print(f"   Combined Accuracy - Walk Forward: {100-ensemble_price_accuracy:.2f}% | MPC: {100-mpc_accuracy:.2f}%")
 
-print(f"\n🔒 LEAK-FREE Cross-Information Model with Fourier Analysis + MPC + Walk Forward!")
-print(f"   🌊 Fourier Transform analysis using TRAINING data only (NO FUTURE LEAK)")
-print(f"   🚨 FIXED Model Predictive Control using historical patterns (NO FUTURE LEAK)")  
-print(f"   🧠 Multi-head attention for cross-price information sharing")
-print(f"   🔄 Adaptive ensemble weighting based on bid-ask spread constraints")
-print(f"   📊 Enhanced bias correction with detailed debugging")
-print(f"   🎯 NEW: Dynamic error offset using abs(m-n) from previous prediction")
-print(f"   ✅ ALL DATA LEAKAGE REMOVED - Realistic performance metrics now displayed!")
-print(f"   🎯 True predictive power without artificial accuracy inflation!") 
+print(f"Ensemble Engine with Gradient Feedback Learning")
+print(f"   Fourier Transform analysis using TRAINING data only")
+print(f"   Model Predictive Control using historical patterns")  
+print(f"   Multi-head attention for cross-price information sharing")
+print(f"   Adaptive ensemble weighting based on bid-ask spread constraints")
+print(f"   Enhanced bias correction")
+print(f"   Dynamic error offset using previous prediction errors")
+print(f"   Gradient feedback from bid/ask predictions to enhance price accuracy")
+print(f"   Confidence-weighted loss functions for adaptive learning")
+print(f"   Economic constraint enforcement via backpropagation")
+print(f"   Iterative refinement with gradient-based information flow")
+print(f"   All data leakage removed - realistic performance metrics") 
